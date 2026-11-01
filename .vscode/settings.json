@@ -1,0 +1,11 @@
+{
+  "C_Cpp.default.cppStandard":"c++20",
+  "C_Cpp.default.compileCommands":"${workspaceFolder}/build/compile_commands.json",
+  "cmake.cmakePath":"${workspaceFolder}/.venv/bin/cmake",
+  "cmake.buildDirectory":"${workspaceFolder}/build",
+  "cmake.configureOnOpen":false,
+  "files.exclude":{"**/.DS_Store":true},
+  "search.exclude":{"build":true,".venv":true,"third_party":true},
+  "editor.formatOnSave":false,
+  "files.associations":{"*.silente":"json"}
+}

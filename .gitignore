@@ -1,0 +1,14 @@
+.DS_Store
+build/
+.venv/
+third_party/JUCE/
+releases/*.zip
+releases/*.dmg
+*.silente-media/
+build-intel/
+build-universal/
+releases/
+backups/
+*.log
+third_party/lame-3.100/
+third_party/lame-download/

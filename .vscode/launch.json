@@ -1,0 +1,4 @@
+{
+  "version":"0.2.0",
+  "configurations":[{"name":"Silente · depurar", "type":"lldb", "request":"launch", "program":"${workspaceFolder}/build/Silente_artefacts/Release/Silente.app/Contents/MacOS/Silente", "cwd":"${workspaceFolder}", "preLaunchTask":"Silente: compilar"}]
+}

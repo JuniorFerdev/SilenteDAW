@@ -1,0 +1,47 @@
+diff --git a/modules/juce_audio_devices/native/juce_CoreAudio_mac.cpp b/modules/juce_audio_devices/native/juce_CoreAudio_mac.cpp
+index 2dae23c..be5042e 100644
+--- a/modules/juce_audio_devices/native/juce_CoreAudio_mac.cpp
++++ b/modules/juce_audio_devices/native/juce_CoreAudio_mac.cpp
+@@ -1738,20 +1738,11 @@ public:
+         start (cb);
+     }
+ 
++    // Silente patch: called from the Core Audio listener thread. Closing here raced with the
++    // message thread opening/destroying this device (crash when switching 48 -> 96 kHz).
++    // Only schedule; the close and reopen happen on the message thread in timerCallback.
+     void restartAsync() override
+     {
+-        {
+-            const ScopedLock sl (closeLock);
+-
+-            if (active)
+-            {
+-                if (callback != nullptr)
+-                    previousCallback = callback;
+-
+-                close();
+-            }
+-        }
+-
+         startTimer (100);
+     }
+ 
+@@ -1833,6 +1824,18 @@ private:
+     {
+         stopTimer();
+ 
++        {
++            const ScopedLock sl (closeLock);
++
++            if (! active)
++                return;
++
++            const ScopedLock cl (callbackLock);
++
++            if (callback != nullptr)
++                previousCallback = callback;
++        }
++
+         restart (previousCallback);
+     }
+ 

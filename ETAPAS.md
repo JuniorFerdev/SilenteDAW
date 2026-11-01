@@ -1,0 +1,160 @@
+# Silente — trabajo por etapas
+
+> Desde el 31-10-2026 la referencia de diseño es el Manual de operaciones de Cubase Pro 15 (`/Applications/ARCHIVO FER/Cubase_Pro_15_0_Operation_Manual_es.pdf`). Plan y método: `docs/PLAN_MANUAL_CUBASE15.md`.
+
+## Acuerdo de trabajo · 28 de octubre de 2026
+
+1. Un solo objetivo por etapa. Antes de editar: objetivo, entrega visible y prueba de aceptación en tres líneas.
+2. Trabajar sobre lo existente. No repetir investigación ni reconstruir módulos sin una necesidad concreta.
+3. Sin subagentes por defecto. Después de definir y revisar el tramo, el usuario decide la delegación. Cada agente tiene un alcance y archivos concretos; no abrir frentes nuevos.
+4. Cerrar cada etapa con una app o cambio comprobable, una prueba pertinente y los pendientes reales. No presentar código escrito como función validada.
+5. El usuario revisa el resultado antes de iniciar la etapa siguiente.
+6. Comunicaciones breves. Sin búsquedas amplias, lecturas completas, capturas repetidas ni pruebas generales si no aportan a la etapa activa.
+
+## EN CURSO · Manual etapa 1 · Ventana de proyecto (págs. 55–123)
+
+Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar nada: `swift` + PDFKit (extraer texto por páginas y renderizar páginas a PNG con `PDFPage.thumbnail`); no hay poppler ni Homebrew.
+
+**1A hecha · 01-11-2026 · estructura y barra de herramientas.**
+- Zonas Canal, izquierda, inferior y derecha que se muestran u ocultan desde la barra; «Configurar disposición de ventanas» (zonas + línea de estado, línea de información, barra de transporte). Se guarda en ~/Library/Silente/layout.xml.
+- Barra en el orden del manual: deshacer/rehacer · M/S «desactivar todos» (se encienden si hay alguno) · abrir MixConsole · Seleccionar, Dibujar, Borrar, Dividir · color · ajustar · zoom · Exportar · zonas y disposición a la derecha. Idioma, Audio e Importar quedan en los menús.
+- Línea de estado: Entradas/Salidas audio (conectadas o no), Tiempo de grabación máx. (disco libre a 24 bit estéreo), Formato de grabación, Pan law −3 dB, Tamaño de búfer; clic en entradas, salidas o búfer abre Audio.
+- Línea de información: «Sin objeto seleccionado» o nombre, inicio, duración y ganancia del evento.
+- Zona izquierda con pestañas inferiores Pista/Editor (Editor muestra el editor de teclas abierto o el aviso del manual). Pestaña inferior «Editor» y «MixConsole» con los nombres del manual.
+- Pestaña Canal nueva (`src/ui/project/ChannelTab.*`): nombre y color, 4 inserciones, M/S, fader en dB y medidor.
+- Nombre del proyecto en el título de la ventana (con «*» si hay cambios); «Guardar como» toma el nombre del archivo.
+- Pruebas: motor 24/24; flujo 30 PASS (2 nuevas: ocultar/mostrar zona inferior y derecha cambia el área de pistas y vuelve); idiomas 494; dispositivos 22; reproducción con interfaz sin pérdidas. Captura: releases/macOS/Silente-ventana-proyecto-1A.png.
+- Pendiente: zona derecha sin pestaña CR (no hay Control Room); vista global → 1C.
+
+**1B hecha · 01-11-2026 · lista de pistas y controles globales** (págs. 67–71, 83–85): encima de la lista «visibles / total», filtro de tipo de pista (embudo; menú con tipos; se resalta si filtra; ⌘-clic lo restablece) y Buscar pistas (lupa; selector con campo que filtra al escribir, incluye pistas ocultas, al elegir la muestra, selecciona y desplaza). Visibilidad: Mayús-clic muestra solo esa pista. Lógica en `src/ui/project/TrackFilter.h`, selector en `TrackFinder.h`. Pruebas: 6 nuevas en el flujo.
+
+**1C hecha · 01-11-2026 · regla, zoom, ajustar y rejilla** (págs. 71–72, 104–112): `src/ui/project/SnapGrid.h`. Barra: Ajustar act./desact. (imán), Tipo de ajuste (Rejilla, Eventos, Cursor, Rejilla + Cursor, Eventos + Cursor, Eventos + Rejilla + Cursor; eventos y cursor magnéticos a 10 px) y Tipo de rejilla (Compás, Tiempo, 1/8, 1/16, 1/32, Adaptar a zoom; con formato de tiempo: 10/100/1000 ms). Clic derecho en la regla: Compases+Tiempos, Segundos, Código de tiempo (30 fps), Muestras. H acerca y G aleja (además de ⌘+rueda). Pruebas: 7 nuevas (rejilla, adaptar a zoom, imanes, ajuste apagado, formatos). Pendiente: zoom vertical (Mayús-H/G), Relativo a rejilla y Shuffle, presets e historial de zoom, vista global.
+
+**Comandos de teclado hechos · 01-11-2026** (pedido de Fer; manual «Comandos de teclado por defecto», págs. 1609–1628): `src/app/KeyCommands.*` con la tabla de Cubase (≈130 comandos, mismas categorías, nombres ES/EN y teclas), despacho único en `MainComponent::keyPressed`, menú Edición (deshacer, rehacer, cortar, copiar, pegar, pegar al origen, duplicar, suprimir, dividir en el cursor) y ventana Edición › Comandos de teclado (`src/ui/keys/KeyCommandsPanel.*`: búsqueda, categorías, tecla y ✓ si Silente ya lo ejecuta). Funcionan ≈70: transporte (Espacio, Intro, Num 0, Num * y *, Num / y /, C, P, ⌥P, L, N, B, Num 1/2, ⌘Num 1/2, Num . , Num +/−, ⇧L/⇧R/⇧P, ⇧T, ⇧Espacio), edición (⌘Z, ⇧⌘Z, ⌘C/⌘X/⌘V, ⌥V, ⌘D, ⌘K, Supr/Retroceso, ⌥X, ⌘L, M, S, R, J, ⌘F, F2, ⌥F2, ⌘E, Intro, ⌥⇧C, ⇧Supr), navegación (flechas, Inicio, Fin, ⌘←/→ empujar), zonas (⌥⌘L/C/R/E/T, ⌘I), zoom (H, G, ⇧F, ⌥S), herramientas 1/3/5/8, F3, ⌥F3, F4, F11, T, ⌘N/O/S, ⇧⌘S. Portátil: / ciclo, * grabar, + y − avanzar/rebobinar. Pruebas: 6 nuevas (tabla y acciones reales en la ventana). Pendiente: comandos de funciones que Silente aún no tiene (automatización, punch, marcadores, cuantizar, herramientas 2/4/6/7/9, zoom vertical) y personalizar teclas.
+
+**1D hecha · 01-11-2026 · historial de ediciones y colores** (págs. 113–118): Edición › Historial (`src/ui/project/EditHistoryPanel.h`): acciones con nombre, hora y estado Hecho/Deshecho, línea del punto actual, clic en una fila deshace/rehace hasta allí (100 pasos). Botón de color de la barra = «Seleccionar color para pistas o eventos seleccionados»: con evento seleccionado colorea el evento (color propio, guardado en el proyecto; «Ajustar color de evento a pista»), si no la pista («Ajustar color de pista a por defecto»). Pruebas: motor 25/25 (color de evento guardado/cargado), flujo 54 (historial nombrado, deshacer, rehacer). Pendiente de la etapa 1: diálogo Configuración de colores de proyecto, herramienta Color, cursor en cruz, foco por zonas con Tab, vista global, pestaña CR.
+
+**Etapa 1 (Ventana de proyecto) cerrada en lo esencial.** Siguiente: Reproducción y transporte (págs. 306–343), luego Grabación (347–369), según docs/PLAN_MANUAL_CUBASE15.md.
+
+## Tramo · 01-11-2026 · transporte01 · Reproducción y transporte (págs. 306–343)
+
+- Menú Transporte (ids 100–163): modos de inicio, volver a la posición de inicio al parar, pre/post-roll, reproducir rangos (selección, desde/hasta), desplazamiento automático y cursor fijo; opciones guardadas en ~/Library/Silente/transport.xml.
+- Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
+- Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
+
+## Tramo · 01-11-2026 · grabacion01 · Grabación (manual págs. 347–359)
+
+- Punch in / Punch out anclados a los localizadores: botones junto a L y R en el transporte, teclas I y O, menú Transporte. Con Punch in, Reproducir pasa a grabar al llegar al localizador izquierdo; con Punch out la toma se cierra en el derecho y la reproducción sigue («Parar después de pinchado de salida automático» la detiene tras el post-roll).
+- Grabación en ciclo: una toma por vuelta, todas del mismo archivo; se oye la última. Regla de Cubase aplicada a la reproducción: donde se solapan eventos de audio solo suena el de arriba.
+- Transporte › Modos de grabación (Punch in/out o Regrabar; iniciar en el cursor, en el localizador izquierdo/punch in o en la selección), Modo grabación de audio (Mantener historial / Ciclo historial + reemplazar / Reemplazar, `src/audio/RecordingModes.*`) y Formato de grabación 16/24/32 bit flotante (también clic en la línea de estado). Pre-roll: el cursor arranca antes y se graba desde el punto pedido.
+- La grabación es un paso de Deshacer («Grabar»). Carpeta de grabación: «Audio» dentro de la carpeta del proyecto, como Cubase. MIDI grabado en posiciones de proyecto (sirve con ciclo y pinchado).
+- Pruebas: motor 31/31 (nuevas: recortar/partir eventos y modos, evento superior audible, punch in/out exacto, tomas en ciclo, 32 bit flotante y MIDI en posición), io 6/6, flujo 62 (I/O, menús, toma pinchada desde la interfaz, deshacer), idiomas 703. Exportación de sulphuric idéntica bit a bit. Universal probada: motor 31/31, io 6/6, flujo 62/62 en arm64 y x86_64.
+- Incidente: un script vació `src/AudioEngine.cpp` (no tiene git propio). Se reconstruyó desde el respaldo del 29-10 reproduciendo cada edición registrada; 84 archivos reconstruidos coinciden exactos con los actuales y 8 fragmentos del motor coinciden línea por línea. Respaldo nuevo: `backups/fuentes-2026-11-01-motor-recuperado.tar.gz`.
+- No probado con micrófono o interfaz real (las pruebas usan entrada sintética offline). Pendiente: evento rojo creciendo mientras graba, pregrabación de audio (hasta 60 s), carriles de tomas, modos de grabación MIDI (Mezcla/Reemplazar), compensación de latencia de entrada.
+
+## Tramo · 01-11-2026 · diseno02 · Rigor de diseño Cubase (pedido de Fer)
+
+- Faders y perillas en `SilenteLookAndFeel`: tapa gris rectangular con raya central sobre ranura oscura; deslizadores horizontales finos con punto blanco; perillas oscuras con anillo gris y aguja blanca. Se quitaron los colores azul/menta forzados.
+- Inspector como Cubase: barra de nombre en color, fila M S ● ◉, volumen y panorama, secciones plegables Enrutado / Inserciones / Ecualizadores (clic en la cabecera).
+- Columna «Canal» como Cubase: nombre, curva de EQ, «▼ Inserciones» (ranuras ocupadas en verde azulado), «▼ Envíos», M S e, fader con escala y medidor estéreo, ● ◉ y nombre en color al pie.
+- Barra de herramientas: icono Hub (casa: Nuevo/Abrir/Guardar) en lugar del texto «SILENTE», separadores finos entre grupos, icono de exportar en lugar del botón de texto. Iconos dibujados por Silente, sin recursos de Steinberg.
+- Pruebas: motor 26/26, io 6/6, flujo 54, idiomas 681. Captura: build/visual/d3.png.
+- Universal (releases/macOS/Silente-Universal.app) probada en arm64 y x86_64: motor 26/26, io 6/6, flujo 54/54 en ambas.
+- Pendiente: comparar contra más capturas de Cubase (zona derecha, regla, colores de eventos) cuando Fer las envíe.
+
+## Tramo · 01-11-2026 · io01 · Importar, exportar y conversión de formatos
+
+Pedido de Fer. Cada función en su propio archivo (VS Code), con pruebas propias:
+- `src/io/Mp3Encoder.*`: MP3 con LAME 3.100 (LGPL), descargado de SourceForge con permiso de Fer, SHA-256 verificado (ddfe36ca…da1e), compilado como biblioteca estática universal con `third_party/lame-config/config.h` (sin configure). build.sh lo re-extrae del tarball verificado si falta.
+- `src/io/AudioFileFormats.*`: escritor común WAV/AIFF (16/24/32 float), FLAC (16/24), MP3 (128–320 kbit/s, ≤48 kHz) y M4A/AAC (afconvert de macOS); conversión de cualquier audio o video con remuestreo sinc.
+- `src/io/VideoAudio.mm`: audio de MP4/MOV/M4V con AVFoundation (sin código de terceros).
+- `src/io/TrackExport.*`: «Exportar mezcla de audio»: Stereo Out y/o cualquier número de canales, un archivo por canal («Nombre - Pista»), cada canal en solo (con sus buses), mute/solo restaurados.
+- Motor: `AudioEngine::renderMix` (render offline con cancelación y progreso); `exportMix` lo usa.
+- Interfaz `src/ui/io/`: ventana Exportar mezcla de audio (selección de canales, nombre, ruta, formato, frecuencia, bits/kbit/s), ventana Conversión de formatos (lote, video incluido, junto al original o en otra carpeta), trabajos en segundo plano con progreso y Cancelar. Archivo: Importar audio/MIDI/video, Exportar mezcla de audio, Conversión de formatos, Extraer audio de video. Importar un video crea la pista con su audio (~/Music/Silente/Audio de video).
+- Pruebas `tests/IoTests.cpp` (en --self-test): 6/6 — WAV/AIFF/FLAC exactos a 24 bit; MP3 y M4A con nivel ±0,5 dB, duración y canales correctos; MP3 a 96 kHz rechazado; 44,1→48 kHz conserva tono y duración; audio extraído de un .mov; exportación de mezcla + 2 pistas separadas (pista silenciada exportada con señal, mute/solo restaurados, nombres) y mezcla en MP3. Flujo 31 PASS (capturas releases/macOS/Silente-exportar.png y Silente-conversion.png), motor 24/24, idiomas 552, dispositivos 22; exportación de sulphuric idéntica bit a bit.
+- Universal arm64/x86_64 probada: motor 24/24, io 6/6, flujo 31 en ambas.
+- Limitación: no se probó con un video real con imagen (la prueba usa un .mov solo de audio; AVFoundation trata ambos igual). Sin rango de exportación por localizadores todavía.
+
+## Tramo · 01-11-2026 · visual01 · Acabado visual estilo Cubase 15 y tamaño de letra
+
+Referencias: figura pág. 55 del manual (colores muestreados píxel a píxel con un script Swift) y capturas de Cubase 15 que envió Fer (proyecto completo, cabeceras de pista, MixConsole inferior, transporte).
+- Paleta en `src/ui/theme/Colours.h`: paneles #222528, fondos #1c1e1f, separadores oscuros, visor de eventos #2b2c2f con rejilla tenue, pista seleccionada gris claro con texto oscuro, estados activos gris claro (#8e8f90) con texto oscuro, mute amarillo, solo y grabar rojos, monitor naranja, ciclo morado, reproducir verde, medidores cian.
+- Cabecera de pista como Cubase (`Arrangement`): franja de color con icono del tipo y número; fila 1 M · S · nombre · mini-fader de volumen con dB (arrastrable, doble clic 0 dB); fila 2 ● · ◉ · R · W · e (e abre la configuración del canal; R/W solo visual, sin automatización); medidor fino. Cabecera 250 px, carril 60 px.
+- MixConsole inferior = MixConsole compacto (mismas tiras que la ventana F3, secciones plegadas, botones en una fila). Corregido fallo de mixconsole01: una sección plegada seguía ocupando altura. Tiras con nombre en color arriba y abajo.
+- Inspector con barra de nombre en el color de la pista y cabeceras de sección «▼ Ecualizadores / Inserciones / Enrutado».
+- Transporte centrado: localizadores a la izquierda, posición musical, ciclo/parar/reproducir/grabar, tiempo, tempo con Tap, compás y luces.
+- Botones estrechos dibujan su letra completa.
+- **Tamaño de la interfaz y de la letra:** menú Ventana › 100/115/125/140/150 %, guardado en ~/Library/Silente/interface.xml; arranca en 115 %. La ventana se ajusta a la pantalla.
+- Pruebas: motor 24/24, io 6/6, flujo 32 (nueva: MixConsole compacto con secciones plegadas mantiene el fader dentro de la tira; coordenadas de regla adaptadas a la cabecera de 250 px), idiomas, dispositivos 22, reproducción sin pérdidas a 115 %. Captura: releases/macOS/Silente-visual-cubase.png.
+- Pendiente visual: iconos de barra de herramientas aún propios; zona derecha sin pestañas CR/Automatización; lista de pistas sin filtro/búsqueda (1B).
+
+## Tramo · 31-10-2026 · mixconsole02
+
+Enrutado real en el motor: cada pista tiene salida (Stereo Out o canal de grupo) y 4 envíos a canales FX (nivel −∞…+6 dB, pre/post fader, activar), guardados en el proyecto (`output`, `sends`) y en deshacer. El motor resuelve destinos por id y ordena por rangos (fuentes antes que buses) sin reservar memoria en el hilo de audio; bucles, destino propio o de tipo equivocado se rechazan (`canRoute/setOutput/setSend`). Envío pre = tras inserciones y EQ, antes del fader (sigue al mute); post = tras fader y panorama. Solo: un bus sigue abierto si le llega una pista en solo, y una pista suena si su grupo/FX está en solo. MixConsole: botón de salida con grupos (los que harían bucle, desactivados) y rack Envíos (destino, nivel, PRE, activar, quitar). Pruebas: motor 24/24 (nueva de señal: suma en grupo con su fader/pan, solo a través de buses, post y pre fader, mute en pre, nivel −6 dB, envío desactivado, bucles rechazados, guardado/carga), flujo 28 PASS, idiomas 459, dispositivos 22; reproducción con interfaz sin pérdidas; exportación del proyecto sulphuric idéntica bit a bit a la anterior. Universal arm64/x86_64 probada. Limitaciones: la compensación de latencia no suma la de los buses en cadena; sin panoramizador de envío propio; clics reales en la ventana pendientes de Fer.
+
+## Tramo · 31-10-2026 · mixconsole01
+
+Ventana MixConsole propia (F3; ⌥F3 sigue siendo el mezclador de la zona inferior; menú Estudio) en `src/ui/mixconsole/MixConsole.*`, según `docs/REFERENCIA_CUBASE15_MIXCONSOLE.md`. Barra: Visibilidad, Buscar canal, Tipos de canal, plegar racks Enrutado/Inserciones/EQ, Restablecer clips. Zona izquierda: visibilidad por canal y anclaje a zona izquierda/derecha. Canales: entrada (audio, menú mono/estéreo 1–18) → Stereo Out, instrumento + 4 inserciones (editor/opciones/bypass existentes), EQ 3 bandas con rótulos, panorama centrado, M/S/«e», R/monitor solo en pistas con eventos, fader en dB con escala, volumen editable (acepta coma), medidor estéreo con retención de pico, indicador de clip y pico máximo (clic restablece), nombre/color/tipo, selección sincronizada; Stereo Out fijo a la derecha; carpeta sin canal. Todas las ediciones con deshacer y marca de cambios. Pruebas: flujo 26 PASS (5 nuevas de MixConsole: canales visibles, mute con deshacer, fader en dB, volumen con coma, búsqueda), motor 23/23, idiomas 445, dispositivos 22, reproducción con interfaz sin bloques perdidos. Captura: releases/macOS/Silente-mixconsole-01.png y revisión visual con la sesión sulphuric. Pendiente: clics reales de Fer (ventana en otro escritorio); visibilidad/anclajes no se guardan aún en el proyecto; salidas a grupo y envíos a FX = mixconsole02.
+
+## Tramo · 31-10-2026 · metronomo01
+
+Metrónomo propio en `src/audio/Metronome.*` (cinco sonidos sintetizados: clásico, bloque de madera, cencerro, digital, clave; acento en el 1, subdivisión negras/corcheas/tresillos/semicorcheas, volumen, solo al grabar, precuenta 0–2 compases que retiene transporte y grabación, vista previa con transporte parado; ajustes en ~/Library/Silente/metronome.xml). Calculadora de tempo `src/audio/TapTempo.h` + `src/ui/metronome/TapTempoPanel` (Espacio o clic; mediana de intervalos, descarta toques atípicos, corrige golpes saltados, reinicia tras 2 s; ÷2, ×2, aplicar con deshacer). Tecla C, menú Estudio (metrónomo, ajustes, calculadora), icono de metrónomo redibujado, flecha de ajustes, luces de pulso y botón TAP en la barra inferior, BPM arrastrable. Pruebas: 23/23 motor (5 nuevas: posición y acento de clics, subdivisión en los 5 sonidos, precuenta, vista previa, tap tempo), 22 dispositivos, flujo, idiomas 411/411, reproducción con interfaz sin bloques perdidos. Ventana de calculadora revisada visualmente; toques reales con Espacio pendientes de Fer (la ventana estaba en otro escritorio). Pendiente: compases distintos de 4/4 y patrones de clic por compás como Cubase.
+
+## Corrección · 31-10-2026 · reproducción con ruido
+
+Causa medida: `Arrangement::paint` (y otros repintados) retenían `modelLock` mientras dibujaban; el callback de audio usa try-lock y entregaba silencio → 8,1 % de bloques perdidos con la ventana abierta (chasquidos, reloj atrasado). El modelo solo se modifica en el hilo de mensajes, así que las lecturas de pintura ya no toman el candado (8 sitios en MainComponent). Además, clips con frecuencia distinta al dispositivo usan `src/audio/BandlimitedInterpolator.h` (sinc con ventana Blackman-Harris, 16 cruces) en vez de interpolación lineal; misma frecuencia sigue directa. Evidencia: motor offline = suma ideal de los WAV a −145 dB; captura en tiempo real = exportación muestra a muestra; con interfaz y proyecto real a 96 kHz 0 bloques perdidos en 20 s (antes 121/1492); prueba 48→96 kHz: 18 kHz a −0,002 dB e imágenes −129 dB (lineal: −4,2 dB e imágenes ~−13 dB). 18/18 motor, 22 dispositivos, flujo e idiomas. Diagnósticos nuevos: `--capture-playback`, `--render-project`, `--ui-playback-check`. Pendiente: escucha de Fer; opción de frecuencia de proyecto que ajuste el dispositivo como Cubase.
+
+## Corrección · 31-10-2026 · reproducción muda
+
+Causa: al arrancar, la entrada por defecto (micrófono de la Mac) queda sin canales activos pero con nombre distinto a la salida; JUCE 8.0.12 crea el combinador de Core Audio y este nunca llama al motor (0 callbacks: cursor quieto, sin sonido). Pasaba con bocinas de la Mac y con audífonos USB. Arreglo en `src/audio/DeviceSettings.cpp`: sin entradas activas se abre solo el dispositivo de salida (también al cambiar ajustes). Prueba nueva `--check-playback WAV SALIDA` con dispositivo real y master en silencio: antes 0 callbacks; después la posición avanza al ritmo real (3,04 s en 3 s), señal presente, 0 bloques perdidos. Con entrada activa (micrófono + audífonos) el combinador sí funciona. 17/17 motor, 22 dispositivos, flujo e idiomas aprobados. Pendiente: prueba audible de Fer.
+
+## Corrección · 31-10-2026 · cierre al cambiar a 96 kHz
+
+Causa (informes .ips): carrera en JUCE 8.0.12 `AudioIODeviceCombiner` (entrada y salida en dispositivos distintos, p. ej. micrófono + bocinas de la Mac): el aviso de Core Audio cerraba el dispositivo desde su hilo mientras el hilo principal lo abría/destruía. Parche propio `scripts/patches/juce-8.0.12-coreaudio-combiner-restart.patch` (aplicado por build.sh): `restartAsync` solo programa y el cierre/reapertura ocurre en el hilo principal. Prueba `--check-rate-switch SALIDA ENTRADA SALIDA_DISPOSITIVO` (12 cambios 48↔96 kHz): antes 2/3 cierres (exit 139), después 0/8 y la frecuencia cambia de verdad. 17/17 motor, 22 dispositivos. Los informes «Python» de esa noche son de apps Qt (QtWebEngine), no de Silente. Pendiente: probar con la SSL 2+ (un solo dispositivo, no usa combinador).
+
+## Ajuste · 31-10-2026 · selector nativo
+
+Abrir, guardar, importar y exportar usan el panel nativo de macOS (FileChooser con diálogo del sistema). Comprobado: «Importar» abre el panel de Finder con favoritos e iCloud; 17/17 pruebas.
+
+## Tramo · 31-10-2026 · pistas01
+
+Inicio con sesión vacía (sin demo) y botón «+» junto a PISTAS con seis tipos: audio, instrumento (selector de instrumento), MIDI, carpeta, FX y grupo; también en menú Pista. `TrackKind` en el motor, guardado como `kind` (proyectos antiguos se leen por `isMidi`). Carpeta sin señal ni canal de mezcla; FX/grupo/carpeta no graban ni reciben audio importado. Comprobado: 17/17 pruebas de motor (incluye prueba nueva de tipos y corrección UTF-8 de la prueba de ida y vuelta), flujo de plugins aprobado, idiomas 371/371, y app abierta vacía con los tipos añadidos vía menú. Apps anteriores de releases/macOS borradas por pedido de Fer; única entrega: Silente-Universal.app (fuentes y backups intactos; se regeneran con los scripts). Pendiente: ruteo real a FX (envíos) y grupo (salida de pista), anidar pistas dentro de carpetas, salida MIDI externa (la pista MIDI suena por ahora con el sintetizador interno); el menú emergente del «+» no se pudo capturar en segundo plano, revisión manual de Fer.
+
+## Tramo · 31-10-2026 · universal-rosetta01
+
+Por petición del usuario (Waves solo valida bajo Rosetta): `scripts/build_universal.sh` genera `releases/macOS/Silente-Universal.app` (arm64+x86_64). Abre nativo; Finder → Obtener información → «Abrir con Rosetta» usa la mitad x86_64, con catálogo propio `Plugins-Intel.xml` y título «· Intel (Rosetta)». Comprobado: `lipo` con ambas arquitecturas y `--probe-plugin` de CLA-76 (s) AU 14.12.90 creado en arm64 y x86_64 (`build/universal-check/`). Pendiente: revisión manual de Fer con la casilla de Rosetta, licencia/editor/sonido de Waves y escaneo WaveShell VST3. Bundle sin firma completa, igual que las entregas anteriores.
+
+## PAUSA solicitada · 29-10-2026 · audio18 y Waves en desarrollo
+
+El usuario pidió detenerse para trabajar en otros proyectos. No continuar automáticamente. Punto de reanudación: docs/RETOMAR_AUDIO18_Y_WAVES.md. Fuentes y compilaciones conservadas. Audio de hasta 18 entradas/salidas configurables, asignación mono/estéreo por pista y persistencia implementados; 22 comprobaciones simuladas aprobadas. SSL 2+ no conectada por decisión del usuario: prueba física pendiente. Compilaciones arm64 e Intel x86_64 completadas. CLA-76 (s) AU 14.12.90 se instanció en ambas arquitecturas, sin verificar licencia, editor ni sonido; escaneo completo WaveShell VST3 14.12 interrumpido tras no terminar en aproximadamente un minuto. No afirmar que Waves esté corregido. Última entrega cerrada: plugins-cursor01. El tramo actual aún requiere revisión y cierre.
+
+## Último tramo cerrado · 29-10-2026 · plugins-cursor01
+
+Por petición del usuario: inicio vacío, arrastre continuo del cursor por la regla y selector de plugins con flujo de insertos/instrumentos. Selector extraído a src/ui/plugins/ y reglas de selección a src/plugins/. Búsqueda, categorías/fabricantes, formatos, favoritos, editor, sustitución, bypass y retirada. Compilación Release y prueba de flujo aprobadas con Apple AULowpass, DLSMusicDevice y TONE3000 VST3; bloque offline sin muestras no finitas para los efectos. Clic/arrastre/liberación/localizadores y destino de carga tras borrar pista comprobados. Bilingüe conservado (336 entradas por idioma). Entrega releases/macOS/Silente-plugins-cursor-01.app. Detalle y límites: docs/TRAMO_PLUGINS_CURSOR_01.md. Pendiente revisión manual, audio audible, otras instancias/plugin formats y funciones avanzadas de Cubase; no iniciar otro tramo automáticamente.
+
+## Tramo anterior · 29-10-2026 · idiomas01
+
+Una aplicación con español por defecto e inglés seleccionable desde la barra superior o el menú Idioma. Preferencia persistente; traducciones separadas en resources/locales/ y servicio en src/i18n/. Compilación Release, 315 entradas por idioma y cambio ES → EN → ES comprobados conservando nombres, colores, notas, tempo y número de pistas. Entrega: releases/macOS/Silente-es-en-01.app y capturas Silente-es.png / Silente-en.png. Detalle y límites: docs/TRAMO_IDIOMAS_01.md. Pendiente revisión del usuario; no iniciar otro tramo automáticamente.
+
+## Tramo anterior · 29-10-2026 · visual01
+
+Tema extraído a `src/ui/theme/`; color de pistas con paleta/personalizado, iconos vectoriales, regla y localizadores, transporte inferior y corrección de textos UTF-8. Compilación Release y captura visual verificadas. Entrega en `releases/macOS/Silente-visual-01.app`; captura `Silente-visual-01.png` en la misma carpeta. Control automatizado del selector de color no autorizado por la herramienta; clic, deshacer y persistencia de un color modificado pendientes de revisión manual. Detalle: `docs/TRAMO_VISUAL_01.md`. No empezar otro tramo sin revisión del usuario.
+
+## Estado comprobado
+
+- Proyecto C++20/JUCE/CMake en Silente.code-workspace, configurado para Visual Studio Code.
+- Primera compilación .app generada; ventana principal abierta y comprobada mediante la interfaz nativa de macOS.
+- Logotipo original SVG/PNG/ICNS en assets/.
+- Código de audio, plugins y pruebas existe; NO implica validación funcional completa. La ejecución previa --self-test no produjo evidencia de resultados y no se cuenta como aprobada.
+- Referencias oficiales de Cubase y capturas ya guardadas en docs/INVESTIGACION.md y build/references/. No volver a investigar desde cero.
+
+## Orden propuesto
+
+1. Interfaz: cerrar la pantalla principal con distribución y hábitos de Cubase. Entrega: app abierta y revisión visual del usuario.
+2. Audio: importar un WAV, reproducir/parar y ajustar volumen/pan/mute/solo. Entrega: prueba audible reproducible.
+3. Proyecto: guardar, cerrar y reabrir sin perder audio ni edición.
+4. MIDI: notas, editor e instrumento interno.
+5. Plugins: comprobar un VST3 y un AU concretos antes de ampliar compatibilidad.
+6. Grabación, efectos y optimización: dividir en etapas independientes según las prioridades del usuario.
+
+El alcance pendiente es audio18 y diagnóstico Waves, actualmente en pausa por solicitud expresa. No reanudar hasta que el usuario lo indique.

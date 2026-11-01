@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Silente: configurar",
+      "type": "shell",
+      "command": "./scripts/build.sh configure",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Silente: compilar",
+      "type": "shell",
+      "command": "./scripts/build.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "Silente: ejecutar",
+      "type": "shell",
+      "command": "open build/Silente_artefacts/Release/Silente.app",
+      "dependsOn": "Silente: compilar",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Silente: pruebas",
+      "type": "shell",
+      "command": "./scripts/build.sh test",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Silente: comprobar idiomas",
+      "type": "shell",
+      "command": "./scripts/check_locales.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Silente: comprobar plugins y cursor",
+      "type": "shell",
+      "command": "./scripts/check_workflow.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
