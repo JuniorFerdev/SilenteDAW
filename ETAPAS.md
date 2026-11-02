@@ -42,6 +42,17 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Tramo · 01-11-2026 · vista02 · Tamaños, herramientas de Cubase y color (pedido de Fer)
+
+- Visor de eventos: deslizador de zoom de forma de onda (arriba a la derecha) y de altura de pistas (abajo a la derecha, ⇧H/⇧G); la segunda fila de la cabecera se oculta en pistas bajas.
+- Bordes arrastrables de la columna Canal, el Inspector, la zona derecha y la zona inferior (MixConsole/editor); medidas en layout.xml.
+- MixConsole: el borde derecho de cada canal se arrastra para cambiar su ancho (⌥ todos); se guarda en el proyecto.
+- Herramientas en el orden de Cubase: 1 selección, 3 dividir, 4 pegar, 5 borrar, 6 zoom, 7 enmudecer, 8 dibujar, 9 reproducir. Fundido cruzado con X (y menú del evento). Módulo `src/audio/EventEdit.*`.
+- Botón de color: abre directamente la paleta de pista (16 tonos × 5 + grises, más color personalizado).
+- Las pruebas de flujo y las capturas usan una carpeta temporal de ajustes; ya no tocan ~/Library/Silente.
+- Pruebas: motor 34/34, io 6/6, flujo 70/70, idiomas 725; universal arm64/x86_64 igual; sulphuric idéntico bit a bit. Checklist del manual: `docs/CHECKLIST_MANUAL_CUBASE15.md`.
+- Pendiente: herramienta 2 (selección de rango), manipuladores de fundido/volumen en el evento (siguiente tramo: fundidos01).
+
 ## Tramo · 01-11-2026 · grabacion01 · Grabación (manual págs. 347–359)
 
 - Punch in / Punch out anclados a los localizadores: botones junto a L y R en el transporte, teclas I y O, menú Transporte. Con Punch in, Reproducir pasa a grabar al llegar al localizador izquierdo; con Punch out la toma se cierra en el derecho y la reproducción sigue («Parar después de pinchado de salida automático» la detiene tras el post-roll).
