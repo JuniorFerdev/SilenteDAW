@@ -21,6 +21,9 @@ struct AudioClip
     float gain = 1.0f;
     double fadeIn = 0.005, fadeOut = 0.005;
     juce::Colour colour {}; // transparent: follows the track colour
+    // Herramienta enmudecer: the event is silent. Fundido cruzado: during its fade-in the event
+    // below keeps sounding (fading out) instead of being covered.
+    bool muted = false, crossfade = false;
 };
 
 struct MidiNote
@@ -156,6 +159,8 @@ public:
     // «Regrabar»: drops the takes of the running recording (their files are deleted).
     void cancelRecording();
     juce::Result endRecording();
+    // Where new audio files of the project go (recordings, glued events): «Audio» in its folder.
+    juce::File audioFolder() const;
     void setMidiInputEnabled(const juce::String& identifier, bool enabled);
     void panic();
     double currentSampleRate() const noexcept { return sampleRate.load(); }

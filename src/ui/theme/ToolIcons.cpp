@@ -83,6 +83,17 @@ void drawToolIcon(juce::Graphics& g, ToolIcon icon, juce::Rectangle<float> bound
         case ToolIcon::punchOut: // arrow leaving a bracket: recording stops at the right locator
             g.drawLine(8.5f, 5.0f, 8.5f, 19.0f, 1.8f); g.drawLine(4.0f, 5.0f, 8.5f, 5.0f, 1.8f); g.drawLine(4.0f, 19.0f, 8.5f, 19.0f, 1.8f);
             g.drawLine(11.0f, 12.0f, 17.0f, 12.0f, 1.8f); { juce::Path a; a.addTriangle(16.0f, 8.0f, 16.0f, 16.0f, 21.0f, 12.0f); g.fillPath(a); } break;
+        case ToolIcon::glue: // glue tube with a drop
+            g.drawRoundedRectangle(3.5f, 7.5f, 12.0f, 8.0f, 2.0f, 1.6f); g.fillRect(15.5f, 9.5f, 3.0f, 4.0f); g.fillRect(18.5f, 10.5f, 2.5f, 2.0f);
+            g.fillEllipse(19.0f, 15.0f, 3.0f, 4.5f); break;
+        case ToolIcon::zoomTool: // magnifier with a plus
+            g.drawEllipse(3.5f, 3.5f, 12.0f, 12.0f, 1.8f); g.drawLine(14.0f, 14.0f, 20.5f, 20.5f, 2.4f);
+            g.drawLine(6.5f, 9.5f, 12.5f, 9.5f, 1.5f); g.drawLine(9.5f, 6.5f, 9.5f, 12.5f, 1.5f); break;
+        case ToolIcon::muteTool: // cross
+            g.drawLine(5.5f, 5.5f, 18.5f, 18.5f, 2.4f); g.drawLine(18.5f, 5.5f, 5.5f, 18.5f, 2.4f); break;
+        case ToolIcon::playTool: // speaker
+            p.startNewSubPath(3, 9); p.lineTo(8, 9); p.lineTo(13, 4.5f); p.lineTo(13, 19.5f); p.lineTo(8, 15); p.lineTo(3, 15); p.closeSubPath(); g.fillPath(p);
+            g.drawLine(16.0f, 9.0f, 17.5f, 12.0f, 1.5f); g.drawLine(17.5f, 12.0f, 16.0f, 15.0f, 1.5f); g.drawLine(19.0f, 6.5f, 21.5f, 12.0f, 1.5f); g.drawLine(21.5f, 12.0f, 19.0f, 17.5f, 1.5f); break;
         case ToolIcon::layout:
             g.drawRoundedRectangle(2.5f, 4.5f, 19.0f, 15.0f, 1.5f, 1.5f);
             g.drawLine(2.5f, 9.0f, 21.5f, 9.0f, 1.2f); g.drawLine(9.0f, 9.0f, 9.0f, 19.5f, 1.2f); break;

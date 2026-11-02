@@ -14,6 +14,7 @@
 #include "ui/project/TrackFinder.h"
 #include "ui/project/SnapGrid.h"
 #include "ui/project/ZoneSplitter.h"
+#include "audio/EventEdit.h"
 #include "app/KeyCommands.h"
 #include "ui/keys/KeyCommandsPanel.h"
 #include "ui/project/EditHistoryPanel.h"
@@ -62,6 +63,8 @@ public:
     std::function<void(int, juce::Rectangle<int>)> editColour;
     std::function<void()> beforeEdit, changed, openPiano;
     std::function<void(int)> openChannel;
+    std::function<void(const juce::String&)> warn;
+    std::function<void()> eventColour;
     std::function<void()> trackFilterMenu, findTracks;
     static juce::Rectangle<int> filterButton() { return { header-62, 4, 24, 22 }; }
     static juce::Rectangle<int> searchButton() { return { header-32, 4, 24, 22 }; }
@@ -91,7 +94,7 @@ public:
     std::vector<int> visibleTracks() const { return filter.visible(engine.tracks); }
     int visualRow(int i) const {auto v=visibleTracks();auto it=std::find(v.begin(),v.end(),i);return it==v.end()?-999:(int)std::distance(v.begin(),it)-firstTrack;}
     int trackAt(int y) const { auto v=visibleTracks();int n=(y-ruler)/lane+firstTrack;return y>=ruler&&n>=0&&n<(int)v.size()?v[(size_t)n]:-1; }
-    void setTool(int value){tool=value;setMouseCursor(value==3?juce::MouseCursor::CrosshairCursor:value==8?juce::MouseCursor::CrosshairCursor:juce::MouseCursor::NormalCursor);repaint();}
+    void setTool(int value){tool=value;setMouseCursor(value==3||value==8?juce::MouseCursor::CrosshairCursor:value==6?juce::MouseCursor::CrosshairCursor:value==9?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor);repaint();}
     void zoom(double factor) { pixelsPerSecond = juce::jlimit(12.0, 480.0, pixelsPerSecond*factor); repaint(); }
     void paint(juce::Graphics& g) override
     {
@@ -179,11 +182,17 @@ public:
                 const auto& clip=t.clips[(size_t)c]; auto r=clipRect(i,clip); if (!r.intersects(juce::Rectangle<float>{(float)header,0,(float)getWidth()-header,(float)getHeight()})) continue;
                 const bool selected=i==selectedTrack&&c==selectedClip;
                 const auto tone=clip.colour.isTransparent()?colour:clip.colour; // own event colour overrides the track's
+                const juce::Graphics::ScopedSaveState faded(g);if(clip.muted)g.setOpacity(.35f); // muted events look switched off
                 g.setColour(selected ? tone.brighter(.12f) : tone.withAlpha(.82f));g.fillRoundedRectangle(r,2);
                 g.setColour(selected ? ink : tone.brighter(.3f));g.drawRoundedRectangle(r.reduced(.5f),2,selected?1.5f:1);
                 g.setColour(tone.brighter(.1f));g.fillRoundedRectangle(r.withHeight(22),2);
                 text(g,clip.name,r.withHeight(22).reduced(9,0).toNearestInt(),11,eventInk);
                 drawWave(g,clip,r.withTrimmedTop(24).reduced(2,5),eventInk);
+                if(clip.crossfade&&clip.fadeIn>0.0)
+                {   // Crossfade: the two fade lines across the overlap.
+                    const float x0=r.getX(),x1=r.getX()+(float)(clip.fadeIn*pixelsPerSecond);g.setColour(ink.withAlpha(.9f));
+                    g.drawLine(x0,r.getBottom()-2,juce::jmax(x0+1,x1),r.getY()+2,1.4f);g.drawLine(x0,r.getY()+2,juce::jmax(x0+1,x1),r.getBottom()-2,1.4f);
+                }
                 if(selected) { g.setColour(ink.withAlpha(.65f));g.fillRoundedRectangle(r.getRight()-5,r.getCentreY()-8,2,16,1); }
             }
         }
@@ -239,6 +248,10 @@ public:
         if(e.mods.isPopupMenu())clipMenu();
         else if(tool==3&&selectedClip>=0){engine.seek(snapped(xToSeconds((float)e.x)));splitSelected();dragClip=-1;}
         else if(tool==5&&selectedClip>=0){deleteSelected();dragClip=-1;}
+        else if(tool==4&&selectedClip>=0){dragClip=-1;juce::MessageManager::callAsync([safe=juce::Component::SafePointer<Arrangement>(this)]{if(safe)safe->glueSelected();});} // after mouseDown releases the model lock
+        else if(tool==7&&selectedClip>=0){dragClip=-1;if(beforeEdit)beforeEdit();auto& c=t.clips[(size_t)selectedClip];c.muted=!c.muted;if(changed)changed();}
+        else if(tool==6){dragClip=-1;zoomAt((float)e.x,e.mods.isAltDown()?1.0/1.6:1.6);}
+        else if(tool==9){dragClip=-1;playTool=true;engine.seek(xToSeconds((float)e.x));engine.play();}
         else if(tool==8&&t.isMidi){if(beforeEdit)beforeEdit();MidiNote n;n.startBeats=snapped(xToSeconds((float)e.x))*engine.tempo/60;n.pitch=60;n.lengthBeats=1;t.notes.push_back(n);if(changed)changed();if(openPiano)openPiano();}
         else if(selectedClip<0)engine.seek(snapped(xToSeconds((float)e.x)));
         repaint();
@@ -265,7 +278,27 @@ public:
         else c.startSeconds=juce::jmax(0.0,snapped(dragOrigin.startSeconds+delta,selectedTrack,dragClip));
         if(changed)changed();repaint();
     }
-    void mouseUp(const juce::MouseEvent&) override { dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1; }
+    void mouseUp(const juce::MouseEvent&) override { dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;if(playTool){playTool=false;engine.pause();} }
+    bool playTool=false; // Herramienta reproducir: plays while the button is held
+    void zoomAt(float x,double factor)
+    {   // Herramienta zoom: the clicked time stays under the pointer.
+        const double at=xToSeconds(x);zoom(factor);scrollSeconds=juce::jmax(0.0,at-(x-header)/pixelsPerSecond);repaint();
+    }
+    // Pegar (4) and Fundido cruzado (X) work on a copy of the track's events, so the new audio
+    // file of a consolidated event is written without holding the model lock.
+    void editEvents(const std::function<juce::Result(std::vector<AudioClip>&,int)>& operation)
+    {
+        if(selectedTrack<0||selectedTrack>=(int)engine.tracks.size()){if(warn)warn(i18n::tr("Selecciona un evento."));return;}
+        auto track=engine.tracks[(size_t)selectedTrack];auto clips=track->clips;
+        if(selectedClip<0||selectedClip>=(int)clips.size()){if(warn)warn(i18n::tr("Selecciona un evento."));return;}
+        if(auto r=operation(clips,selectedClip);r.failed()){if(warn)warn(r.getErrorMessage());return;}
+        for(auto& c:clips)if(c.file==juce::File()&&c.audio)if(auto r=audio::writeEventFile(c,engine.audioFolder());r.failed()){if(warn)warn(r.getErrorMessage());return;}
+        if(beforeEdit)beforeEdit();
+        {const juce::ScopedLock lock(engine.modelLock);track->clips=std::move(clips);}
+        selectedClip=juce::jmin(selectedClip,(int)track->clips.size()-1);if(changed)changed();repaint();
+    }
+    void glueSelected(){editEvents([](std::vector<AudioClip>& c,int i){return audio::glueEvents(c,i);});}
+    void crossfadeSelected(){editEvents([](std::vector<AudioClip>& c,int i){return audio::crossfadeEvents(c,i);});}
     int volumeDrag=-1;
     void setVolumeFrom(Track& t,int x){const auto v=volumeRect(0);const float db=volumeFromProportion((float)(x-v.getX())/(float)v.getWidth());t.gain=db<=-60.0f?0.0f:juce::Decibels::decibelsToGain(db);}
     void mouseDoubleClick(const juce::MouseEvent& e) override
@@ -330,7 +363,10 @@ private:
             // Waveform zoom enlarges the drawing only; peaks beyond the event are clipped at its edges.
             const float half=r.getHeight()*.5f,scale=r.getHeight()*.48f*waveZoom;g.drawVerticalLine(x,r.getCentreY()-juce::jmin(half,hi*scale),r.getCentreY()+juce::jmin(half,-lo*scale)+1);}
     }
-    void clipMenu() {juce::PopupMenu m;m.addItem(1,i18n::tr("Dividir en el cursor"),selectedClip>=0);m.addItem(2,i18n::tr("Duplicar"),selectedClip>=0);m.addItem(3,i18n::tr("Eliminar"),selectedClip>=0);m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this)](int r){if(!safe)return;if(r==1)safe->splitSelected();if(r==2)safe->duplicateSelected();if(r==3)safe->deleteSelected();});}
+    void clipMenu() {juce::PopupMenu m;m.addItem(1,i18n::tr("Dividir en el cursor"),selectedClip>=0);m.addItem(2,i18n::tr("Duplicar"),selectedClip>=0);m.addItem(3,i18n::tr("Eliminar"),selectedClip>=0);
+        m.addSeparator();m.addItem(4,i18n::tr("Pegar con el evento siguiente"),selectedClip>=0);m.addItem(5,i18n::tr("Fundido cruzado  X"),selectedClip>=0);m.addItem(6,i18n::tr("Enmudecer evento"),selectedClip>=0);m.addItem(7,i18n::tr("Color de evento…"),selectedClip>=0);
+        m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this)](int r){if(!safe)return;if(r==1)safe->splitSelected();if(r==2)safe->duplicateSelected();if(r==3)safe->deleteSelected();if(r==4)safe->glueSelected();if(r==5)safe->crossfadeSelected();if(r==7&&safe->eventColour)safe->eventColour();
+            if(r==6&&safe->selectedTrack>=0&&safe->selectedTrack<(int)safe->engine.tracks.size()){auto& clips=safe->engine.tracks[(size_t)safe->selectedTrack]->clips;if(safe->selectedClip>=0&&safe->selectedClip<(int)clips.size()){if(safe->beforeEdit)safe->beforeEdit();clips[(size_t)safe->selectedClip].muted=!clips[(size_t)safe->selectedClip].muted;if(safe->changed)safe->changed();safe->repaint();}}});}
     void trackMenu(int i)
     {
         juce::PopupMenu m;m.addItem(1,i18n::tr("Renombrar pista…"));m.addItem(3,i18n::tr("Color de pista…"));m.addSeparator();m.addItem(2,i18n::tr("Eliminar pista"));m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this),i](int r){if(!safe)return;if(r==3){if(safe->editColour)safe->editColour(i,safe->localAreaToGlobal(juce::Rectangle<int>{0,ruler+safe->visualRow(i)*safe->lane,25,safe->lane}));return;}if(r==2){if(safe->beforeEdit)safe->beforeEdit();safe->engine.removeTrack(i);safe->selectedTrack=juce::jmax(0,i-1);if(safe->selectTrack)safe->selectTrack(safe->selectedTrack);if(safe->changed)safe->changed();safe->repaint();}if(r==1){auto* alert=new juce::AlertWindow(i18n::tr("Nombre de la pista"),"",juce::MessageBoxIconType::NoIcon);alert->addTextEditor("name",safe->engine.tracks[(size_t)i]->name);alert->addButton(i18n::tr("Guardar"),1,juce::KeyPress(juce::KeyPress::returnKey));alert->addButton(i18n::tr("Cancelar"),0,juce::KeyPress(juce::KeyPress::escapeKey));alert->enterModalState(true,juce::ModalCallbackFunction::create([safe,alert,i](int result){if(safe&&result==1){const juce::ScopedLock lock(safe->engine.modelLock);if(i<(int)safe->engine.tracks.size()){if(safe->beforeEdit)safe->beforeEdit();safe->engine.tracks[(size_t)i]->name=alert->getTextEditorContents("name");if(safe->changed)safe->changed();}}}),true);}});
@@ -509,6 +545,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     juce::TextButton mixerTab { i18n::tr("Mezclador") }, pianoTab { i18n::tr("Piano roll") }, undoButton { juce::String::fromUTF8("↶") }, redoButton { juce::String::fromUTF8("↷") }, splitButton { i18n::tr("Dividir") }, duplicateButton { i18n::tr("Duplicar") }, snapButton { i18n::tr("Rejilla 1/16") }, zoomOut { juce::String::fromUTF8("−") }, zoomIn { "+" };
     juce::TextButton mute { i18n::tr("Mute") }, solo { i18n::tr("Solo") }, arm { i18n::tr("Grabar") }, monitor { i18n::tr("Monitor") }, scan { i18n::tr("Buscar plugins") }, browser { i18n::tr("Instrumentos y efectos") }, demo { i18n::tr("Abrir sesión de ejemplo") };
     juce::TextButton selectTool{i18n::tr("Selección")},cutTool{i18n::tr("Dividir")},eraseTool{i18n::tr("Borrador")},drawTool{i18n::tr("Dibujar")},trackColour{i18n::tr("Color de pista")};
+    juce::TextButton glueTool,zoomTool,muteTool,playTool;
     juce::TextButton inspectorTab{i18n::tr("Inspector")},visibilityTab{i18n::tr("Visibilidad")},channelButton{"e"};
     juce::ScrollBar timelineScroll{false};
     juce::TextButton languageButton{juce::String::fromUTF8("Español")};
@@ -619,14 +656,17 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     {
         owner.setLookAndFeel(&look); owner.setOpaque(true); owner.setWantsKeyboardFocus(true);
         for(auto* c : std::initializer_list<juce::Component*> { &arrangement,&piano,&mixer,&play,&stop,&record,&rewind,&loop,&click,&importButton,&exportButton,&settings,&addTrackButton,&mixerTab,&pianoTab,&undoButton,&redoButton,&splitButton,&duplicateButton,&snapButton,&zoomOut,&zoomIn,&mute,&solo,&arm,&monitor,&scan,&browser,&demo,&tempo,&gain,&pan,&low,&mid,&high,&master,&projectTitle,&transportTime,&status,&keyboard }) owner.addAndMakeVisible(c);
-        for(auto* c:std::initializer_list<juce::Component*>{&visibility,&rightRack,&selectTool,&cutTool,&eraseTool,&drawTool,&trackColour,&inspectorTab,&visibilityTab,&channelButton,&timelineScroll})owner.addAndMakeVisible(c);
+        for(auto* c:std::initializer_list<juce::Component*>{&visibility,&rightRack,&selectTool,&cutTool,&eraseTool,&drawTool,&glueTool,&zoomTool,&muteTool,&playTool,&trackColour,&inspectorTab,&visibilityTab,&channelButton,&timelineScroll})owner.addAndMakeVisible(c);
         visibility.setVisible(false);inspectorTab.setToggleState(true,juce::dontSendNotification);
         inspectorTab.onClick=[this]{showVisibility(false);};visibilityTab.onClick=[this]{showVisibility(true);};
-        for(auto* b:{&inspectorTab,&visibilityTab,&selectTool,&cutTool,&eraseTool,&drawTool})b->setClickingTogglesState(true);
+        for(auto* b:{&inspectorTab,&visibilityTab,&selectTool,&cutTool,&eraseTool,&drawTool,&glueTool,&zoomTool,&muteTool,&playTool})b->setClickingTogglesState(true);
         auto configure=[this](juce::TextButton& button,ToolIcon icon,int tool,const juce::String& tooltip){setButtonIcon(button,icon);button.setTooltip(tooltip);button.onClick=[this,tool]{setTool(tool);};};
-        configure(selectTool,ToolIcon::select,1,i18n::tr("Selección de objetos · 1"));configure(cutTool,ToolIcon::scissors,3,i18n::tr("Dividir eventos · 3"));configure(eraseTool,ToolIcon::erase,5,i18n::tr("Borrar eventos · 5"));configure(drawTool,ToolIcon::pencil,8,i18n::tr("Dibujar notas MIDI · 8"));setTool(1);
+        configure(selectTool,ToolIcon::select,1,i18n::tr("Selección de objetos · 1"));configure(cutTool,ToolIcon::scissors,3,i18n::tr("Dividir eventos · 3"));configure(eraseTool,ToolIcon::erase,5,i18n::tr("Borrar eventos · 5"));configure(drawTool,ToolIcon::pencil,8,i18n::tr("Dibujar notas MIDI · 8"));
+        configure(glueTool,ToolIcon::glue,4,i18n::tr("Pegar: une el evento con el siguiente · 4"));configure(zoomTool,ToolIcon::zoomTool,6,i18n::tr("Zoom: clic acerca, ⌥clic aleja · 6"));
+        configure(muteTool,ToolIcon::muteTool,7,i18n::tr("Enmudecer eventos · 7"));configure(playTool,ToolIcon::playTool,9,i18n::tr("Reproducir desde el clic mientras se mantiene · 9"));
+        glueTool.setComponentID("tool-glue");zoomTool.setComponentID("tool-zoom");muteTool.setComponentID("tool-mute");playTool.setComponentID("tool-play");setTool(1);
         for(auto [button,icon]:std::initializer_list<std::pair<juce::TextButton*,ToolIcon>>{{&rewind,ToolIcon::rewind},{&stop,ToolIcon::stop},{&play,ToolIcon::play},{&record,ToolIcon::record},{&loop,ToolIcon::cycle},{&click,ToolIcon::click},{&undoButton,ToolIcon::undo},{&redoButton,ToolIcon::redo},{&trackColour,ToolIcon::palette}})setButtonIcon(*button,icon);
-        trackColour.setTooltip(i18n::tr("Seleccionar color para pistas o eventos seleccionados"));trackColour.onClick=[this]{colourMenu();};
+        trackColour.setTooltip(i18n::tr("Seleccionar color para pistas o eventos seleccionados"));trackColour.onClick=[this]{if(currentTrack())editTrackColour(selected,trackColour.getScreenBounds());else error(i18n::tr("Selecciona una pista para elegir su color."));};
         channelButton.setTooltip(i18n::tr("Editar configuración de canal"));channelButton.onClick=[this]{if(currentTrack())openChannelSettings(selected);};
         arrangement.editColour=[this](int i,juce::Rectangle<int> bounds){editTrackColour(i,bounds);};
         rightRack.select=[this](int i){select(i);};rightRack.addPlugin=[this]{plugins.showInstrumentSelector();};rightRack.importFiles=[this]{owner.importFiles();};rightRack.loadDemo=[this]{demo.triggerClick();};
@@ -830,7 +870,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
                 self.refresh();
             };
             juce::CallOutBox::launchAsynchronously(std::move(finder),arrangement.localAreaToGlobal(Arrangement::searchButton()),nullptr);
-        };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
+        };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.warn=[this](const juce::String& m){error(m);};arrangement.eventColour=[this]{colourMenu();};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
         piano.beforeEdit=[this]{pushUndo();};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
         plugins.onChange=[this]{markDirty();refresh();};
         plugins.onTrackCreated=[this](int index){select(index);};
@@ -849,6 +889,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         arrangement.setTool(value);
         selectTool.setToggleState(value==1,juce::dontSendNotification);cutTool.setToggleState(value==3,juce::dontSendNotification);
         eraseTool.setToggleState(value==5,juce::dontSendNotification);drawTool.setToggleState(value==8,juce::dontSendNotification);
+        glueTool.setToggleState(value==4,juce::dontSendNotification);zoomTool.setToggleState(value==6,juce::dontSendNotification);muteTool.setToggleState(value==7,juce::dontSendNotification);playTool.setToggleState(value==9,juce::dontSendNotification);
     }
     void showVisibility(bool show)
     {
@@ -860,7 +901,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     void colourMenu()
     {
         if(auto* clip=selectedClipPtr())
-        {
+        {   // Event colour, from the event's context menu (the toolbar button colours the track).
             juce::PopupMenu menu;menu.addSectionHeader(i18n::tr("Colorear eventos seleccionados"));menu.addItem(1,i18n::tr("Elegir color de evento…"));menu.addItem(2,i18n::tr("Ajustar color de evento a pista"),!clip->colour.isTransparent());
             menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&trackColour),[safe=juce::Component::SafePointer<MainComponent>(&owner)](int r)
             {
@@ -951,7 +992,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     bool anyArmed(){const juce::ScopedLock lock(engine.modelLock);for(auto& t:engine.tracks)if(t->armed.load()&&t->hasEvents())return true;return false;}
     juce::File recordFolder()
     {   // Cubase records into the «Audio» folder of the project.
-        return engine.projectFile!=juce::File()?engine.projectFile.getParentDirectory().getChildFile("Audio"):juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Silente/Audio");
+        return engine.audioFolder();
     }
     void finishRecording(const juce::String& message)
     {
@@ -1134,8 +1175,9 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         // Toolbar in the order of the manual (pp. 58–66); zone controls on the right.
         undoButton.setBounds(50,7,28,28);redoButton.setBounds(80,7,28,28);
         allMuteOff.setBounds(120,8,26,26);allSoloOff.setBounds(148,8,26,26);mixConsoleButton.setBounds(186,7,30,28);
-        selectTool.setBounds(228,7,30,28);drawTool.setBounds(260,7,30,28);eraseTool.setBounds(292,7,30,28);cutTool.setBounds(324,7,30,28);
-        trackColour.setBounds(366,7,30,28);snapButton.setBounds(408,7,30,28);snapTypeButton.setBounds(440,8,96,26);gridButton.setBounds(538,8,104,26);zoomOut.setBounds(654,8,28,26);zoomIn.setBounds(684,8,28,26);
+        // Tools in Cubase's order: 1 selección, 3 dividir, 4 pegar, 5 borrar, 6 zoom, 7 enmudecer, 8 dibujar, 9 reproducir.
+        {int x=228;for(auto* b:{&selectTool,&cutTool,&glueTool,&eraseTool,&zoomTool,&muteTool,&drawTool,&playTool}){b->setBounds(x,7,30,28);x+=32;}}
+        trackColour.setBounds(494,7,30,28);snapButton.setBounds(536,7,30,28);snapTypeButton.setBounds(568,8,96,26);gridButton.setBounds(666,8,104,26);zoomOut.setBounds(782,8,28,26);zoomIn.setBounds(812,8,28,26);
         hubButton.setBounds(8,7,30,28);exportButton.setBounds(w-214,7,30,28);zoneChannelButton.setBounds(w-170,7,30,28);zoneLeftButton.setBounds(w-138,7,30,28);
         zoneLowerButton.setBounds(w-106,7,30,28);zoneRightButton.setBounds(w-74,7,30,28);layoutButton.setBounds(w-38,7,30,28);
         addTrackButton.setBounds(centreRect.getX()+4,centreRect.getY()+4,24,22);
@@ -1262,7 +1304,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     {
         g.fillAll(bg);const int w=owner.getWidth(),h=owner.getHeight(),top=inspectorRect.getY();
         g.setColour(panel);g.fillRect(0,0,w,41);for(auto r:{statusRect,infoRect,channelRect,inspectorRect,browserRect,lowerRect})g.fillRect(r);g.fillRect(0,transportRect.isEmpty()?h-23:transportRect.getY(),w,h);
-        g.setColour(line.brighter(.35f));for(int x:{44,114,180,222,360,402,648,w-222,w-178})g.drawVerticalLine(x,10.0f,32.0f);
+        g.setColour(line.brighter(.35f));for(int x:{44,114,180,222,488,530,776,w-222,w-178})g.drawVerticalLine(x,10.0f,32.0f);
         g.setColour(line);g.drawHorizontalLine(40,0,(float)w);g.drawHorizontalLine(h-25,0,(float)w);
         if(!statusRect.isEmpty())g.drawHorizontalLine(statusRect.getBottom()-1,0,(float)w);
         if(!infoRect.isEmpty())g.drawHorizontalLine(infoRect.getBottom()-1,0,(float)w);
@@ -1500,6 +1542,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         k["zoomSelection"]=[this]{if(auto* c=selectedClipPtr()){const double width=juce::jmax(100,arrangement.getWidth()-Arrangement::header);arrangement.pixelsPerSecond=juce::jlimit(12.0,480.0,width/juce::jmax(0.25,c->durationSeconds*1.1));arrangement.scrollSeconds=juce::jmax(0.0,c->startSeconds-c->durationSeconds*0.05);refresh();}};
         k["zoneLeft"]=[this]{toggleZone(showLeft);};k["zoneChannel"]=[this]{toggleZone(showChannel);};k["zoneRight"]=[this]{toggleZone(showRight);};
         k["zoneLower"]=[this]{toggleZone(showLower);};k["zoneTransport"]=[this]{toggleZone(showTransport);};k["infoLine"]=[this]{toggleZone(showInfoLine);};
+        k["toolGlue"]=[this]{setTool(4);};k["toolZoom"]=[this]{setTool(6);};k["toolMute"]=[this]{setTool(7);};k["toolPlay"]=[this]{setTool(9);};
+        k["crossfade"]=[this]{arrangement.crossfadeSelected();};
         k["toolSelect"]=[this]{setTool(1);};k["toolSplit"]=[this]{setTool(3);};k["toolErase"]=[this]{setTool(5);};k["toolDraw"]=[this]{setTool(8);};
         k["mixConsole"]=[this]{showMixConsole();};k["mixConsoleLower"]=[this]{if(!showLower)toggleZone(showLower);setPiano(false);};
         k["audioConnections"]=[this]{owner.showAudioSettings();};k["vstInstruments"]=[this]{plugins.showInstrumentSelector(-1,nullptr);};

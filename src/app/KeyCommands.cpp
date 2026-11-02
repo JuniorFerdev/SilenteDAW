@@ -21,7 +21,7 @@ std::vector<KeyCommand> build()
     cat("Audio", "Audio");
     add("", "Ajustar fundidos al rango", "Adjust Fades to Range", 'A');
     add("", "Auto-rejilla", "Auto Grid", 'Q', S);
-    add("", "Fundido cruzado", "Crossfade", 'X');
+    add("crossfade", "Fundido cruzado", "Crossfade", 'X');
     cat("Automatización", "Automation");
     add("", "Abrir panel", "Open Panel", K::F6Key);
     add("", "«Leer automatización» en todas las pistas act./desact.", "Toggle Read Enable All Tracks", 'R', A);
@@ -115,12 +115,12 @@ std::vector<KeyCommand> build()
     add("toolSelect", "Herramienta de selección", "Object Selection Tool", '1');
     add("", "Herramienta de selección de rango", "Range Selection Tool", '2');
     add("toolSplit", "Herramienta dividir", "Split Tool", '3');
-    add("", "Herramienta pegar", "Glue Tool", '4');
+    add("toolGlue", "Herramienta pegar", "Glue Tool", '4');
     add("toolErase", "Herramienta borrar", "Erase Tool", '5');
-    add("", "Herramienta zoom", "Zoom Tool", '6');
-    add("", "Herramienta enmudecer", "Mute Tool", '7');
+    add("toolZoom", "Herramienta zoom", "Zoom Tool", '6');
+    add("toolMute", "Herramienta enmudecer", "Mute Tool", '7');
     add("toolDraw", "Herramienta dibujar", "Draw Tool", '8');
-    add("", "Herramienta reproducir", "Play Tool", '9');
+    add("toolPlay", "Herramienta reproducir", "Play Tool", '9');
     cat("Transporte", "Transport");
     add("metronome", "Activar metrónomo", "Metronome On", 'C');
     add("punchIn", "Activar punch in", "Activate Punch In", 'I');

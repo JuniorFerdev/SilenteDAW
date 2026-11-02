@@ -82,6 +82,13 @@ private:
     }
     void recordingChecks()
     {   // Grabación (manual pp. 347–359): I/O punch keys, record modes, format, and a punched take from the UI.
+        {   // Cubase tools 4 · 6 · 7 · 9 on the toolbar, and X is Fundido cruzado.
+            bool ok=true;const char* ids[]{"toolGlue","toolZoom","toolMute","toolPlay"};const char* buttons[]{"tool-glue","tool-zoom","tool-mute","tool-play"};
+            for(int n=0;n<4;++n){view.runCommand(ids[n]);auto* b=dynamic_cast<TextButton*>(find(view,buttons[n]));ok=ok&&b&&b->getToggleState()&&b->isVisible()&&b->getRight()<view.getWidth()/2+300;}
+            view.runCommand("toolSelect");
+            expect(ok&&!dynamic_cast<TextButton*>(find(view,"tool-play"))->getToggleState(),"Glue, Zoom, Mute and Play tools on the toolbar with keys 4, 6, 7, 9");
+            expect(app::findKeyCommand(juce::KeyPress('x'))&&app::findKeyCommand(juce::KeyPress('x'))->id=="crossfade","X is Crossfade");
+        }
         expect(app::findKeyCommand(juce::KeyPress('i'))&&app::findKeyCommand(juce::KeyPress('i'))->id=="punchIn"&&app::findKeyCommand(juce::KeyPress('o'))->id=="punchOut","I and O are Punch In and Punch Out");
         view.transportMenuItem(182);view.transportMenuItem(187);
         expect(engine.audioRecordMode.load()==2&&engine.recordBitDepth.load()==32,"Transporte menu sets audio record mode (Reemplazar) and 32-bit float");

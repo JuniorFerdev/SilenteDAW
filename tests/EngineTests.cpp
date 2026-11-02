@@ -1,6 +1,7 @@
 #include "EngineTests.h"
 #include "../src/audio/TapTempo.h"
 #include "../src/audio/RecordingModes.h"
+#include "../src/audio/EventEdit.h"
 #include "../src/AudioEngine.h"
 #include <cmath>
 #include <functional>
@@ -564,6 +565,54 @@ int runEngineTests(const juce::File& outputDir)
         const float under = outputAt(engine, 0.25f), top = outputAt(engine, 0.75f), after = outputAt(engine, 1.5f);
         near(top / under, 3.0, 1e-5, "Top event not alone (summed with the one below?)");
         near(after / under, 1.0, 1e-5, "Lower event not heard again after the top one");
+    });
+
+    suite.run("glue rejoins split pieces and consolidates other events", [&]
+    {
+        auto ramp = std::make_shared<juce::AudioBuffer<float>>(1, (int) (rate * 2));
+        for (int i = 0; i < ramp->getNumSamples(); ++i) ramp->setSample(0, i, (float) i / (float) ramp->getNumSamples());
+        AudioClip whole; whole.audio = ramp; whole.sourceRate = rate; whole.durationSeconds = 2.0;
+        AudioClip left = whole, right = whole; left.durationSeconds = 1.0; right.startSeconds = 1.0; right.offsetSeconds = 1.0; right.durationSeconds = 1.0;
+        std::vector<AudioClip> pieces { right, left };
+        requireOk(audio::glueEvents(pieces, 1));
+        require(pieces.size() == 1 && pieces[0].audio == ramp, "Split pieces not rejoined into one event of the same file");
+        near(pieces[0].durationSeconds, 2.0, 1e-12, "Rejoined length"); near(pieces[0].offsetSeconds, 0.0, 1e-12, "Rejoined offset");
+        std::vector<AudioClip> other { constantClip(0.0, 1.0, 0.2f), constantClip(0.5, 1.0, 0.6f) };
+        requireOk(audio::glueEvents(other, 0));
+        require(other.size() == 1 && other[0].file == juce::File(), "Consolidated event expected");
+        near(other[0].durationSeconds, 1.5, 1e-9, "Consolidated length");
+        const auto at = [&](double t) { return other[0].audio->getSample(0, (int) std::llround(t * rate)); };
+        near(at(0.25), 0.2, 1e-6, "Lower event before the overlap"); near(at(0.75), 0.6, 1e-6, "Upper event wins the overlap"); near(at(1.25), 0.6, 1e-6, "Upper event after");
+        requireOk(audio::writeEventFile(other[0], dir.getChildFile("glued")));
+        std::unique_ptr<juce::AudioFormatReader> reader(AudioEngine().formatManager.createReaderFor(other[0].file));
+        require(reader && reader->lengthInSamples == other[0].audio->getNumSamples() && reader->usesFloatingPointData, "Glued event file not written as float WAV");
+    });
+
+    suite.run("crossfade overlaps touching events and both sound across it", [&]
+    {
+        AudioEngine engine; setup(engine); auto track = engine.addAudioTrack("Fundido");
+        auto steady = constantClip(0.0, 2.0, 0.5f);
+        AudioClip a = steady, b = steady; a.durationSeconds = 1.0; b.startSeconds = 1.0; b.offsetSeconds = 1.0; b.durationSeconds = 1.0;
+        track->clips = { a, b };
+        requireOk(audio::crossfadeEvents(track->clips, 0, 0.2));
+        const auto& fa = track->clips[0]; const auto& fb = track->clips[1];
+        near(fa.durationSeconds, 1.1, 1e-9, "Earlier event extended"); near(fb.startSeconds, 0.9, 1e-9, "Later event starts earlier");
+        near(fb.offsetSeconds, 0.9, 1e-9, "Later event offset follows"); require(fb.crossfade && std::abs(fb.fadeIn - 0.2) < 1e-9 && std::abs(fa.fadeOut - 0.2) < 1e-9, "Fades not set to the overlap");
+        near(outputAt(engine, 1.0) / outputAt(engine, 0.5), 1.0, 0.01, "Level dips or jumps in the middle of the crossfade");
+        near(outputAt(engine, 0.95) / outputAt(engine, 0.5), 1.0, 0.01, "Level not constant through the crossfade");
+        std::vector<AudioClip> apart { constantClip(0.0, 1.0, 0.5f), constantClip(1.5, 1.0, 0.5f) };
+        require(audio::crossfadeEvents(apart, 0).failed(), "Events with a gap must be refused");
+    });
+
+    suite.run("muted event is silent and uncovers the event below", [&]
+    {
+        AudioEngine engine; setup(engine); auto track = engine.addAudioTrack("Mute");
+        track->clips.push_back(constantClip(0.0, 2.0, 0.2f)); track->clips.push_back(constantClip(0.5, 0.5, 0.6f));
+        const float under = outputAt(engine, 0.25f);
+        track->clips[1].muted = true;
+        near(outputAt(engine, 0.75f) / under, 1.0, 1e-5, "Muted top event still heard");
+        track->clips[0].muted = true;
+        near(outputAt(engine, 0.25f), 0.0, 1e-9, "Muted event sounds");
     });
 
     suite.run("punch in/out records only between the locators", [&]

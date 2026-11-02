@@ -544,20 +544,27 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
             };
             if (ownership)
                 for (int k = 0; k < static_cast<int>(track->clips.size()); ++k)
-                    if (int first = 0, last = 0; clipRange(track->clips[(size_t) k], first, last)) std::fill(rt.owner.begin() + first, rt.owner.begin() + last, k);
+                {
+                    const auto& clip = track->clips[(size_t) k];
+                    int first = 0, last = 0;
+                    if (clip.muted || ! clipRange(clip, first, last)) continue;
+                    // A crossfading event does not cover the one below during its fade-in.
+                    if (clip.crossfade) first = juce::jlimit(first, last, static_cast<int>(std::ceil((clip.startSeconds + clip.fadeIn - start) * rate - 1.0e-8)));
+                    std::fill(rt.owner.begin() + first, rt.owner.begin() + last, k);
+                }
             for (int k = 0; k < static_cast<int>(track->clips.size()); ++k)
             {
                 const auto& clip = track->clips[(size_t) k];
                 int first = 0, last = 0;
-                if (!clipRange(clip, first, last)) continue;
+                if (clip.muted || !clipRange(clip, first, last)) continue;
                 // Same rate: direct (bit-exact on the sample grid). Different rate: band-limited sinc.
                 const bool resample = std::abs(clip.sourceRate - rate) > 1.0e-6;
                 const double sincScale = audio::BandlimitedInterpolator::scaleFor(clip.sourceRate, rate);
                 const auto& sinc = audio::BandlimitedInterpolator::instance();
                 for (int i = first; i < last; ++i)
                 {
-                    if (ownership && rt.owner[(size_t) i] != k) continue;
                     const double local = start + i / rate - clip.startSeconds;
+                    if (ownership && rt.owner[(size_t) i] != k && ! (clip.crossfade && local < clip.fadeIn)) continue;
                     const double source = (local + clip.offsetSeconds) * clip.sourceRate;
                     if (source < 0.0 || source >= clip.audio->getNumSamples()) continue;
                     const int index = static_cast<int>(source), next = juce::jmin(index + 1, clip.audio->getNumSamples() - 1);
@@ -926,6 +933,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
             set(c, "file", audioFile == juce::File() ? juce::String() : audioFile.getRelativePathFrom(destination.getParentDirectory()));
             set(c, "startSeconds", clip.startSeconds); set(c, "offsetSeconds", clip.offsetSeconds); set(c, "durationSeconds", clip.durationSeconds);
             set(c, "sourceRate", clip.sourceRate); set(c, "gain", clip.gain); set(c, "fadeIn", clip.fadeIn); set(c, "fadeOut", clip.fadeOut); if (! clip.colour.isTransparent()) set(c, "colour", clip.colour.toString());
+            if (clip.muted) set(c, "muted", true); if (clip.crossfade) set(c, "crossfade", true);
             clips.add(c);
         }
         for (const auto& note : track->notes)
@@ -1007,6 +1015,7 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
             clip.startSeconds = juce::jmax(0.0, number(c, "startSeconds", 0.0)); clip.offsetSeconds = juce::jmax(0.0, number(c, "offsetSeconds", 0.0));
             clip.durationSeconds = juce::jmax(0.0, number(c, "durationSeconds", clip.durationSeconds)); clip.gain = static_cast<float>(number(c, "gain", 1.0));
             clip.fadeIn = juce::jmax(0.0, number(c, "fadeIn", 0.005)); clip.fadeOut = juce::jmax(0.0, number(c, "fadeOut", 0.005));
+            clip.muted = static_cast<bool>(c.getProperty("muted", false)); clip.crossfade = static_cast<bool>(c.getProperty("crossfade", false));
             if (c.hasProperty("colour")) clip.colour = juce::Colour::fromString(c["colour"].toString());
             track->clips.push_back(std::move(clip));
         }
@@ -1167,6 +1176,11 @@ juce::Result AudioEngine::beginRecording(const juce::File& directory, RecordOpti
     capturing = false; punchedOut = false;
     recording = true; chaseRequested = true; playing = true;
     return juce::Result::ok();
+}
+juce::File AudioEngine::audioFolder() const
+{
+    return projectFile != juce::File() ? projectFile.getParentDirectory().getChildFile("Audio")
+                                       : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Silente/Audio");
 }
 void AudioEngine::cancelRecording()
 {
