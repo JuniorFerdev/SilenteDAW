@@ -19,7 +19,7 @@ std::vector<KeyCommand> build()
     cat("Añadir pista", "Add Track");
     add("addTrack", "Añadir pista", "Add Track", 'T');
     cat("Audio", "Audio");
-    add("", "Ajustar fundidos al rango", "Adjust Fades to Range", 'A');
+    add("adjustFades", "Ajustar fundidos al rango", "Adjust Fades to Range", 'A');
     add("", "Auto-rejilla", "Auto Grid", 'Q', S);
     add("crossfade", "Fundido cruzado", "Crossfade", 'X');
     cat("Automatización", "Automation");
@@ -46,14 +46,14 @@ std::vector<KeyCommand> build()
     add("", "Cortar intervalo de tiempo", "Cut Time", 'X', C | S);
     add("delete", "Suprimir", "Delete", K::backspaceKey);
     add("delete", "Suprimir (Supr)", "Delete (Del)", K::deleteKey);
-    add("", "Eliminar intervalo de tiempo", "Delete Time", K::backspaceKey, S);
+    add("deleteTime", "Eliminar intervalo de tiempo", "Delete Time", K::backspaceKey, S);
     add("duplicate", "Duplicar", "Duplicate", 'D', C);
     add("enterTempo", "Introducir tempo", "Enter Tempo", 'T', S);
     add("", "Introducir tipo de compás", "Enter Time Signature", 'C', S);
     add("findTrack", "Buscar pista/canal", "Find Track/Channel", 'F', C);
     add("", "Grupo", "Group", 'G', C);
     add("", "Edición en grupo en pistas seleccionadas act./desact.", "Group Editing of Selected Tracks On/Off", 'K');
-    add("", "Insertar silencio", "Insert Silence", 'E', C | S);
+    add("insertSilence", "Insertar silencio", "Insert Silence", 'E', C | S);
     add("", "Invertir", "Invert", 'F', A);
     add("", "Bloquear", "Lock", 'L', C | S);
     add("moveToCursor", "Mover inicio de evento/inicio de rango a cursor", "Move Event Start to Cursor", 'L', C);
@@ -72,7 +72,7 @@ std::vector<KeyCommand> build()
     add("snap", "Ajustar act./desact.", "Snap On/Off", 'J');
     add("soloTracks", "Solo", "Solo", 'S');
     add("splitAtCursor", "Dividir en el cursor", "Split at Cursor", 'X', A);
-    add("", "Dividir rango", "Split Range", 'X', S);
+    add("splitRange", "Dividir rango", "Split Range", 'X', S);
     add("stationary", "Cursor estacionario", "Stationary Cursor", 'C', A);
     add("undo", "Deshacer", "Undo", 'Z', C);
     add("", "Desagrupar", "Ungroup", 'U', C);
@@ -113,7 +113,7 @@ std::vector<KeyCommand> build()
     add("", "Cuantizar", "Quantize", 'Q');
     cat("Herramientas", "Tools");
     add("toolSelect", "Herramienta de selección", "Object Selection Tool", '1');
-    add("", "Herramienta de selección de rango", "Range Selection Tool", '2');
+    add("toolRange", "Herramienta de selección de rango", "Range Selection Tool", '2');
     add("toolSplit", "Herramienta dividir", "Split Tool", '3');
     add("toolGlue", "Herramienta pegar", "Glue Tool", '4');
     add("toolErase", "Herramienta borrar", "Erase Tool", '5');

@@ -42,6 +42,13 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Tramo · 02-11-2026 · rango01 · Edición de rangos (manual págs. 295–305)
+
+- Herramienta 2 «Selección de rango» en la barra (entre Selección y Dividir): arrastrar sobre una o varias pistas, Mayús amplía, doble clic cubre un evento o el hueco entre eventos; resaltado sobre las pistas y «Inicio/Fin/Duración del rango» en la línea de información.
+- Operaciones (`src/audio/RangeEdit.*`, audio y MIDI): Dividir ⇧X, Truncar, Suprimir intervalo de tiempo ⇧Retroceso, Insertar silencio ⇧⌘E, Ajustar fundidos al rango A, Suprimir (Retroceso) y Duplicar (⌘D) con rango activo. Edición › Rango y clic derecho sobre el rango; cada operación es un paso de Deshacer.
+- Pruebas: motor 36/36 (cada operación con posiciones y desplazamientos exactos, MIDI a 120 BPM), flujo 78 (arrastrar rango, suprimir intervalo, deshacer, insertar silencio), idiomas 760. Captura: build/workflow-check/range.png.
+- Pendiente: mover/copiar el contenido arrastrando el rango, empujar bordes, cortar/copiar/pegar rango.
+
 ## Tramo · 01-11-2026 · fundidos01 · Fundidos y volumen de eventos (manual págs. 396–418)
 
 - Curvas de fundido en el motor (`src/audio/FadeCurves.h`): lineal, igual energía, curva S, rápida y lenta, por fundido de entrada y de salida; guardadas en el proyecto. Lineal da el mismo resultado de antes.

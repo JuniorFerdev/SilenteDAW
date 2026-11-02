@@ -94,6 +94,9 @@ void drawToolIcon(juce::Graphics& g, ToolIcon icon, juce::Rectangle<float> bound
         case ToolIcon::playTool: // speaker
             p.startNewSubPath(3, 9); p.lineTo(8, 9); p.lineTo(13, 4.5f); p.lineTo(13, 19.5f); p.lineTo(8, 15); p.lineTo(3, 15); p.closeSubPath(); g.fillPath(p);
             g.drawLine(16.0f, 9.0f, 17.5f, 12.0f, 1.5f); g.drawLine(17.5f, 12.0f, 16.0f, 15.0f, 1.5f); g.drawLine(19.0f, 6.5f, 21.5f, 12.0f, 1.5f); g.drawLine(21.5f, 12.0f, 19.0f, 17.5f, 1.5f); break;
+        case ToolIcon::rangeTool: // a span between two edges
+            g.drawLine(4.5f, 5.0f, 4.5f, 19.0f, 1.8f); g.drawLine(19.5f, 5.0f, 19.5f, 19.0f, 1.8f);
+            g.fillRect(6.0f, 9.0f, 12.0f, 6.0f); break;
         case ToolIcon::layout:
             g.drawRoundedRectangle(2.5f, 4.5f, 19.0f, 15.0f, 1.5f, 1.5f);
             g.drawLine(2.5f, 9.0f, 21.5f, 9.0f, 1.2f); g.drawLine(9.0f, 9.0f, 9.0f, 19.5f, 1.2f); break;

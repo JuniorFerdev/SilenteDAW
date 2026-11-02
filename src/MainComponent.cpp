@@ -16,6 +16,7 @@
 #include "ui/project/ZoneSplitter.h"
 #include "ui/project/FadeEditor.h"
 #include "audio/FadeCurves.h"
+#include "audio/RangeEdit.h"
 #include "audio/EventEdit.h"
 #include "app/KeyCommands.h"
 #include "ui/keys/KeyCommandsPanel.h"
@@ -66,7 +67,17 @@ public:
     std::function<void()> beforeEdit, changed, openPiano;
     std::function<void(int)> openChannel;
     std::function<void(const juce::String&)> warn;
-    std::function<void()> eventColour;
+    std::function<void()> eventColour, rangeMenu;
+    // Selección de rango (herramienta 2, manual pp. 295–305): a time span over consecutive rows.
+    bool hasRange=false,rangeDragging=false;double rangeStart=0,rangeEnd=0,rangeAnchor=0;int rangeFirstRow=0,rangeLastRow=0,rangeAnchorRow=0;
+    int rowAt(int y)const{return (y-ruler)/lane+firstTrack;}
+    std::vector<int> rangeTracks()const{auto v=visibleTracks();std::vector<int> out;for(int r=rangeFirstRow;r<=rangeLastRow;++r)if(r>=0&&r<(int)v.size())out.push_back(v[(size_t)r]);return out;}
+    void updateRange(double at,int row)
+    {
+        const int rows=juce::jmax(1,(int)visibleTracks().size());row=juce::jlimit(0,rows-1,row);
+        rangeStart=juce::jmin(rangeAnchor,at);rangeEnd=juce::jmax(rangeAnchor,at);rangeFirstRow=juce::jmin(rangeAnchorRow,row);rangeLastRow=juce::jmax(rangeAnchorRow,row);
+    }
+    void setRange(double from,double to,int firstRow,int lastRow){hasRange=true;rangeAnchor=from;rangeAnchorRow=firstRow;updateRange(to,lastRow);repaint();}
     std::function<void()> trackFilterMenu, findTracks;
     static juce::Rectangle<int> filterButton() { return { header-62, 4, 24, 22 }; }
     static juce::Rectangle<int> searchButton() { return { header-32, 4, 24, 22 }; }
@@ -199,6 +210,16 @@ public:
                 if(selected) { g.setColour(ink.withAlpha(.65f));g.fillRoundedRectangle(r.getRight()-5,r.getCentreY()-8,2,16,1); }
             }
         }
+        if(hasRange)
+        {   // Range highlight over its rows (a zero-length range is the range cursor).
+            const float x0=secondsToX(rangeStart),x1=juce::jmax(x0+1.0f,secondsToX(rangeEnd));
+            for(int row=juce::jmax(rangeFirstRow,firstTrack);row<=rangeLastRow;++row)
+            {
+                const float y=(float)(ruler+(row-firstTrack)*lane);if(y>getHeight())break;
+                const juce::Rectangle<float> area(juce::jmax((float)header,x0),y,x1-juce::jmax((float)header,x0),(float)lane);if(area.getWidth()<=0)continue;
+                g.setColour(ink.withAlpha(.16f));g.fillRect(area);g.setColour(accent);g.drawVerticalLine((int)x0,y,y+lane);g.drawVerticalLine((int)x1,y,y+lane);
+            }
+        }
         if(engine.tracks.empty()) { text(g,i18n::tr("Tu próxima idea empieza aquí"),{header+30,100,getWidth()-header-60,32},23,ink,juce::Justification::centred); text(g,i18n::tr("Arrastra audio o MIDI, o añade una pista."),{header+30,139,getWidth()-header-60,25},14,muted,juce::Justification::centred); }
         float px=secondsToX(engine.positionSeconds); if(px>=header&&px<getWidth()) { g.setColour(ink.withAlpha(.85f));g.drawVerticalLine((int)px,0,(float)getHeight()); juce::Path p;p.addTriangle(px-5,4,px+5,4,px,11);g.fillPath(p); }
         g.setColour(line);g.drawVerticalLine(header,0,(float)getHeight());
@@ -247,6 +268,14 @@ public:
             }
             if(e.mods.isPopupMenu())trackMenu(i); repaint();return;
         }
+        if(tool==2&&e.x>=header)
+        {   // Range: click and drag; Mayús extends the current range; right click opens its menu.
+            if(e.mods.isPopupMenu()){if(hasRange&&rangeMenu)rangeMenu();return;}
+            const double at=snapped(xToSeconds((float)e.x));const int row=rowAt(e.y);
+            if(e.mods.isShiftDown()&&hasRange){rangeAnchor=at<(rangeStart+rangeEnd)*0.5?rangeEnd:rangeStart;rangeAnchorRow=row<(rangeFirstRow+rangeLastRow+1)/2?rangeLastRow:rangeFirstRow;}
+            else{rangeAnchor=at;rangeAnchorRow=row;}
+            hasRange=rangeDragging=true;selectedClip=-1;dragClip=-1;updateRange(at,row);repaint();return;
+        }
         for(int c=(int)t.clips.size()-1;c>=0;--c) if(clipRect(i,t.clips[(size_t)c]).contains(e.position)) { selectedClip=c;dragClip=c;dragOrigin=t.clips[(size_t)c];dragStart=e.position;resizing=e.x>clipRect(i,dragOrigin).getRight()-9;if(!e.mods.isPopupMenu()&&tool==1&&beforeEdit)beforeEdit();
             fadeDrag=0;if(tool==1&&!e.mods.isPopupMenu()&&dragOrigin.audio){const auto cr=clipRect(i,dragOrigin);const auto hit=[&](juce::Rectangle<float> h){return h.expanded(3).contains(e.position);};
                 if(hit(fadeInHandle(dragOrigin,cr)))fadeDrag=1;else if(hit(fadeOutHandle(dragOrigin,cr)))fadeDrag=2;else if(hit(volumeHandle(cr)))fadeDrag=3;if(fadeDrag)resizing=false;}
@@ -264,6 +293,7 @@ public:
     }
     void mouseDrag(const juce::MouseEvent& e) override
     {
+        if(rangeDragging){updateRange(snapped(xToSeconds(e.position.x)),rowAt(e.y));repaint();return;}
         if(volumeDrag>=0&&volumeDrag<(int)engine.tracks.size()){setVolumeFrom(*engine.tracks[(size_t)volumeDrag],e.x);if(changed)changed();repaint();return;}
         if(rulerDragging)
         {
@@ -291,7 +321,7 @@ public:
         else c.startSeconds=juce::jmax(0.0,snapped(dragOrigin.startSeconds+delta,selectedTrack,dragClip));
         if(changed)changed();repaint();
     }
-    void mouseUp(const juce::MouseEvent&) override { dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;fadeDrag=0;if(playTool){playTool=false;engine.pause();} }
+    void mouseUp(const juce::MouseEvent&) override { dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;fadeDrag=0;rangeDragging=false;if(playTool){playTool=false;engine.pause();} }
     int fadeDrag=0; // 1 fade-in handle, 2 fade-out handle, 3 volume handle
     // Event handles (manual p. 397): fade triangles at the top corners, volume at the bottom left.
     juce::Rectangle<float> fadeInHandle(const AudioClip& c,juce::Rectangle<float> r)const{return {juce::jlimit(r.getX(),juce::jmax(r.getX(),r.getRight()-10.0f),r.getX()+(float)(c.fadeIn*pixelsPerSecond)-5.0f),r.getY()+23.0f,10.0f,8.0f};}
@@ -346,6 +376,13 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& e) override
     {
         const juce::ScopedLock lock(engine.modelLock);const int i=trackAt(e.y);if(i<0||i>=(int)engine.tracks.size())return;
+        if(tool==2&&e.x>=header)
+        {   // Double click: the range covers the event (or the gap between two events).
+            const auto& clips=engine.tracks[(size_t)i]->clips;const double at=xToSeconds((float)e.x);double from=0.0,to=engine.duration();
+            for(int c=(int)clips.size()-1;c>=0;--c){const auto& k=clips[(size_t)c];if(at>=k.startSeconds&&at<k.startSeconds+k.durationSeconds){from=k.startSeconds;to=k.startSeconds+k.durationSeconds;break;}
+                if(k.startSeconds+k.durationSeconds<=at)from=juce::jmax(from,k.startSeconds+k.durationSeconds);if(k.startSeconds>at)to=juce::jmin(to,k.startSeconds);}
+            setRange(from,to,rowAt(e.y),rowAt(e.y));return;
+        }
         if(engine.tracks[(size_t)i]->isMidi&&openPiano)openPiano();
     }
     void mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& w) override
@@ -587,7 +624,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     juce::TextButton mixerTab { i18n::tr("Mezclador") }, pianoTab { i18n::tr("Piano roll") }, undoButton { juce::String::fromUTF8("↶") }, redoButton { juce::String::fromUTF8("↷") }, splitButton { i18n::tr("Dividir") }, duplicateButton { i18n::tr("Duplicar") }, snapButton { i18n::tr("Rejilla 1/16") }, zoomOut { juce::String::fromUTF8("−") }, zoomIn { "+" };
     juce::TextButton mute { i18n::tr("Mute") }, solo { i18n::tr("Solo") }, arm { i18n::tr("Grabar") }, monitor { i18n::tr("Monitor") }, scan { i18n::tr("Buscar plugins") }, browser { i18n::tr("Instrumentos y efectos") }, demo { i18n::tr("Abrir sesión de ejemplo") };
     juce::TextButton selectTool{i18n::tr("Selección")},cutTool{i18n::tr("Dividir")},eraseTool{i18n::tr("Borrador")},drawTool{i18n::tr("Dibujar")},trackColour{i18n::tr("Color de pista")};
-    juce::TextButton glueTool,zoomTool,muteTool,playTool;
+    juce::TextButton glueTool,zoomTool,muteTool,playTool,rangeTool;
     juce::TextButton inspectorTab{i18n::tr("Inspector")},visibilityTab{i18n::tr("Visibilidad")},channelButton{"e"};
     juce::ScrollBar timelineScroll{false};
     juce::TextButton languageButton{juce::String::fromUTF8("Español")};
@@ -698,15 +735,15 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     {
         owner.setLookAndFeel(&look); owner.setOpaque(true); owner.setWantsKeyboardFocus(true);
         for(auto* c : std::initializer_list<juce::Component*> { &arrangement,&piano,&mixer,&play,&stop,&record,&rewind,&loop,&click,&importButton,&exportButton,&settings,&addTrackButton,&mixerTab,&pianoTab,&undoButton,&redoButton,&splitButton,&duplicateButton,&snapButton,&zoomOut,&zoomIn,&mute,&solo,&arm,&monitor,&scan,&browser,&demo,&tempo,&gain,&pan,&low,&mid,&high,&master,&projectTitle,&transportTime,&status,&keyboard }) owner.addAndMakeVisible(c);
-        for(auto* c:std::initializer_list<juce::Component*>{&visibility,&rightRack,&selectTool,&cutTool,&eraseTool,&drawTool,&glueTool,&zoomTool,&muteTool,&playTool,&trackColour,&inspectorTab,&visibilityTab,&channelButton,&timelineScroll})owner.addAndMakeVisible(c);
+        for(auto* c:std::initializer_list<juce::Component*>{&visibility,&rightRack,&selectTool,&cutTool,&eraseTool,&drawTool,&glueTool,&zoomTool,&muteTool,&playTool,&rangeTool,&trackColour,&inspectorTab,&visibilityTab,&channelButton,&timelineScroll})owner.addAndMakeVisible(c);
         visibility.setVisible(false);inspectorTab.setToggleState(true,juce::dontSendNotification);
         inspectorTab.onClick=[this]{showVisibility(false);};visibilityTab.onClick=[this]{showVisibility(true);};
-        for(auto* b:{&inspectorTab,&visibilityTab,&selectTool,&cutTool,&eraseTool,&drawTool,&glueTool,&zoomTool,&muteTool,&playTool})b->setClickingTogglesState(true);
+        for(auto* b:{&inspectorTab,&visibilityTab,&selectTool,&cutTool,&eraseTool,&drawTool,&glueTool,&zoomTool,&muteTool,&playTool,&rangeTool})b->setClickingTogglesState(true);
         auto configure=[this](juce::TextButton& button,ToolIcon icon,int tool,const juce::String& tooltip){setButtonIcon(button,icon);button.setTooltip(tooltip);button.onClick=[this,tool]{setTool(tool);};};
         configure(selectTool,ToolIcon::select,1,i18n::tr("Selección de objetos · 1"));configure(cutTool,ToolIcon::scissors,3,i18n::tr("Dividir eventos · 3"));configure(eraseTool,ToolIcon::erase,5,i18n::tr("Borrar eventos · 5"));configure(drawTool,ToolIcon::pencil,8,i18n::tr("Dibujar notas MIDI · 8"));
         configure(glueTool,ToolIcon::glue,4,i18n::tr("Pegar: une el evento con el siguiente · 4"));configure(zoomTool,ToolIcon::zoomTool,6,i18n::tr("Zoom: clic acerca, ⌥clic aleja · 6"));
         configure(muteTool,ToolIcon::muteTool,7,i18n::tr("Enmudecer eventos · 7"));configure(playTool,ToolIcon::playTool,9,i18n::tr("Reproducir desde el clic mientras se mantiene · 9"));
-        glueTool.setComponentID("tool-glue");zoomTool.setComponentID("tool-zoom");muteTool.setComponentID("tool-mute");playTool.setComponentID("tool-play");setTool(1);
+        configure(rangeTool,ToolIcon::rangeTool,2,i18n::tr("Selección de rango · 2"));rangeTool.setComponentID("tool-range");glueTool.setComponentID("tool-glue");zoomTool.setComponentID("tool-zoom");muteTool.setComponentID("tool-mute");playTool.setComponentID("tool-play");setTool(1);
         for(auto [button,icon]:std::initializer_list<std::pair<juce::TextButton*,ToolIcon>>{{&rewind,ToolIcon::rewind},{&stop,ToolIcon::stop},{&play,ToolIcon::play},{&record,ToolIcon::record},{&loop,ToolIcon::cycle},{&click,ToolIcon::click},{&undoButton,ToolIcon::undo},{&redoButton,ToolIcon::redo},{&trackColour,ToolIcon::palette}})setButtonIcon(*button,icon);
         trackColour.setTooltip(i18n::tr("Seleccionar color para pistas o eventos seleccionados"));trackColour.onClick=[this]{if(currentTrack())editTrackColour(selected,trackColour.getScreenBounds());else error(i18n::tr("Selecciona una pista para elegir su color."));};
         channelButton.setTooltip(i18n::tr("Editar configuración de canal"));channelButton.onClick=[this]{if(currentTrack())openChannelSettings(selected);};
@@ -912,7 +949,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
                 self.refresh();
             };
             juce::CallOutBox::launchAsynchronously(std::move(finder),arrangement.localAreaToGlobal(Arrangement::searchButton()),nullptr);
-        };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.warn=[this](const juce::String& m){error(m);};arrangement.eventColour=[this]{colourMenu();};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
+        };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.warn=[this](const juce::String& m){error(m);};arrangement.eventColour=[this]{colourMenu();};arrangement.rangeMenu=[this]{rangeMenu().showMenuAsync(juce::PopupMenu::Options(),[safe=juce::Component::SafePointer<MainComponent>(&owner)](int r){if(safe&&r)safe->ui->rangeMenuItem(r);});};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
         piano.beforeEdit=[this]{pushUndo();};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
         plugins.onChange=[this]{markDirty();refresh();};
         plugins.onTrackCreated=[this](int index){select(index);};
@@ -931,7 +968,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         arrangement.setTool(value);
         selectTool.setToggleState(value==1,juce::dontSendNotification);cutTool.setToggleState(value==3,juce::dontSendNotification);
         eraseTool.setToggleState(value==5,juce::dontSendNotification);drawTool.setToggleState(value==8,juce::dontSendNotification);
-        glueTool.setToggleState(value==4,juce::dontSendNotification);zoomTool.setToggleState(value==6,juce::dontSendNotification);muteTool.setToggleState(value==7,juce::dontSendNotification);playTool.setToggleState(value==9,juce::dontSendNotification);
+        glueTool.setToggleState(value==4,juce::dontSendNotification);zoomTool.setToggleState(value==6,juce::dontSendNotification);muteTool.setToggleState(value==7,juce::dontSendNotification);playTool.setToggleState(value==9,juce::dontSendNotification);rangeTool.setToggleState(value==2,juce::dontSendNotification);
     }
     void showVisibility(bool show)
     {
@@ -1132,6 +1169,31 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
             default:break;
         }
     }
+    bool rangeActive()const{return arrangement.hasRange&&arrangement.tool==2;}
+    // Range edits on every track the range covers, as one undo step.
+    void rangeEdit(const juce::String& name,const std::function<void(std::vector<AudioClip>&,std::vector<MidiNote>&,audio::TimeRange,double)>& op,bool needsLength=true)
+    {
+        if(!arrangement.hasRange){error(i18n::tr("Selecciona un rango con la herramienta Selección de rango (2)."));return;}
+        const audio::TimeRange r{arrangement.rangeStart,arrangement.rangeEnd};
+        if(needsLength&&r.length()<=1e-9){error(i18n::tr("El rango está vacío."));return;}
+        const auto tracks=arrangement.rangeTracks();if(tracks.empty())return;
+        pushUndo(name);
+        {const juce::ScopedLock lock(engine.modelLock);for(int i:tracks)if(i>=0&&i<(int)engine.tracks.size()){auto& t=*engine.tracks[(size_t)i];op(t.clips,t.notes,r,engine.tempo.load());}}
+        arrangement.selectedClip=-1;markDirty();arrangement.repaint();refresh();
+    }
+    juce::PopupMenu rangeMenu()
+    {   // Edición › Rango (and the range's context menu).
+        juce::PopupMenu m;const bool has=arrangement.hasRange;
+        m.addItem(71,i18n::tr("Dividir  ⇧X"),has);m.addItem(72,i18n::tr("Truncar"),has);m.addItem(73,i18n::tr("Suprimir intervalo de tiempo  ⇧Retroceso"),has);
+        m.addItem(74,i18n::tr("Insertar silencio  ⇧⌘E"),has);m.addItem(75,i18n::tr("Ajustar fundidos al rango  A"),has);m.addSeparator();
+        m.addItem(76,i18n::tr("Suprimir  Retroceso"),has);m.addItem(77,i18n::tr("Duplicar  ⌘D"),has);
+        return m;
+    }
+    void rangeMenuItem(int id)
+    {
+        const char* ids[]{"splitRange","truncateRange","deleteTime","insertSilence","adjustFades","delete","duplicate"};
+        if(id>=71&&id<=77){if(id>=76&&arrangement.tool!=2)setTool(2);if(auto a=keyActions.find(ids[id-71]);a!=keyActions.end())a->second();}
+    }
     juce::PopupMenu recordFormatMenu()
     {
         juce::PopupMenu f;const int bits=engine.recordBitDepth.load();
@@ -1260,8 +1322,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         undoButton.setBounds(50,7,28,28);redoButton.setBounds(80,7,28,28);
         allMuteOff.setBounds(120,8,26,26);allSoloOff.setBounds(148,8,26,26);mixConsoleButton.setBounds(186,7,30,28);
         // Tools in Cubase's order: 1 selección, 3 dividir, 4 pegar, 5 borrar, 6 zoom, 7 enmudecer, 8 dibujar, 9 reproducir.
-        {int x=228;for(auto* b:{&selectTool,&cutTool,&glueTool,&eraseTool,&zoomTool,&muteTool,&drawTool,&playTool}){b->setBounds(x,7,30,28);x+=32;}}
-        trackColour.setBounds(494,7,30,28);snapButton.setBounds(536,7,30,28);snapTypeButton.setBounds(568,8,96,26);gridButton.setBounds(666,8,104,26);zoomOut.setBounds(782,8,28,26);zoomIn.setBounds(812,8,28,26);
+        {int x=228;for(auto* b:{&selectTool,&rangeTool,&cutTool,&glueTool,&eraseTool,&zoomTool,&muteTool,&drawTool,&playTool}){b->setBounds(x,7,30,28);x+=32;}}
+        trackColour.setBounds(526,7,30,28);snapButton.setBounds(568,7,30,28);snapTypeButton.setBounds(600,8,96,26);gridButton.setBounds(698,8,104,26);zoomOut.setBounds(814,8,28,26);zoomIn.setBounds(844,8,28,26);
         hubButton.setBounds(8,7,30,28);exportButton.setBounds(w-214,7,30,28);zoneChannelButton.setBounds(w-170,7,30,28);zoneLeftButton.setBounds(w-138,7,30,28);
         zoneLowerButton.setBounds(w-106,7,30,28);zoneRightButton.setBounds(w-74,7,30,28);layoutButton.setBounds(w-38,7,30,28);
         addTrackButton.setBounds(centreRect.getX()+4,centreRect.getY()+4,24,22);
@@ -1388,7 +1450,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     {
         g.fillAll(bg);const int w=owner.getWidth(),h=owner.getHeight(),top=inspectorRect.getY();
         g.setColour(panel);g.fillRect(0,0,w,41);for(auto r:{statusRect,infoRect,channelRect,inspectorRect,browserRect,lowerRect})g.fillRect(r);g.fillRect(0,transportRect.isEmpty()?h-23:transportRect.getY(),w,h);
-        g.setColour(line.brighter(.35f));for(int x:{44,114,180,222,488,530,776,w-222,w-178})g.drawVerticalLine(x,10.0f,32.0f);
+        g.setColour(line.brighter(.35f));for(int x:{44,114,180,222,520,562,808,w-222,w-178})g.drawVerticalLine(x,10.0f,32.0f);
         g.setColour(line);g.drawHorizontalLine(40,0,(float)w);g.drawHorizontalLine(h-25,0,(float)w);
         if(!statusRect.isEmpty())g.drawHorizontalLine(statusRect.getBottom()-1,0,(float)w);
         if(!infoRect.isEmpty())g.drawHorizontalLine(infoRect.getBottom()-1,0,(float)w);
@@ -1406,6 +1468,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
                 const auto& c=t->clips[(size_t)arrangement.selectedClip];
                 info=c.name+"   ·   "+i18n::tr("Inicio ")+juce::String(c.startSeconds,3)+" s   ·   "+i18n::tr("Duración ")+juce::String(c.durationSeconds,3)+" s   ·   "+i18n::tr("Ganancia ")+juce::String(juce::Decibels::gainToDecibels(c.gain),1)+" dB";
             }
+            if(arrangement.hasRange&&arrangement.tool==2)
+                info=i18n::tr("Inicio del rango ")+juce::String(arrangement.rangeStart,3)+" s   ·   "+i18n::tr("Fin del rango ")+juce::String(arrangement.rangeEnd,3)+" s   ·   "+i18n::tr("Duración del rango ")+juce::String(arrangement.rangeEnd-arrangement.rangeStart,3)+" s";
             text(g,info,infoRect,10,muted,juce::Justification::centred);
         }
         if(inspectorShown())
@@ -1584,8 +1648,14 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         k["enterTempo"]=[this]{askValue(i18n::tr("Introducir tempo"),"BPM",juce::String(engine.tempo.load(),3),[this](const juce::String& v){const double bpm=v.replace(",",".").getDoubleValue();if(bpm>=20&&bpm<=300){pushUndo();engine.tempo=bpm;markDirty();refresh();}});};
         k["tapTempo"]=[this]{showTapTempo();};
         k["undo"]=[this]{undo(false);};k["redo"]=[this]{undo(true);};
-        k["delete"]=[this]{if(pianoVisible&&piano.hasKeyboardFocus(true))piano.deleteSelected();else arrangement.deleteSelected();};
-        k["duplicate"]=[this]{if(pianoVisible)duplicateNote();else arrangement.duplicateSelected();};k["repeat"]=[this]{arrangement.duplicateSelected();};
+        k["delete"]=[this]{if(pianoVisible&&piano.hasKeyboardFocus(true))piano.deleteSelected();else if(rangeActive())rangeEdit(i18n::tr("Suprimir rango"),audio::deleteRange);else arrangement.deleteSelected();};
+        k["duplicate"]=[this]{if(pianoVisible)duplicateNote();else if(rangeActive()){rangeEdit(i18n::tr("Duplicar rango"),audio::duplicateRange);const double len=arrangement.rangeEnd-arrangement.rangeStart;arrangement.rangeStart+=len;arrangement.rangeEnd+=len;arrangement.repaint();}else arrangement.duplicateSelected();};
+        k["toolRange"]=[this]{setTool(2);};
+        k["splitRange"]=[this]{rangeEdit(i18n::tr("Dividir rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::splitRange(c,r);},false);};
+        k["deleteTime"]=[this]{rangeEdit(i18n::tr("Suprimir intervalo de tiempo"),audio::deleteTime);};
+        k["insertSilence"]=[this]{rangeEdit(i18n::tr("Insertar silencio"),audio::insertSilence);};
+        k["truncateRange"]=[this]{rangeEdit(i18n::tr("Truncar"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::truncate(c,r);});};
+        k["adjustFades"]=[this]{rangeEdit(i18n::tr("Ajustar fundidos al rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::adjustFadesToRange(c,r);});};k["repeat"]=[this]{arrangement.duplicateSelected();};
         k["splitAtCursor"]=[this]{arrangement.splitSelected();};
         k["copy"]=[this]{if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);notice=i18n::tr("Evento copiado.");}};
         k["cut"]=[this]{if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);arrangement.deleteSelected();notice=i18n::tr("Evento cortado.");}};
@@ -1683,6 +1753,8 @@ juce::PopupMenu MainComponent::transportMenu(){return ui->transportMenu();}
 void MainComponent::transportMenuItem(int id){ui->transportMenuItem(id);}
 juce::PopupMenu MainComponent::audioMenu(){return ui->audioMenu();}
 void MainComponent::audioMenuItem(int id){ui->audioMenuItem(id);}
+juce::PopupMenu MainComponent::rangeMenu(){return ui->rangeMenu();}
+void MainComponent::rangeMenuItem(int id){ui->rangeMenuItem(id);}
 juce::StringArray MainComponent::editHistory()const{juce::StringArray names;for(const auto& s:ui->undoStack)names.add(s.action);return names;}
 bool MainComponent::runCommand(const juce::String& id){if(auto a=ui->keyActions.find(id);a!=ui->keyActions.end()){a->second();return true;}return false;}
 void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}

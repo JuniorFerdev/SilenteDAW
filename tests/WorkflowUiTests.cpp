@@ -139,6 +139,25 @@ private:
             expect(applied&&got.outShape==1&&std::abs(got.fadeIn-2.8)<1e-9,"fade editor: curve buttons and length (fade-in + fade-out within the event)");
         }
         engine.clear();
+        rangeChecks();
+    }
+    void rangeChecks()
+    {   // Selección de rango (2): drag 1 s → 2 s on the first track, then Suprimir intervalo de tiempo.
+        auto track=engine.addAudioTrack("Rango");AudioClip clip;clip.sourceRate=48000;clip.durationSeconds=4.0;
+        clip.audio=std::make_shared<AudioBuffer<float>>(1,48000*4);clip.audio->clear();track->clips.push_back(clip);
+        view.runCommand("toolRange");auto* rangeButton=dynamic_cast<TextButton*>(find(view,"tool-range"));
+        auto* arrangement=find(view,"arrangement");
+        if(arrangement&&rangeButton)
+        {
+            arrangement->mouseDown(mouse(*arrangement,325,64));arrangement->mouseDrag(mouse(*arrangement,400,64,true));arrangement->mouseUp(mouse(*arrangement,400,64,true));
+            capture(view,output.getChildFile("range.png"));
+            view.runCommand("deleteTime");
+            expect(rangeButton->getToggleState()&&track->clips.size()==2&&std::abs(track->clips[1].startSeconds-1.0)<1e-6&&std::abs(track->clips[1].offsetSeconds-2.0)<1e-6,"range tool: drag a range and Shift+Backspace deletes the time");
+            view.runCommand("undo");expect(track->clips.size()==1&&std::abs(track->clips[0].durationSeconds-4.0)<1e-9,"range edit undoes in one step");
+            view.runCommand("insertSilence");expect(track->clips.size()==2&&std::abs(track->clips[1].startSeconds-2.0)<1e-6,"Insert Silence moves the rest by the range length");
+        }
+        else expect(false,"range tool and arrangement exist");
+        view.runCommand("toolSelect");engine.clear();
     }
     void snapChecks()
     {

@@ -237,7 +237,9 @@ private:
             // Edición: the same actions as the Cubase key commands.
             menu.addItem(60,i18n::tr("Deshacer  ⌘Z"));menu.addItem(61,i18n::tr("Rehacer  ⇧⌘Z"));menu.addSeparator();
             menu.addItem(62,i18n::tr("Cortar  ⌘X"));menu.addItem(63,i18n::tr("Copiar  ⌘C"));menu.addItem(64,i18n::tr("Pegar  ⌘V"));menu.addItem(65,i18n::tr("Pegar al origen  ⌥V"));
-            menu.addItem(66,i18n::tr("Duplicar  ⌘D"));menu.addItem(67,i18n::tr("Suprimir"));menu.addItem(68,i18n::tr("Dividir en el cursor  ⌥X"));menu.addSeparator();
+            menu.addItem(66,i18n::tr("Duplicar  ⌘D"));menu.addItem(67,i18n::tr("Suprimir"));menu.addItem(68,i18n::tr("Dividir en el cursor  ⌥X"));
+            if (window) menu.addSubMenu(i18n::tr("Rango"), window->content().rangeMenu());
+            menu.addSeparator();
             menu.addItem(70,i18n::tr("Historial…"));menu.addItem(69,i18n::tr("Comandos de teclado…"));
         }
         if (index == 6)
@@ -263,6 +265,7 @@ private:
         auto& c = window->content();
         if (item >= 100 && item < 200) { c.transportMenuItem(item); return; }
         if (item >= 200 && item < 220) { c.audioMenuItem(item); return; }
+        if (item >= 71 && item <= 77) { c.rangeMenuItem(item); return; }
         switch (item)
         {
             case 1: c.newProject(); break; case 2: c.openProject(); break; case 3: c.saveProject(); break;

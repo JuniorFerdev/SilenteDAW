@@ -9,7 +9,9 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ Bordes de zonas arrastrables (Canal, Inspector, zona derecha, zona inferior).
 - ✅ Barra de herramientas: Hub, deshacer/rehacer, M/S globales, MixConsole, herramientas, color, ajustar, rejilla, zoom, exportar, zonas.
 - ✅ Herramientas 1 Selección · 3 Dividir · 4 Pegar · 5 Borrar · 6 Zoom · 7 Enmudecer · 8 Dibujar · 9 Reproducir.
-- ⬜ Herramienta 2 Selección de rango (y edición de rangos, 295–305).
+- ✅ Herramienta 2 Selección de rango: arrastrar (varias pistas), Mayús amplía, doble clic cubre el evento o el hueco; inicio/fin/duración en la línea de información.
+- ✅ Edición › Rango: Dividir (⇧X), Truncar, Suprimir intervalo de tiempo (⇧Retroceso), Insertar silencio (⇧⌘E), Ajustar fundidos al rango (A), Suprimir, Duplicar; menú contextual del rango. Audio y MIDI.
+- ⬜ Rangos: mover contenido arrastrando, empujar bordes (⌥←/→), cortar/copiar/pegar rango, fijar a cruce por cero.
 - ✅ Línea de estado y línea de información.
 - ✅ Lista de pistas estilo Cubase (M S nombre volumen / ● ◉ R W e / medidor), filtro y búsqueda.
 - ✅ Altura de pistas (deslizador y ⇧H/⇧G) y zoom de forma de onda.
