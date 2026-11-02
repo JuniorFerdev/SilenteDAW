@@ -42,6 +42,15 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Tramo · 01-11-2026 · fundidos01 · Fundidos y volumen de eventos (manual págs. 396–418)
+
+- Curvas de fundido en el motor (`src/audio/FadeCurves.h`): lineal, igual energía, curva S, rápida y lenta, por fundido de entrada y de salida; guardadas en el proyecto. Lineal da el mismo resultado de antes.
+- Manipuladores en el evento: triángulos de fundido en las esquinas superiores y control de volumen abajo a la izquierda (−∞…+6 dB, como dice el manual); curvas y sombreado dibujados, la forma de onda sigue al volumen y a los fundidos.
+- Menú nuevo **Audio** (entre Pista y Transporte, como Cubase): Fundidos › Abrir editor(es) de fundido, Aplicar fundido de entrada/salida estándar, Eliminar fundido de entrada/salida/fundidos, Fundido cruzado; Pegar con el evento siguiente; Enmudecer evento.
+- Editor de fundidos (`src/ui/project/FadeEditor.*`): entrada y salida lado a lado, 5 curvas, duración limitada al evento, Por defecto (fundido estándar en transport.xml) y Aplicar.
+- Pruebas: motor 35/35 (curvas a mitad de fundido, volumen, guardado/carga), flujo 75 (menú Audio, arrastre de manipuladores, editor), idiomas 741. Capturas: build/workflow-check/fades.png y fade-editor.png.
+- Pendiente: editor de fundido cruzado completo, fundidos automáticos, curvas de volumen con puntos, herramienta de rango.
+
 ## Tramo · 01-11-2026 · vista02 · Tamaños, herramientas de Cubase y color (pedido de Fer)
 
 - Visor de eventos: deslizador de zoom de forma de onda (arriba a la derecha) y de altura de pistas (abajo a la derecha, ⇧H/⇧G); la segunda fila de la cabecera se oculta en pistas bajas.

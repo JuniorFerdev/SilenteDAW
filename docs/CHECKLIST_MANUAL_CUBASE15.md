@@ -36,7 +36,9 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ Mover, redimensionar, dividir, duplicar, borrar, color de evento.
 - ✅ Pegar (rejunta o consolida), enmudecer evento.
 - ✅ Fundido cruzado (X) entre eventos solapados o que se tocan; solo suena el evento superior fuera del cruce.
-- ⬜ Manejadores de fundido de entrada/salida y de volumen en el evento, editor de fundidos, curvas.
+- ✅ Manipuladores de fundido (triángulos arriba) y de volumen (abajo a la izquierda, −∞…+6 dB); la forma de onda refleja fundidos y volumen.
+- ✅ Audio › Fundidos: editor(es) de fundido (5 curvas, duración, Por defecto, Aplicar), aplicar fundido estándar, eliminar fundidos, fundido cruzado.
+- ⬜ Editor de fundido cruzado completo (solapado, empujar, igual energía en cruce), fundidos automáticos, curvas de volumen de evento con puntos, fundidos por rango.
 
 ## MixConsole (451–533)
 - ✅ Ventana F3 y MixConsole inferior, racks Enrutado/Inserciones/EQ/Envíos, grupos y FX, solo/mute, medidores con pico.
