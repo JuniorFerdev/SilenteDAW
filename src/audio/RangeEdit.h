@@ -23,4 +23,15 @@ void duplicateRange(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, 
 // Ajustar fundidos al rango (A): a range over the start of an event sets its fade-in, over its end
 // the fade-out, and inside it both (fade-in up to the range start, fade-out from the range end).
 void adjustFadesToRange(std::vector<AudioClip>&, TimeRange);
+
+// What a range holds on one track, with times relative to the range start (clips in seconds,
+// notes in beats). Used to move the range content (drag, ⌥ drag copies) and for cut/copy/paste.
+struct RangeContent
+{
+    std::vector<AudioClip> clips;
+    std::vector<MidiNote> notes;
+};
+RangeContent copyRange(const std::vector<AudioClip>&, const std::vector<MidiNote>&, TimeRange, double bpm);
+// Places the content at `at` seconds, on top of what is there (the moved audio is heard).
+void pasteContent(std::vector<AudioClip>&, std::vector<MidiNote>&, const RangeContent&, double at, double bpm);
 }

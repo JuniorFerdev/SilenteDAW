@@ -758,5 +758,12 @@
   "Suprimir intervalo de tiempo": "Suprimir intervalo de tiempo",
   "Insertar silencio": "Insertar silencio",
   "Ajustar fundidos al rango": "Ajustar fundidos al rango",
-  "Rango": "Rango"
+  "Rango": "Rango",
+  "Selecciona una pista para pegar.": "Selecciona una pista para pegar.",
+  "Pegar rango": "Pegar rango",
+  "Copiar rango": "Copiar rango",
+  "Mover rango": "Mover rango",
+  "Rango copiado.": "Rango copiado.",
+  "Cortar rango": "Cortar rango",
+  "Rango cortado.": "Rango cortado."
 }

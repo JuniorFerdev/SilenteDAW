@@ -68,6 +68,9 @@ public:
     std::function<void(int)> openChannel;
     std::function<void(const juce::String&)> warn;
     std::function<void()> eventColour, rangeMenu;
+    std::function<void(double,int,bool)> moveRange; // seconds, rows, copy (⌥)
+    bool rangeMoving=false;double moveFrom=0,moveDelta=0;int moveFromRow=0,moveRows=0;
+    bool insideRange(double at,int row)const{return hasRange&&at>=rangeStart&&at<=rangeEnd&&row>=rangeFirstRow&&row<=rangeLastRow&&rangeEnd>rangeStart;}
     // Selección de rango (herramienta 2, manual pp. 295–305): a time span over consecutive rows.
     bool hasRange=false,rangeDragging=false;double rangeStart=0,rangeEnd=0,rangeAnchor=0;int rangeFirstRow=0,rangeLastRow=0,rangeAnchorRow=0;
     int rowAt(int y)const{return (y-ruler)/lane+firstTrack;}
@@ -219,6 +222,12 @@ public:
                 const juce::Rectangle<float> area(juce::jmax((float)header,x0),y,x1-juce::jmax((float)header,x0),(float)lane);if(area.getWidth()<=0)continue;
                 g.setColour(ink.withAlpha(.16f));g.fillRect(area);g.setColour(accent);g.drawVerticalLine((int)x0,y,y+lane);g.drawVerticalLine((int)x1,y,y+lane);
             }
+            if(rangeMoving&&(std::abs(moveDelta)>1e-9||moveRows!=0))
+            {   // Where the content will land.
+                const float gx=secondsToX(rangeStart+moveDelta),gw=juce::jmax(1.0f,(float)((rangeEnd-rangeStart)*pixelsPerSecond));
+                const float gy=(float)(ruler+(rangeFirstRow+moveRows-firstTrack)*lane),gh=(float)((rangeLastRow-rangeFirstRow+1)*lane);
+                g.setColour(accent.withAlpha(.18f));g.fillRect(gx,gy,gw,gh);g.setColour(accent);g.drawRect(gx,gy,gw,gh,1.5f);
+            }
         }
         if(engine.tracks.empty()) { text(g,i18n::tr("Tu próxima idea empieza aquí"),{header+30,100,getWidth()-header-60,32},23,ink,juce::Justification::centred); text(g,i18n::tr("Arrastra audio o MIDI, o añade una pista."),{header+30,139,getWidth()-header-60,25},14,muted,juce::Justification::centred); }
         float px=secondsToX(engine.positionSeconds); if(px>=header&&px<getWidth()) { g.setColour(ink.withAlpha(.85f));g.drawVerticalLine((int)px,0,(float)getHeight()); juce::Path p;p.addTriangle(px-5,4,px+5,4,px,11);g.fillPath(p); }
@@ -272,6 +281,10 @@ public:
         {   // Range: click and drag; Mayús extends the current range; right click opens its menu.
             if(e.mods.isPopupMenu()){if(hasRange&&rangeMenu)rangeMenu();return;}
             const double at=snapped(xToSeconds((float)e.x));const int row=rowAt(e.y);
+            if(!e.mods.isShiftDown()&&insideRange(xToSeconds((float)e.x),row))
+            {   // Drag the range to move its content; with ⌥ the content is copied.
+                rangeMoving=true;moveFrom=xToSeconds((float)e.x);moveFromRow=row;moveDelta=0;moveRows=0;return;
+            }
             if(e.mods.isShiftDown()&&hasRange){rangeAnchor=at<(rangeStart+rangeEnd)*0.5?rangeEnd:rangeStart;rangeAnchorRow=row<(rangeFirstRow+rangeLastRow+1)/2?rangeLastRow:rangeFirstRow;}
             else{rangeAnchor=at;rangeAnchorRow=row;}
             hasRange=rangeDragging=true;selectedClip=-1;dragClip=-1;updateRange(at,row);repaint();return;
@@ -294,6 +307,12 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override
     {
         if(rangeDragging){updateRange(snapped(xToSeconds(e.position.x)),rowAt(e.y));repaint();return;}
+        if(rangeMoving)
+        {
+            moveDelta=juce::jmax(0.0,snapped(rangeStart+xToSeconds(e.position.x)-moveFrom))-rangeStart;
+            const int rows=(int)visibleTracks().size();moveRows=juce::jlimit(-rangeFirstRow,juce::jmax(0,rows-1-rangeLastRow),rowAt(e.y)-moveFromRow);
+            setMouseCursor(e.mods.isAltDown()?juce::MouseCursor::CopyingCursor:juce::MouseCursor::DraggingHandCursor);repaint();return;
+        }
         if(volumeDrag>=0&&volumeDrag<(int)engine.tracks.size()){setVolumeFrom(*engine.tracks[(size_t)volumeDrag],e.x);if(changed)changed();repaint();return;}
         if(rulerDragging)
         {
@@ -321,7 +340,11 @@ public:
         else c.startSeconds=juce::jmax(0.0,snapped(dragOrigin.startSeconds+delta,selectedTrack,dragClip));
         if(changed)changed();repaint();
     }
-    void mouseUp(const juce::MouseEvent&) override { dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;fadeDrag=0;rangeDragging=false;if(playTool){playTool=false;engine.pause();} }
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if(rangeMoving){rangeMoving=false;setTool(tool);if((std::abs(moveDelta)>1e-9||moveRows!=0)&&moveRange)moveRange(moveDelta,moveRows,e.mods.isAltDown());repaint();}
+        dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;fadeDrag=0;rangeDragging=false;if(playTool){playTool=false;engine.pause();}
+    }
     int fadeDrag=0; // 1 fade-in handle, 2 fade-out handle, 3 volume handle
     // Event handles (manual p. 397): fade triangles at the top corners, volume at the bottom left.
     juce::Rectangle<float> fadeInHandle(const AudioClip& c,juce::Rectangle<float> r)const{return {juce::jlimit(r.getX(),juce::jmax(r.getX(),r.getRight()-10.0f),r.getX()+(float)(c.fadeIn*pixelsPerSecond)-5.0f),r.getY()+23.0f,10.0f,8.0f};}
@@ -949,7 +972,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
                 self.refresh();
             };
             juce::CallOutBox::launchAsynchronously(std::move(finder),arrangement.localAreaToGlobal(Arrangement::searchButton()),nullptr);
-        };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.warn=[this](const juce::String& m){error(m);};arrangement.eventColour=[this]{colourMenu();};arrangement.rangeMenu=[this]{rangeMenu().showMenuAsync(juce::PopupMenu::Options(),[safe=juce::Component::SafePointer<MainComponent>(&owner)](int r){if(safe&&r)safe->ui->rangeMenuItem(r);});};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
+        };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.warn=[this](const juce::String& m){error(m);};arrangement.eventColour=[this]{colourMenu();};arrangement.moveRange=[this](double d,int rows,bool copy){moveRangeContent(d,rows,copy);};arrangement.rangeMenu=[this]{rangeMenu().showMenuAsync(juce::PopupMenu::Options(),[safe=juce::Component::SafePointer<MainComponent>(&owner)](int r){if(safe&&r)safe->ui->rangeMenuItem(r);});};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
         piano.beforeEdit=[this]{pushUndo();};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
         plugins.onChange=[this]{markDirty();refresh();};
         plugins.onTrackCreated=[this](int index){select(index);};
@@ -1170,6 +1193,36 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         }
     }
     bool rangeActive()const{return arrangement.hasRange&&arrangement.tool==2;}
+    // Range clipboard: one content per covered track, top to bottom (Cubase: cut/copy/paste a range).
+    std::vector<audio::RangeContent> rangeClipboard;double rangeClipboardStart=0.0,rangeClipboardLength=0.0;
+    void copyRangeToClipboard()
+    {
+        const audio::TimeRange r{arrangement.rangeStart,arrangement.rangeEnd};rangeClipboard.clear();
+        for(int i:arrangement.rangeTracks())if(i>=0&&i<(int)engine.tracks.size()){const auto& t=*engine.tracks[(size_t)i];rangeClipboard.push_back(audio::copyRange(t.clips,t.notes,r,engine.tempo.load()));}
+        rangeClipboardStart=r.start;rangeClipboardLength=r.length();clipboard.reset();
+    }
+    void pasteRangeClipboard(bool atOrigin)
+    {   // Pastes at the cursor (⌥V: where it came from) on the selected track and the ones below.
+        const auto v=arrangement.visibleTracks();auto it=std::find(v.begin(),v.end(),selected);if(it==v.end()){error(i18n::tr("Selecciona una pista para pegar."));return;}
+        const double at=atOrigin?rangeClipboardStart:engine.positionSeconds.load();int row=(int)std::distance(v.begin(),it);
+        pushUndo(i18n::tr("Pegar rango"));
+        {const juce::ScopedLock lock(engine.modelLock);for(const auto& content:rangeClipboard){if(row>=(int)v.size())break;auto& t=*engine.tracks[(size_t)v[(size_t)row++]];audio::pasteContent(t.clips,t.notes,content,at,engine.tempo.load());}}
+        arrangement.setRange(at,at+rangeClipboardLength,(int)std::distance(v.begin(),it),juce::jmin((int)v.size()-1,(int)std::distance(v.begin(),it)+(int)rangeClipboard.size()-1));
+        markDirty();refresh();
+    }
+    void moveRangeContent(double delta,int rows,bool copy)
+    {   // All contents are taken first, then removed (unless copying), then placed, so overlapping moves work.
+        const audio::TimeRange r{arrangement.rangeStart,arrangement.rangeEnd};const auto v=arrangement.visibleTracks();const auto tracks=arrangement.rangeTracks();
+        pushUndo(copy?i18n::tr("Copiar rango"):i18n::tr("Mover rango"));
+        {
+            const juce::ScopedLock lock(engine.modelLock);const double bpm=engine.tempo.load();std::vector<audio::RangeContent> contents;
+            for(int i:tracks)contents.push_back(audio::copyRange(engine.tracks[(size_t)i]->clips,engine.tracks[(size_t)i]->notes,r,bpm));
+            if(!copy)for(int i:tracks)audio::deleteRange(engine.tracks[(size_t)i]->clips,engine.tracks[(size_t)i]->notes,r,bpm);
+            for(size_t k=0;k<tracks.size();++k){const int row=arrangement.rangeFirstRow+(int)k+rows;if(row<0||row>=(int)v.size())continue;auto& t=*engine.tracks[(size_t)v[(size_t)row]];audio::pasteContent(t.clips,t.notes,contents[k],r.start+delta,bpm);}
+        }
+        arrangement.rangeStart+=delta;arrangement.rangeEnd+=delta;arrangement.rangeFirstRow+=rows;arrangement.rangeLastRow+=rows;arrangement.selectedClip=-1;
+        markDirty();arrangement.repaint();refresh();
+    }
     // Range edits on every track the range covers, as one undo step.
     void rangeEdit(const juce::String& name,const std::function<void(std::vector<AudioClip>&,std::vector<MidiNote>&,audio::TimeRange,double)>& op,bool needsLength=true)
     {
@@ -1651,16 +1704,26 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         k["delete"]=[this]{if(pianoVisible&&piano.hasKeyboardFocus(true))piano.deleteSelected();else if(rangeActive())rangeEdit(i18n::tr("Suprimir rango"),audio::deleteRange);else arrangement.deleteSelected();};
         k["duplicate"]=[this]{if(pianoVisible)duplicateNote();else if(rangeActive()){rangeEdit(i18n::tr("Duplicar rango"),audio::duplicateRange);const double len=arrangement.rangeEnd-arrangement.rangeStart;arrangement.rangeStart+=len;arrangement.rangeEnd+=len;arrangement.repaint();}else arrangement.duplicateSelected();};
         k["toolRange"]=[this]{setTool(2);};
+        // Empujar bordes del rango (⌥← ⌥→ inicio, ⌥⇧← ⌥⇧→ final) by the grid value.
+        const auto trim=[this](bool start,double sign)
+        {
+            if(!arrangement.hasRange)return;const double unit=arrangement.snapGrid.unitSeconds(engine.tempo.load(),arrangement.pixelsPerSecond);
+            if(start)arrangement.rangeStart=juce::jlimit(0.0,arrangement.rangeEnd,arrangement.rangeStart+sign*unit);
+            else arrangement.rangeEnd=juce::jmax(arrangement.rangeStart,arrangement.rangeEnd+sign*unit);
+            arrangement.repaint();owner.repaint();
+        };
+        k["nudgeStartLeft"]=[trim]{trim(true,-1);};k["nudgeStartRight"]=[trim]{trim(true,1);};k["nudgeEndLeft"]=[trim]{trim(false,-1);};k["nudgeEndRight"]=[trim]{trim(false,1);};
         k["splitRange"]=[this]{rangeEdit(i18n::tr("Dividir rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::splitRange(c,r);},false);};
         k["deleteTime"]=[this]{rangeEdit(i18n::tr("Suprimir intervalo de tiempo"),audio::deleteTime);};
         k["insertSilence"]=[this]{rangeEdit(i18n::tr("Insertar silencio"),audio::insertSilence);};
         k["truncateRange"]=[this]{rangeEdit(i18n::tr("Truncar"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::truncate(c,r);});};
         k["adjustFades"]=[this]{rangeEdit(i18n::tr("Ajustar fundidos al rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::adjustFadesToRange(c,r);});};k["repeat"]=[this]{arrangement.duplicateSelected();};
         k["splitAtCursor"]=[this]{arrangement.splitSelected();};
-        k["copy"]=[this]{if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);notice=i18n::tr("Evento copiado.");}};
-        k["cut"]=[this]{if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);arrangement.deleteSelected();notice=i18n::tr("Evento cortado.");}};
+        k["copy"]=[this]{if(rangeActive()){copyRangeToClipboard();notice=i18n::tr("Rango copiado.");return;}if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);rangeClipboard.clear();notice=i18n::tr("Evento copiado.");}};
+        k["cut"]=[this]{if(rangeActive()){copyRangeToClipboard();rangeEdit(i18n::tr("Cortar rango"),audio::deleteRange);notice=i18n::tr("Rango cortado.");return;}if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);rangeClipboard.clear();arrangement.deleteSelected();notice=i18n::tr("Evento cortado.");}};
         const auto paste=[this](bool atOrigin)
         {
+            if(!rangeClipboard.empty()){pasteRangeClipboard(atOrigin);return;}
             auto t=currentTrack();if(!clipboard||!t||t->kind!=TrackKind::audio){notice=i18n::tr("Selecciona una pista de audio para pegar.");return;}
             pushUndo(i18n::tr("Pegar"));AudioClip c=clipboard->first;c.id=juce::Uuid().toString();if(!atOrigin)c.startSeconds=engine.positionSeconds.load();
             {const juce::ScopedLock lock(engine.modelLock);t->clips.push_back(c);}arrangement.selectedClip=(int)t->clips.size()-1;markDirty();refresh();
@@ -1688,6 +1751,11 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         k["eventLeft"]=[stepEvent]{stepEvent(-1);};k["eventRight"]=[stepEvent]{stepEvent(1);};
         const auto nudge=[this](double sign)
         {
+            if(rangeActive())
+            {   // ⌘← ⌘→ with a range: the range moves, its content stays.
+                const double unit=arrangement.snapGrid.unitSeconds(engine.tempo.load(),arrangement.pixelsPerSecond),len=arrangement.rangeEnd-arrangement.rangeStart;
+                arrangement.rangeStart=juce::jmax(0.0,arrangement.rangeStart+sign*unit);arrangement.rangeEnd=arrangement.rangeStart+len;arrangement.repaint();owner.repaint();return;
+            }
             if(auto* c=selectedClipPtr()){pushUndo();const double unit=arrangement.snapGrid.unitSeconds(engine.tempo.load(),arrangement.pixelsPerSecond);const juce::ScopedLock lock(engine.modelLock);c->startSeconds=juce::jmax(0.0,c->startSeconds+sign*unit);markDirty();refresh();}
         };
         k["nudgeLeft"]=[nudge]{nudge(-1);};k["nudgeRight"]=[nudge]{nudge(1);};

@@ -102,6 +102,10 @@ std::vector<KeyCommand> build()
     cat("Empujar", "Nudge");
     add("nudgeLeft", "Izquierda", "Left", K::leftKey, C);
     add("nudgeRight", "Derecha", "Right", K::rightKey, C);
+    add("nudgeStartLeft", "Empujar inicio hacia la izquierda", "Trim Start Left", K::leftKey, A);
+    add("nudgeStartRight", "Empujar inicio hacia la derecha", "Trim Start Right", K::rightKey, A);
+    add("nudgeEndLeft", "Empujar final hacia la izquierda", "Trim End Left", K::leftKey, A | S);
+    add("nudgeEndRight", "Empujar final hacia la derecha", "Trim End Right", K::rightKey, A | S);
     cat("Proyecto", "Project");
     add("colour", "Ajustar color de pista/evento", "Set Track/Event Color", 'C', A | S);
     add("deleteTracks", "Eliminar pistas seleccionadas", "Remove Selected Tracks", K::deleteKey, S);

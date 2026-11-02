@@ -42,6 +42,13 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Tramo · 02-11-2026 · rango02 · Mover, copiar y empujar rangos (manual págs. 300–303)
+
+- Arrastrar dentro del rango (herramienta 2) mueve su contenido en el tiempo y a otras pistas, dejando hueco en el origen; con ⌥ lo copia. Vista previa del destino mientras se arrastra; el rango sigue al contenido. Todas las capas bajo el rango se mueven y conservan su orden.
+- Empujar (por el valor de rejilla): ⌥← / ⌥→ inicio del rango, ⌥⇧← / ⌥⇧→ final; ⌘← / ⌘→ desplaza el rango sin mover el contenido.
+- Cortar / copiar / pegar con rango: portapapeles por pistas; pega en el cursor sobre la pista seleccionada y las siguientes (⌥V en su posición original). Motor: `copyRange` y `pasteContent` en `src/audio/RangeEdit.*`.
+- Pruebas: motor 36/36 (mover = copiar, suprimir, pegar; MIDI en su sitio), flujo 82 (arrastrar, ⌥ copiar con capas, ⌥→, copiar/pegar), idiomas.
+
 ## Tramo · 02-11-2026 · rango01 · Edición de rangos (manual págs. 295–305)
 
 - Herramienta 2 «Selección de rango» en la barra (entre Selección y Dividir): arrastrar sobre una o varias pistas, Mayús amplía, doble clic cubre un evento o el hueco entre eventos; resaltado sobre las pistas y «Inicio/Fin/Duración del rango» en la línea de información.

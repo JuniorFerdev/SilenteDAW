@@ -663,6 +663,14 @@ int runEngineTests(const juce::File& outputDir)
         const auto notes = [] { std::vector<MidiNote> n(3); n[0].startBeats = 1; n[1].startBeats = 3; n[2].startBeats = 5; for (auto& x : n) x.lengthBeats = 1; return n; };
         std::vector<AudioClip> empty; auto m = notes(); audio::deleteTime(empty, m, r, 120.0);
         require(m.size() == 2 && std::abs(m[0].startBeats - 1) < 1e-9 && std::abs(m[1].startBeats - 3) < 1e-9, "Delete time on MIDI");
+        {   // Move = copy the content, delete the range, paste at the new place (on top).
+            auto mv = base(); std::vector<MidiNote> mn = notes();
+            const auto content = audio::copyRange(mv, mn, r, 120.0);
+            require(content.clips.size() == 1 && std::abs(content.clips[0].startSeconds) < 1e-9 && std::abs(content.clips[0].offsetSeconds - 1.0) < 1e-9 && content.notes.size() == 1, "Range content relative to its start");
+            audio::deleteRange(mv, mn, r, 120.0); audio::pasteContent(mv, mn, content, 3.0, 120.0);
+            require(mv.size() == 3 && std::abs(mv[2].startSeconds - 3.0) < 1e-9 && std::abs(mv[2].offsetSeconds - 1.0) < 1e-9, "Moved audio lands at 3 s with the range's audio");
+            require(mn.size() == 3 && std::abs(mn[2].startBeats - 7.0) < 1e-9, "Moved note keeps its place in the range (1.5 s → 3.5 s = beat 7)");
+        }
         auto s2 = notes(); audio::insertSilence(empty, s2, r, 120.0);
         require(std::abs(s2[0].startBeats - 1) < 1e-9 && std::abs(s2[1].startBeats - 5) < 1e-9 && std::abs(s2[2].startBeats - 7) < 1e-9, "Insert silence on MIDI");
     });

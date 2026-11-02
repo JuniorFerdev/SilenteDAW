@@ -114,6 +114,33 @@ void duplicateRange(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes,
     notes.insert(notes.end(), extra.begin(), extra.end());
 }
 
+RangeContent copyRange(const std::vector<AudioClip>& clips, const std::vector<MidiNote>& notes, TimeRange r, double bpm)
+{
+    RangeContent content;
+    for (const auto& c : clips)
+    {
+        const double from = juce::jmax(c.startSeconds, r.start), to = juce::jmin(endOf(c), r.end);
+        if (to <= from + edge) continue;
+        auto part = slice(c, from, to);
+        part.startSeconds -= r.start;
+        content.clips.push_back(std::move(part));
+    }
+    const double s = beats(r.start, bpm), e = beats(r.end, bpm);
+    for (const auto& n : notes)
+        if (n.startBeats >= s - edge && n.startBeats < e - edge)
+        {
+            MidiNote copy = n; copy.startBeats -= s; copy.lengthBeats = juce::jmin(copy.lengthBeats, e - n.startBeats);
+            content.notes.push_back(copy);
+        }
+    return content;
+}
+
+void pasteContent(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, const RangeContent& content, double at, double bpm)
+{
+    for (auto c : content.clips) { c.id = juce::Uuid().toString(); c.startSeconds += at; clips.push_back(std::move(c)); }
+    for (auto n : content.notes) { n.id = juce::Uuid().toString(); n.startBeats += beats(at, bpm); notes.push_back(n); }
+}
+
 void adjustFadesToRange(std::vector<AudioClip>& clips, TimeRange r)
 {
     for (auto& c : clips)

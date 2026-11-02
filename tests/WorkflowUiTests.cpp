@@ -10,6 +10,7 @@
 #include "../src/ui/project/FadeEditor.h"
 #include "../src/app/KeyCommands.h"
 #include <cmath>
+#include <iostream>
 
 namespace silente
 {
@@ -27,9 +28,9 @@ void capture(Component& view,const File& file)
     const auto image=view.createComponentSnapshot(view.getLocalBounds());
     if(auto out=file.createOutputStream()){out->setPosition(0);out->truncate();PNGImageFormat().writeImageToStream(image,*out);}
 }
-MouseEvent mouse(Component& component,float x,float y,bool dragged=false)
+MouseEvent mouse(Component& component,float x,float y,bool dragged=false,int extraModifiers=0)
 {
-    return {Desktop::getInstance().getMainMouseSource(),{x,y},ModifierKeys(ModifierKeys::leftButtonModifier),1.0f,0,0,0,0,&component,&component,Time::getCurrentTime(),{350.5f,22},Time::getCurrentTime(),1,dragged};
+    return {Desktop::getInstance().getMainMouseSource(),{x,y},ModifierKeys(ModifierKeys::leftButtonModifier|extraModifiers),1.0f,0,0,0,0,&component,&component,Time::getCurrentTime(),{350.5f,22},Time::getCurrentTime(),1,dragged};
 }
 class WorkflowChecks final : private Timer
 {
@@ -155,6 +156,25 @@ private:
             expect(rangeButton->getToggleState()&&track->clips.size()==2&&std::abs(track->clips[1].startSeconds-1.0)<1e-6&&std::abs(track->clips[1].offsetSeconds-2.0)<1e-6,"range tool: drag a range and Shift+Backspace deletes the time");
             view.runCommand("undo");expect(track->clips.size()==1&&std::abs(track->clips[0].durationSeconds-4.0)<1e-9,"range edit undoes in one step");
             view.runCommand("insertSilence");expect(track->clips.size()==2&&std::abs(track->clips[1].startSeconds-2.0)<1e-6,"Insert Silence moves the rest by the range length");
+            // Move the range content: range 1–2 s, drag from 1.5 s to 3.5 s (x = 250 + s × 75).
+            {const ScopedLock lock(engine.modelLock);track->clips.clear();track->clips.push_back(clip);}
+            arrangement->mouseDown(mouse(*arrangement,700,64));arrangement->mouseUp(mouse(*arrangement,700,64)); // click outside: new empty range
+            arrangement->mouseDown(mouse(*arrangement,325,64));arrangement->mouseDrag(mouse(*arrangement,400,64,true));arrangement->mouseUp(mouse(*arrangement,400,64,true));
+            arrangement->mouseDown(mouse(*arrangement,362.5f,64));arrangement->mouseDrag(mouse(*arrangement,512.5f,64,true));arrangement->mouseUp(mouse(*arrangement,512.5f,64,true));
+            expect(track->clips.size()==3&&std::abs(track->clips[2].startSeconds-3.0)<1e-6&&std::abs(track->clips[2].offsetSeconds-1.0)<1e-6&&std::abs(track->clips[1].startSeconds-2.0)<1e-6,"dragging the range moves its content (gap left behind, audio lands 2 s later)");
+            // ⌥ drag copies: the range is now 3–4 s; copy it to 5–6 s.
+            arrangement->mouseDown(mouse(*arrangement,512.5f,64,false,ModifierKeys::altModifier));arrangement->mouseDrag(mouse(*arrangement,662.5f,64,true,ModifierKeys::altModifier));arrangement->mouseUp(mouse(*arrangement,662.5f,64,true,ModifierKeys::altModifier));
+            // Under 3–4 s there are two layers (the original event and the moved audio on top): both are copied, top stays on top.
+            expect(track->clips.size()==5&&std::abs(track->clips[4].startSeconds-5.0)<1e-6&&std::abs(track->clips[4].offsetSeconds-1.0)<1e-6&&std::abs(track->clips[3].offsetSeconds-3.0)<1e-6,"Option-drag copies the range content with its layers");
+            // ⌥→ moves the range start by the grid; Suprimir then keeps the first grid step of the copy.
+            view.runCommand("nudgeStartRight");view.runCommand("delete");
+            const auto& first=track->clips.back();
+            expect(track->clips.size()==5&&std::abs(first.startSeconds-5.0)<1e-6&&first.durationSeconds>0.01&&first.durationSeconds<0.5,"Option+Right trims the range start by the grid value");
+            // Copy the range and paste it at the cursor.
+            view.runCommand("nudgeStartLeft"); // back to 5–6 s, which still holds the first grid step
+            view.runCommand("copy");engine.seek(8.0);view.runCommand("paste");
+            bool pasted=false;for(auto& c:track->clips)pasted|=std::abs(c.startSeconds-8.0)<1e-6;
+            expect(pasted,"Copy and Paste with a range place its content at the cursor");
         }
         else expect(false,"range tool and arrangement exist");
         view.runCommand("toolSelect");engine.clear();

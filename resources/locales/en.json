@@ -758,5 +758,12 @@
   "Suprimir intervalo de tiempo": "Delete Time",
   "Insertar silencio": "Insert Silence",
   "Ajustar fundidos al rango": "Adjust Fades to Range",
-  "Rango": "Range"
+  "Rango": "Range",
+  "Selecciona una pista para pegar.": "Select a track to paste.",
+  "Pegar rango": "Paste Range",
+  "Copiar rango": "Copy Range",
+  "Mover rango": "Move Range",
+  "Rango copiado.": "Range copied.",
+  "Cortar rango": "Cut Range",
+  "Rango cortado.": "Range cut."
 }

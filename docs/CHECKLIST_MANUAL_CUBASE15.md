@@ -11,7 +11,8 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ Herramientas 1 Selección · 3 Dividir · 4 Pegar · 5 Borrar · 6 Zoom · 7 Enmudecer · 8 Dibujar · 9 Reproducir.
 - ✅ Herramienta 2 Selección de rango: arrastrar (varias pistas), Mayús amplía, doble clic cubre el evento o el hueco; inicio/fin/duración en la línea de información.
 - ✅ Edición › Rango: Dividir (⇧X), Truncar, Suprimir intervalo de tiempo (⇧Retroceso), Insertar silencio (⇧⌘E), Ajustar fundidos al rango (A), Suprimir, Duplicar; menú contextual del rango. Audio y MIDI.
-- ⬜ Rangos: mover contenido arrastrando, empujar bordes (⌥←/→), cortar/copiar/pegar rango, fijar a cruce por cero.
+- ✅ Rangos: arrastrar mueve el contenido (también a otras pistas), ⌥ arrastrar copia; ⌥←/⌥→ empuja el inicio, ⌥⇧←/⌥⇧→ el final; ⌘←/⌘→ desplaza el rango sin contenido; cortar/copiar/pegar rango (⌥V en su origen).
+- ⬜ Rangos: fijar a cruce por cero, ampliar a segmentos de audio, incluir/excluir pistas con ⌘clic.
 - ✅ Línea de estado y línea de información.
 - ✅ Lista de pistas estilo Cubase (M S nombre volumen / ● ◉ R W e / medidor), filtro y búsqueda.
 - ✅ Altura de pistas (deslizador y ⇧H/⇧G) y zoom de forma de onda.
