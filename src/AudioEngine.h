@@ -24,6 +24,7 @@ struct AudioClip
     // Herramienta enmudecer: the event is silent. Fundido cruzado: during its fade-in the event
     // below keeps sounding (fading out) instead of being covered.
     bool muted = false, crossfade = false;
+    int fadeInShape = 0, fadeOutShape = 0; // audio::FadeShape (0 = linear)
 };
 
 struct MidiNote

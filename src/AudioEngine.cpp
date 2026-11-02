@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "audio/BandlimitedInterpolator.h"
 #include "audio/RecordingModes.h"
+#include "audio/FadeCurves.h"
 #include <array>
 #include <cmath>
 #include <limits>
@@ -570,8 +571,8 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
                     const int index = static_cast<int>(source), next = juce::jmin(index + 1, clip.audio->getNumSamples() - 1);
                     const float fraction = static_cast<float>(source - index);
                     float fade = clip.gain;
-                    if (clip.fadeIn > 0.0) fade *= static_cast<float>(juce::jlimit(0.0, 1.0, local / clip.fadeIn));
-                    if (clip.fadeOut > 0.0) fade *= static_cast<float>(juce::jlimit(0.0, 1.0, (clip.durationSeconds - local) / clip.fadeOut));
+                    if (clip.fadeIn > 0.0) fade *= audio::fadeGain(clip.fadeInShape, local / clip.fadeIn);
+                    if (clip.fadeOut > 0.0) fade *= audio::fadeGain(clip.fadeOutShape, (clip.durationSeconds - local) / clip.fadeOut);
                     for (int ch = 0; ch < 2; ++ch)
                     {
                         const auto* data = clip.audio->getReadPointer(juce::jmin(ch, clip.audio->getNumChannels() - 1));
@@ -934,6 +935,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
             set(c, "startSeconds", clip.startSeconds); set(c, "offsetSeconds", clip.offsetSeconds); set(c, "durationSeconds", clip.durationSeconds);
             set(c, "sourceRate", clip.sourceRate); set(c, "gain", clip.gain); set(c, "fadeIn", clip.fadeIn); set(c, "fadeOut", clip.fadeOut); if (! clip.colour.isTransparent()) set(c, "colour", clip.colour.toString());
             if (clip.muted) set(c, "muted", true); if (clip.crossfade) set(c, "crossfade", true);
+            if (clip.fadeInShape != 0) set(c, "fadeInShape", clip.fadeInShape); if (clip.fadeOutShape != 0) set(c, "fadeOutShape", clip.fadeOutShape);
             clips.add(c);
         }
         for (const auto& note : track->notes)
@@ -1016,6 +1018,8 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
             clip.durationSeconds = juce::jmax(0.0, number(c, "durationSeconds", clip.durationSeconds)); clip.gain = static_cast<float>(number(c, "gain", 1.0));
             clip.fadeIn = juce::jmax(0.0, number(c, "fadeIn", 0.005)); clip.fadeOut = juce::jmax(0.0, number(c, "fadeOut", 0.005));
             clip.muted = static_cast<bool>(c.getProperty("muted", false)); clip.crossfade = static_cast<bool>(c.getProperty("crossfade", false));
+            clip.fadeInShape = juce::jlimit(0, (int) audio::FadeShape::count - 1, static_cast<int>(c.getProperty("fadeInShape", 0)));
+            clip.fadeOutShape = juce::jlimit(0, (int) audio::FadeShape::count - 1, static_cast<int>(c.getProperty("fadeOutShape", 0)));
             if (c.hasProperty("colour")) clip.colour = juce::Colour::fromString(c["colour"].toString());
             track->clips.push_back(std::move(clip));
         }

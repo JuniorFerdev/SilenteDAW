@@ -723,5 +723,21 @@
   "Los eventos no tienen audio más allá del borde para el fundido.": "Los eventos no tienen audio más allá del borde para el fundido.",
   "Los eventos no se tocan; júntalos para crear el fundido cruzado.": "Los eventos no se tocan; júntalos para crear el fundido cruzado.",
   "El evento no tiene audio.": "El evento no tiene audio.",
-  "No se pudo escribir ": "No se pudo escribir "
+  "No se pudo escribir ": "No se pudo escribir ",
+  "Abrir editor(es) de fundido": "Abrir editor(es) de fundido",
+  "Aplicar fundido de entrada estándar": "Aplicar fundido de entrada estándar",
+  "Aplicar fundido de salida estándar": "Aplicar fundido de salida estándar",
+  "Eliminar fundido de entrada": "Eliminar fundido de entrada",
+  "Eliminar fundido de salida": "Eliminar fundido de salida",
+  "Eliminar fundidos": "Eliminar fundidos",
+  "Fundidos": "Fundidos",
+  "Fundido de entrada": "Fundido de entrada",
+  "Fundido de salida": "Fundido de salida",
+  "Lineal": "Lineal",
+  "Igual energía": "Igual energía",
+  "Curva S": "Curva S",
+  "Rápida": "Rápida",
+  "Lenta": "Lenta",
+  "Por defecto": "Por defecto",
+  "Guarda el fundido de entrada como fundido estándar": "Guarda el fundido de entrada como fundido estándar"
 }

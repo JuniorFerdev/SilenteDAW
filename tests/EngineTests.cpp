@@ -2,6 +2,7 @@
 #include "../src/audio/TapTempo.h"
 #include "../src/audio/RecordingModes.h"
 #include "../src/audio/EventEdit.h"
+#include "../src/audio/FadeCurves.h"
 #include "../src/AudioEngine.h"
 #include <cmath>
 #include <functional>
@@ -613,6 +614,28 @@ int runEngineTests(const juce::File& outputDir)
         near(outputAt(engine, 0.75f) / under, 1.0, 1e-5, "Muted top event still heard");
         track->clips[0].muted = true;
         near(outputAt(engine, 0.25f), 0.0, 1e-9, "Muted event sounds");
+    });
+
+    suite.run("fade shapes, event volume and fade settings survive save/load", [&]
+    {
+        AudioEngine engine; setup(engine); auto track = engine.addAudioTrack("Fundidos");
+        track->clips.push_back(constantClip(0.0, 3.0, 0.5f));
+        auto& clip = track->clips[0];
+        const float full = outputAt(engine, 1.5);
+        clip.fadeIn = 1.0; clip.fadeInShape = (int) audio::FadeShape::equalPower;
+        near(outputAt(engine, 0.5) / full, std::sin(0.25 * juce::MathConstants<double>::pi), 1e-3, "Equal-power fade-in at its middle");
+        clip.fadeInShape = (int) audio::FadeShape::slowStart;
+        near(outputAt(engine, 0.5) / full, 0.25, 1e-3, "Slow-start fade-in at its middle");
+        clip.fadeOut = 1.0; clip.fadeOutShape = (int) audio::FadeShape::sCurve;
+        near(outputAt(engine, 2.5) / full, 0.5, 1e-3, "S-curve fade-out at its middle");
+        clip.gain = juce::Decibels::decibelsToGain(-6.0f);
+        near(outputAt(engine, 1.5) / full, juce::Decibels::decibelsToGain(-6.0f), 1e-4, "Event volume");
+        AudioEngine source; setup(source); auto saved = importFixture(source, mono);
+        auto& e = saved->clips[0]; e.fadeIn = 0.2; e.fadeInShape = 1; e.fadeOut = 0.3; e.fadeOutShape = 2; e.muted = true; e.crossfade = true;
+        const auto file = dir.getChildFile("fades.silente"); requireOk(source.saveProject(file));
+        AudioEngine restored; setup(restored); requireOk(restored.loadProject(file));
+        const auto& r = restored.tracks[0]->clips[0];
+        require(r.fadeInShape == 1 && r.fadeOutShape == 2 && r.muted && r.crossfade && std::abs(r.fadeIn - 0.2) < 1e-9 && std::abs(r.fadeOut - 0.3) < 1e-9, "Fade settings not restored");
     });
 
     suite.run("punch in/out records only between the locators", [&]

@@ -1,5 +1,6 @@
 #include "EventEdit.h"
 #include "../i18n/Translations.h"
+#include "FadeCurves.h"
 #include <cmath>
 
 namespace silente::audio
@@ -13,8 +14,8 @@ double endOf(const AudioClip& c) { return c.startSeconds + c.durationSeconds; }
 float envelope(const AudioClip& c, double local)
 {
     float fade = c.gain;
-    if (c.fadeIn > 0.0) fade *= static_cast<float>(juce::jlimit(0.0, 1.0, local / c.fadeIn));
-    if (c.fadeOut > 0.0) fade *= static_cast<float>(juce::jlimit(0.0, 1.0, (c.durationSeconds - local) / c.fadeOut));
+    if (c.fadeIn > 0.0) fade *= fadeGain(c.fadeInShape, local / c.fadeIn);
+    if (c.fadeOut > 0.0) fade *= fadeGain(c.fadeOutShape, (c.durationSeconds - local) / c.fadeOut);
     return fade;
 }
 
@@ -120,6 +121,7 @@ juce::Result crossfadeEvents(std::vector<AudioClip>& clips, int index, double le
     }
     else if (overlap < 0.0) return juce::Result::fail(i18n::tr("Los eventos no se tocan; júntalos para crear el fundido cruzado."));
     a.fadeOut = overlap; b.fadeIn = overlap; b.crossfade = true;
+    a.fadeOutShape = b.fadeInShape = static_cast<int>(FadeShape::linear); // Cubase default: linear, symmetric
     if (second < first)
     {   // The later event must be on top of the earlier one.
         AudioClip moved = std::move(b);

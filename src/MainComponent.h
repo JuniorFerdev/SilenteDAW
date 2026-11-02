@@ -35,6 +35,8 @@ public:
     void showKeyCommands();
     juce::PopupMenu transportMenu();
     void transportMenuItem(int id);
+    juce::PopupMenu audioMenu();          // Audio › Fundidos (items 200–219)
+    void audioMenuItem(int id);
     bool runCommand(const juce::String& keyCommandId);
     juce::StringArray editHistory() const; // names of the undoable edits, oldest first
     void showMetronomeSettings();

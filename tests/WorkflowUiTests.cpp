@@ -7,6 +7,7 @@
 #include "../src/ui/project/TrackFilter.h"
 #include "../src/ui/project/SnapGrid.h"
 #include "../src/ui/project/ZoneSplitter.h"
+#include "../src/ui/project/FadeEditor.h"
 #include "../src/app/KeyCommands.h"
 #include <cmath>
 
@@ -108,6 +109,36 @@ private:
         view.runCommand("undo");expect(engine.tracks.size()>0&&engine.tracks.back()->clips.empty(),"undo removes the recorded take");
         view.runCommand("stop");view.runCommand("punchIn");view.runCommand("punchOut");
         engine.clear();engine.prepareForOffline(48000,128);
+        fadeChecks();
+    }
+    void fadeChecks()
+    {   // Fundidos (manual pp. 396–418): Audio › Fundidos on the selected event and the event handles.
+        auto track=engine.addAudioTrack("Fundidos");AudioClip clip;clip.sourceRate=48000;clip.durationSeconds=4.0;clip.fadeIn=clip.fadeOut=0.0;
+        clip.audio=std::make_shared<AudioBuffer<float>>(1,48000*4);clip.audio->clear();track->clips.push_back(clip);
+        view.runCommand("trackTop");view.runCommand("eventRight");
+        view.audioMenuItem(201);view.audioMenuItem(202);
+        expect(std::abs(track->clips[0].fadeIn-0.5)<1e-9&&std::abs(track->clips[0].fadeOut-0.5)<1e-9,"Audio > Fundidos applies the standard fade-in and fade-out");
+        view.audioMenuItem(205);expect(track->clips[0].fadeIn==0.0&&track->clips[0].fadeOut==0.0,"Eliminar fundidos removes both fades");
+        if(auto* arrangement=find(view,"arrangement"))
+        {   // Event at 0 s on the first track: x = 250 + seconds × 75, rows 60 px under a 30 px ruler.
+            arrangement->mouseDown(mouse(*arrangement,255,64));arrangement->mouseDrag(mouse(*arrangement,330,64,true));arrangement->mouseUp(mouse(*arrangement,330,64,true));
+            expect(std::abs(track->clips[0].fadeIn-1.0)<0.02,"dragging the fade-in handle sets the fade length");
+            arrangement->mouseDown(mouse(*arrangement,258,76));arrangement->mouseDrag(mouse(*arrangement,258,26,true));arrangement->mouseUp(mouse(*arrangement,258,26,true));
+            expect(std::abs(track->clips[0].gain-Decibels::decibelsToGain(6.0f))<1e-4f,"dragging the volume handle up raises the event volume to +6 dB");
+        }
+        else expect(false,"arrangement exists for the fade handles");
+        track->clips[0].fadeOut=1.2;track->clips[0].fadeOutShape=2;track->clips[0].gain=0.7f;
+        for(int i=0;i<track->clips[0].audio->getNumSamples();++i)track->clips[0].audio->setSample(0,i,0.6f*std::sin(i*0.002f)*std::sin(i*0.0001f));
+        capture(view,output.getChildFile("fades.png"));
+        {
+            ui::FadeEditor::Settings got;bool applied=false;
+            ui::FadeEditor editor({1.0,1.2,0,2},4.0,[&](ui::FadeEditor::Settings v){got=v;applied=true;},{});editor.setSize(620,330);
+            if(auto* b=dynamic_cast<TextButton*>(find(editor,"fade-out-shape-1")))b->onClick();
+            if(auto* l=dynamic_cast<Slider*>(find(editor,"fade-in-length")))l->setValue(3.5,sendNotificationSync); // limited to 4.0 − 1.2
+            editor.pressApply();capture(editor,output.getChildFile("fade-editor.png"));
+            expect(applied&&got.outShape==1&&std::abs(got.fadeIn-2.8)<1e-9,"fade editor: curve buttons and length (fade-in + fade-out within the event)");
+        }
+        engine.clear();
     }
     void snapChecks()
     {

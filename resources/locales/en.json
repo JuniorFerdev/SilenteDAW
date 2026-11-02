@@ -723,5 +723,21 @@
   "Los eventos no tienen audio más allá del borde para el fundido.": "The events have no audio beyond their edges for the fade.",
   "Los eventos no se tocan; júntalos para crear el fundido cruzado.": "The events do not touch; bring them together to crossfade.",
   "El evento no tiene audio.": "The event has no audio.",
-  "No se pudo escribir ": "Could not write "
+  "No se pudo escribir ": "Could not write ",
+  "Abrir editor(es) de fundido": "Open Fade Editor(s)",
+  "Aplicar fundido de entrada estándar": "Apply Default Fade In",
+  "Aplicar fundido de salida estándar": "Apply Default Fade Out",
+  "Eliminar fundido de entrada": "Remove Fade In",
+  "Eliminar fundido de salida": "Remove Fade Out",
+  "Eliminar fundidos": "Remove Fades",
+  "Fundidos": "Fades",
+  "Fundido de entrada": "Fade In",
+  "Fundido de salida": "Fade Out",
+  "Lineal": "Linear",
+  "Igual energía": "Equal Power",
+  "Curva S": "S-Curve",
+  "Rápida": "Fast",
+  "Lenta": "Slow",
+  "Por defecto": "Default",
+  "Guarda el fundido de entrada como fundido estándar": "Stores the fade-in as the default fade"
 }

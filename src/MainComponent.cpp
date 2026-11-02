@@ -14,6 +14,8 @@
 #include "ui/project/TrackFinder.h"
 #include "ui/project/SnapGrid.h"
 #include "ui/project/ZoneSplitter.h"
+#include "ui/project/FadeEditor.h"
+#include "audio/FadeCurves.h"
 #include "audio/EventEdit.h"
 #include "app/KeyCommands.h"
 #include "ui/keys/KeyCommandsPanel.h"
@@ -188,6 +190,7 @@ public:
                 g.setColour(tone.brighter(.1f));g.fillRoundedRectangle(r.withHeight(22),2);
                 text(g,clip.name,r.withHeight(22).reduced(9,0).toNearestInt(),11,eventInk);
                 drawWave(g,clip,r.withTrimmedTop(24).reduced(2,5),eventInk);
+                if(clip.audio)drawFades(g,clip,r,selected);
                 if(clip.crossfade&&clip.fadeIn>0.0)
                 {   // Crossfade: the two fade lines across the overlap.
                     const float x0=r.getX(),x1=r.getX()+(float)(clip.fadeIn*pixelsPerSecond);g.setColour(ink.withAlpha(.9f));
@@ -244,7 +247,10 @@ public:
             }
             if(e.mods.isPopupMenu())trackMenu(i); repaint();return;
         }
-        for(int c=(int)t.clips.size()-1;c>=0;--c) if(clipRect(i,t.clips[(size_t)c]).contains(e.position)) { selectedClip=c;dragClip=c;dragOrigin=t.clips[(size_t)c];dragStart=e.position;resizing=e.x>clipRect(i,dragOrigin).getRight()-9;if(!e.mods.isPopupMenu()&&tool==1&&beforeEdit)beforeEdit();break; }
+        for(int c=(int)t.clips.size()-1;c>=0;--c) if(clipRect(i,t.clips[(size_t)c]).contains(e.position)) { selectedClip=c;dragClip=c;dragOrigin=t.clips[(size_t)c];dragStart=e.position;resizing=e.x>clipRect(i,dragOrigin).getRight()-9;if(!e.mods.isPopupMenu()&&tool==1&&beforeEdit)beforeEdit();
+            fadeDrag=0;if(tool==1&&!e.mods.isPopupMenu()&&dragOrigin.audio){const auto cr=clipRect(i,dragOrigin);const auto hit=[&](juce::Rectangle<float> h){return h.expanded(3).contains(e.position);};
+                if(hit(fadeInHandle(dragOrigin,cr)))fadeDrag=1;else if(hit(fadeOutHandle(dragOrigin,cr)))fadeDrag=2;else if(hit(volumeHandle(cr)))fadeDrag=3;if(fadeDrag)resizing=false;}
+            break; }
         if(e.mods.isPopupMenu())clipMenu();
         else if(tool==3&&selectedClip>=0){engine.seek(snapped(xToSeconds((float)e.x)));splitSelected();dragClip=-1;}
         else if(tool==5&&selectedClip>=0){deleteSelected();dragClip=-1;}
@@ -274,11 +280,47 @@ public:
         if(dragClip<0||e.mods.isPopupMenu())return; const juce::ScopedLock lock(engine.modelLock);
         if(selectedTrack>=(int)engine.tracks.size())return;auto& clips=engine.tracks[(size_t)selectedTrack]->clips;if(dragClip>=(int)clips.size())return;
         auto& c=clips[(size_t)dragClip];const double delta=(e.x-dragStart.x)/pixelsPerSecond;
+        if(fadeDrag)
+        {   // Event handles: fade-in and fade-out length, event volume (−∞ … +6 dB).
+            if(fadeDrag==1){c.fadeIn=juce::jlimit(0.0,juce::jmax(0.0,c.durationSeconds-c.fadeOut),dragOrigin.fadeIn+delta);if(c.fadeIn<=0.0)c.crossfade=false;}
+            else if(fadeDrag==2)c.fadeOut=juce::jlimit(0.0,juce::jmax(0.0,c.durationSeconds-c.fadeIn),dragOrigin.fadeOut-delta);
+            else{const float db=juce::jlimit(-60.0f,6.0f,juce::Decibels::gainToDecibels(dragOrigin.gain,-60.0f)-(e.position.y-dragStart.y)*0.2f);c.gain=db<=-60.0f?0.0f:juce::Decibels::decibelsToGain(db);}
+            if(changed)changed();repaint();return;
+        }
         if(resizing) { const double available=c.audio ? (double)c.audio->getNumSamples()/c.sourceRate-c.offsetSeconds : c.durationSeconds; c.durationSeconds=juce::jlimit(.02,juce::jmax(.02,available),snapped(dragOrigin.durationSeconds+delta)); }
         else c.startSeconds=juce::jmax(0.0,snapped(dragOrigin.startSeconds+delta,selectedTrack,dragClip));
         if(changed)changed();repaint();
     }
-    void mouseUp(const juce::MouseEvent&) override { dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;if(playTool){playTool=false;engine.pause();} }
+    void mouseUp(const juce::MouseEvent&) override { dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;fadeDrag=0;if(playTool){playTool=false;engine.pause();} }
+    int fadeDrag=0; // 1 fade-in handle, 2 fade-out handle, 3 volume handle
+    // Event handles (manual p. 397): fade triangles at the top corners, volume at the bottom left.
+    juce::Rectangle<float> fadeInHandle(const AudioClip& c,juce::Rectangle<float> r)const{return {juce::jlimit(r.getX(),juce::jmax(r.getX(),r.getRight()-10.0f),r.getX()+(float)(c.fadeIn*pixelsPerSecond)-5.0f),r.getY()+23.0f,10.0f,8.0f};}
+    juce::Rectangle<float> fadeOutHandle(const AudioClip& c,juce::Rectangle<float> r)const{return {juce::jlimit(r.getX(),juce::jmax(r.getX(),r.getRight()-10.0f),r.getRight()-(float)(c.fadeOut*pixelsPerSecond)-5.0f),r.getY()+23.0f,10.0f,8.0f};}
+    juce::Rectangle<float> volumeHandle(juce::Rectangle<float> r)const{return {r.getX()+4.0f,r.getBottom()-14.0f,10.0f,10.0f};}
+    void drawFades(juce::Graphics& g,const AudioClip& c,juce::Rectangle<float> r,bool selected)
+    {
+        const auto area=r.withTrimmedTop(22.0f);
+        for(int side=0;side<2;++side)
+        {
+            const double length=side==0?c.fadeIn:c.fadeOut;if(length<=0.0005||(side==0&&c.crossfade))continue;
+            const float w=juce::jmin(area.getWidth(),(float)(length*pixelsPerSecond));if(w<2.0f)continue;
+            const float x0=side==0?area.getX():area.getRight()-w;juce::Path curve,shade;shade.startNewSubPath(x0,area.getY());
+            for(int k=0;k<=(int)w;k+=2)
+            {
+                const double t=(double)k/w;const float gain=audio::fadeGain(side==0?c.fadeInShape:c.fadeOutShape,side==0?t:1.0-t);
+                const juce::Point<float> p(x0+(float)k,area.getBottom()-gain*area.getHeight());
+                if(k==0)curve.startNewSubPath(p);else curve.lineTo(p);shade.lineTo(p);
+            }
+            shade.lineTo(x0+w,area.getY());shade.closeSubPath();
+            g.setColour(juce::Colours::black.withAlpha(.28f));g.fillPath(shade);g.setColour(ink.withAlpha(.9f));g.strokePath(curve,juce::PathStrokeType(1.2f));
+        }
+        if(!selected)return;
+        g.setColour(ink);
+        for(auto h:{fadeInHandle(c,r),fadeOutHandle(c,r)}){juce::Path t;t.addTriangle(h.getX(),h.getY(),h.getRight(),h.getY(),h.getCentreX(),h.getBottom());g.fillPath(t);}
+        const auto v=volumeHandle(r);g.setColour(ink.withAlpha(.9f));g.fillRect(v);g.setColour(line);g.drawRect(v);
+        const float db=juce::Decibels::gainToDecibels(c.gain,-60.0f);
+        text(g,c.gain<=0.0f?juce::String::fromUTF8("-∞ dB"):juce::String(db,1)+" dB",juce::Rectangle<float>(v.getRight()+4,v.getY()-3,60,16).toNearestInt(),9.5f,eventInk);
+    }
     bool playTool=false; // Herramienta reproducir: plays while the button is held
     void zoomAt(float x,double factor)
     {   // Herramienta zoom: the clicked time stays under the pointer.
@@ -359,9 +401,9 @@ private:
     {
         if(!c.audio||c.audio->getNumSamples()<1)return;const int x0=juce::jmax(header,(int)r.getX()),x1=juce::jmin(getWidth(),(int)r.getRight());
         const float* data=c.audio->getReadPointer(0);const int size=c.audio->getNumSamples();g.setColour(colour.withAlpha(.8f));
-        for(int x=x0;x<x1;x+=2){double rel=(x-secondsToX(c.startSeconds))/pixelsPerSecond;const int a=juce::jlimit(0,size-1,(int)((c.offsetSeconds+rel)*c.sourceRate));const int b=juce::jlimit(a+1,size,(int)((c.offsetSeconds+rel+2/pixelsPerSecond)*c.sourceRate));float lo=0,hi=0;const int step=juce::jmax(1,(b-a)/32);for(int n=a;n<b;n+=step){lo=juce::jmin(lo,data[n]);hi=juce::jmax(hi,data[n]);}
+        for(int x=x0;x<x1;x+=2){double rel=(x-secondsToX(c.startSeconds))/pixelsPerSecond;const float env=c.gain*audio::fadeEnvelope(rel,c.durationSeconds,c.fadeIn,c.fadeInShape,c.fadeOut,c.fadeOutShape);const int a=juce::jlimit(0,size-1,(int)((c.offsetSeconds+rel)*c.sourceRate));const int b=juce::jlimit(a+1,size,(int)((c.offsetSeconds+rel+2/pixelsPerSecond)*c.sourceRate));float lo=0,hi=0;const int step=juce::jmax(1,(b-a)/32);for(int n=a;n<b;n+=step){lo=juce::jmin(lo,data[n]);hi=juce::jmax(hi,data[n]);}
             // Waveform zoom enlarges the drawing only; peaks beyond the event are clipped at its edges.
-            const float half=r.getHeight()*.5f,scale=r.getHeight()*.48f*waveZoom;g.drawVerticalLine(x,r.getCentreY()-juce::jmin(half,hi*scale),r.getCentreY()+juce::jmin(half,-lo*scale)+1);}
+            const float half=r.getHeight()*.5f,scale=r.getHeight()*.48f*waveZoom*env;g.drawVerticalLine(x,r.getCentreY()-juce::jmin(half,hi*scale),r.getCentreY()+juce::jmin(half,-lo*scale)+1);}
     }
     void clipMenu() {juce::PopupMenu m;m.addItem(1,i18n::tr("Dividir en el cursor"),selectedClip>=0);m.addItem(2,i18n::tr("Duplicar"),selectedClip>=0);m.addItem(3,i18n::tr("Eliminar"),selectedClip>=0);
         m.addSeparator();m.addItem(4,i18n::tr("Pegar con el evento siguiente"),selectedClip>=0);m.addItem(5,i18n::tr("Fundido cruzado  X"),selectedClip>=0);m.addItem(6,i18n::tr("Enmudecer evento"),selectedClip>=0);m.addItem(7,i18n::tr("Color de evento…"),selectedClip>=0);
@@ -967,10 +1009,12 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     // «Modos de grabación» (manual p. 351): Record while recording stops (0) or re-records (1);
     // Record in stop mode starts at the cursor (0), left locator/punch in (1) or selection (2).
     int recordRestartMode=0,recordStartMode=0;bool stopAfterPunchOut=false;double recordStartedAt=0.0;
+    double standardFadeLength=0.5;int standardFadeShape=0; // «Aplicar fundido estándar» (Por defecto in the fade editor)
     static juce::File transportFile(){return MainComponent::settingsFolder().getChildFile("transport.xml");}
     void loadTransport(){if(auto x=juce::XmlDocument::parse(transportFile())){startMode=juce::jlimit(0,3,x->getIntAttribute("startMode"));returnToStart=x->getBoolAttribute("returnToStart");usePreRoll=x->getBoolAttribute("preRoll");usePostRoll=x->getBoolAttribute("postRoll");autoScroll=x->getBoolAttribute("autoScroll",true);stationary=x->getBoolAttribute("stationary");preRollBars=x->getDoubleAttribute("preRollBars",1.0);postRollBars=x->getDoubleAttribute("postRollBars",1.0);
-        recordRestartMode=juce::jlimit(0,1,x->getIntAttribute("recordRestart"));recordStartMode=juce::jlimit(0,2,x->getIntAttribute("recordStart"));stopAfterPunchOut=x->getBoolAttribute("stopAfterPunchOut");}}
-    void saveTransport(){juce::XmlElement x("TRANSPORT");x.setAttribute("startMode",startMode);x.setAttribute("returnToStart",returnToStart);x.setAttribute("preRoll",usePreRoll);x.setAttribute("postRoll",usePostRoll);x.setAttribute("autoScroll",autoScroll);x.setAttribute("stationary",stationary);x.setAttribute("preRollBars",preRollBars);x.setAttribute("postRollBars",postRollBars);x.setAttribute("recordRestart",recordRestartMode);x.setAttribute("recordStart",recordStartMode);x.setAttribute("stopAfterPunchOut",stopAfterPunchOut);transportFile().getParentDirectory().createDirectory();x.writeTo(transportFile());}
+        recordRestartMode=juce::jlimit(0,1,x->getIntAttribute("recordRestart"));recordStartMode=juce::jlimit(0,2,x->getIntAttribute("recordStart"));stopAfterPunchOut=x->getBoolAttribute("stopAfterPunchOut");
+        standardFadeLength=juce::jlimit(0.001,30.0,x->getDoubleAttribute("standardFade",0.5));standardFadeShape=juce::jlimit(0,(int)audio::FadeShape::count-1,x->getIntAttribute("standardFadeShape"));}}
+    void saveTransport(){juce::XmlElement x("TRANSPORT");x.setAttribute("startMode",startMode);x.setAttribute("returnToStart",returnToStart);x.setAttribute("preRoll",usePreRoll);x.setAttribute("postRoll",usePostRoll);x.setAttribute("autoScroll",autoScroll);x.setAttribute("stationary",stationary);x.setAttribute("preRollBars",preRollBars);x.setAttribute("postRollBars",postRollBars);x.setAttribute("recordRestart",recordRestartMode);x.setAttribute("recordStart",recordStartMode);x.setAttribute("stopAfterPunchOut",stopAfterPunchOut);x.setAttribute("standardFade",standardFadeLength);x.setAttribute("standardFadeShape",standardFadeShape);transportFile().getParentDirectory().createDirectory();x.writeTo(transportFile());}
     double startPosition()
     {
         auto* sel=selectedClipPtr();
@@ -1047,6 +1091,46 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         m.addSeparator();m.addItem(160,i18n::tr("Activar metrónomo  C"),true,engine.metronome.load());m.addItem(161,i18n::tr("Configuración del metrónomo…"));
         m.addItem(162,i18n::tr("Desplazamiento auto.  F"),true,autoScroll);m.addItem(163,i18n::tr("Cursor estacionario  ⌥C"),true,stationary);
         return m;
+    }
+    // Audio › Fundidos (Cubase manual pp. 398–411) on the selected event.
+    juce::PopupMenu audioMenu()
+    {
+        auto* c=selectedClipPtr();const bool has=c&&c->audio;
+        juce::PopupMenu fades;
+        fades.addItem(200,i18n::tr("Abrir editor(es) de fundido"),has);fades.addSeparator();
+        fades.addItem(201,i18n::tr("Aplicar fundido de entrada estándar"),has);fades.addItem(202,i18n::tr("Aplicar fundido de salida estándar"),has);fades.addSeparator();
+        fades.addItem(203,i18n::tr("Eliminar fundido de entrada"),has&&c->fadeIn>0.0);fades.addItem(204,i18n::tr("Eliminar fundido de salida"),has&&c->fadeOut>0.0);
+        fades.addItem(205,i18n::tr("Eliminar fundidos"),has);fades.addSeparator();fades.addItem(206,i18n::tr("Fundido cruzado  X"),has);
+        juce::PopupMenu m;m.addSubMenu(i18n::tr("Fundidos"),fades);
+        m.addSeparator();m.addItem(207,i18n::tr("Pegar con el evento siguiente"),has);m.addItem(208,i18n::tr("Enmudecer evento"),has,has&&c->muted);
+        return m;
+    }
+    void audioMenuItem(int id)
+    {
+        auto t=currentTrack();auto* c=selectedClipPtr();if(!t||!c){error(i18n::tr("Selecciona un evento."));return;}
+        const auto change=[&](const juce::String& name,const std::function<void(AudioClip&)>& f){pushUndo(name);{const juce::ScopedLock lock(engine.modelLock);f(*c);}markDirty();arrangement.repaint();refresh();};
+        switch(id)
+        {
+            case 200:
+            {
+                ui::FadeEditor::Settings s{c->fadeIn,c->fadeOut,c->fadeInShape,c->fadeOutShape};const auto id0=c->id;
+                ui::showFadeEditor(owner,s,c->durationSeconds,[safe=juce::Component::SafePointer<MainComponent>(&owner),t,id0](ui::FadeEditor::Settings v)
+                {
+                    if(!safe)return;auto& self=*safe->ui;
+                    for(auto& clip:t->clips)if(clip.id==id0){self.pushUndo(i18n::tr("Fundidos"));{const juce::ScopedLock lock(self.engine.modelLock);clip.fadeIn=v.fadeIn;clip.fadeOut=v.fadeOut;clip.fadeInShape=v.inShape;clip.fadeOutShape=v.outShape;}self.markDirty();self.arrangement.repaint();return;}
+                },[safe=juce::Component::SafePointer<MainComponent>(&owner)](ui::FadeEditor::Settings v){if(!safe)return;auto& self=*safe->ui;self.standardFadeLength=juce::jmax(0.001,v.fadeIn);self.standardFadeShape=v.inShape;self.saveTransport();});
+                break;
+            }
+            case 201:change(i18n::tr("Fundido de entrada"),[this](AudioClip& e){e.fadeIn=juce::jmin(standardFadeLength,juce::jmax(0.0,e.durationSeconds-e.fadeOut));e.fadeInShape=standardFadeShape;e.crossfade=false;});break;
+            case 202:change(i18n::tr("Fundido de salida"),[this](AudioClip& e){e.fadeOut=juce::jmin(standardFadeLength,juce::jmax(0.0,e.durationSeconds-e.fadeIn));e.fadeOutShape=standardFadeShape;});break;
+            case 203:change(i18n::tr("Eliminar fundido de entrada"),[](AudioClip& e){e.fadeIn=0.0;e.crossfade=false;});break;
+            case 204:change(i18n::tr("Eliminar fundido de salida"),[](AudioClip& e){e.fadeOut=0.0;});break;
+            case 205:change(i18n::tr("Eliminar fundidos"),[](AudioClip& e){e.fadeIn=e.fadeOut=0.0;e.crossfade=false;});break;
+            case 206:arrangement.crossfadeSelected();break;
+            case 207:arrangement.glueSelected();break;
+            case 208:change(i18n::tr("Enmudecer evento"),[](AudioClip& e){e.muted=!e.muted;});break;
+            default:break;
+        }
     }
     juce::PopupMenu recordFormatMenu()
     {
@@ -1597,6 +1681,8 @@ void MainComponent::showConversion(bool video){ui->showConversion(video);}
 void MainComponent::showKeyCommands(){ui->showKeyCommands();}
 juce::PopupMenu MainComponent::transportMenu(){return ui->transportMenu();}
 void MainComponent::transportMenuItem(int id){ui->transportMenuItem(id);}
+juce::PopupMenu MainComponent::audioMenu(){return ui->audioMenu();}
+void MainComponent::audioMenuItem(int id){ui->audioMenuItem(id);}
 juce::StringArray MainComponent::editHistory()const{juce::StringArray names;for(const auto& s:ui->undoStack)names.add(s.action);return names;}
 bool MainComponent::runCommand(const juce::String& id){if(auto a=ui->keyActions.find(id);a!=ui->keyActions.end()){a->second();return true;}return false;}
 void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}

@@ -217,7 +217,7 @@ private:
     std::unique_ptr<PluginManager> plugins;
     std::unique_ptr<juce::AudioPluginFormatManager> probeFormats;
     std::unique_ptr<MainWindow> window;
-    juce::StringArray getMenuBarNames() override { return { i18n::tr("Archivo"), i18n::tr("Edición"), i18n::tr("Pista"), i18n::tr("Transporte"), i18n::tr("Estudio"), i18n::tr("Ventana"), i18n::tr("Idioma"), i18n::tr("Ayuda") }; }
+    juce::StringArray getMenuBarNames() override { return { i18n::tr("Archivo"), i18n::tr("Edición"), i18n::tr("Pista"), i18n::tr("Audio"), i18n::tr("Transporte"), i18n::tr("Estudio"), i18n::tr("Ventana"), i18n::tr("Idioma"), i18n::tr("Ayuda") }; }
     juce::PopupMenu getMenuForIndex(int index, const juce::String&) override
     {
         juce::PopupMenu menu;
@@ -228,9 +228,10 @@ private:
             menu.addSeparator(); menu.addItem(6,i18n::tr("Conversión de formatos…")); menu.addItem(7,i18n::tr("Extraer audio de video…"));
         }
         if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo")); }
-        if (index == 3 && window) return window->content().transportMenu();
-        if (index == 4) { menu.addItem(20,i18n::tr("MixConsole  F3")); menu.addItem(27,i18n::tr("MixConsole en zona inferior  ⌥F3")); menu.addItem(21,i18n::tr("Instrumentos y efectos…")); menu.addItem(22,i18n::tr("Dispositivos de audio y MIDI…")); menu.addItem(23,i18n::tr("Apagar todas las notas")); menu.addSeparator(); menu.addItem(24,i18n::tr("Metrónomo  C"),true,window&&window->content().metronomeOn()); menu.addItem(25,i18n::tr("Ajustes del metrónomo…")); menu.addItem(26,i18n::tr("Calculadora de tempo (Tap)…")); }
-        if (index == 7) { menu.addItem(30,i18n::tr("Acerca de Silente")); menu.addItem(31,i18n::tr("Guía rápida")); }
+        if (index == 3 && window) return window->content().audioMenu();
+        if (index == 4 && window) return window->content().transportMenu();
+        if (index == 5) { menu.addItem(20,i18n::tr("MixConsole  F3")); menu.addItem(27,i18n::tr("MixConsole en zona inferior  ⌥F3")); menu.addItem(21,i18n::tr("Instrumentos y efectos…")); menu.addItem(22,i18n::tr("Dispositivos de audio y MIDI…")); menu.addItem(23,i18n::tr("Apagar todas las notas")); menu.addSeparator(); menu.addItem(24,i18n::tr("Metrónomo  C"),true,window&&window->content().metronomeOn()); menu.addItem(25,i18n::tr("Ajustes del metrónomo…")); menu.addItem(26,i18n::tr("Calculadora de tempo (Tap)…")); }
+        if (index == 8) { menu.addItem(30,i18n::tr("Acerca de Silente")); menu.addItem(31,i18n::tr("Guía rápida")); }
         if (index == 1)
         {
             // Edición: the same actions as the Cubase key commands.
@@ -239,13 +240,13 @@ private:
             menu.addItem(66,i18n::tr("Duplicar  ⌘D"));menu.addItem(67,i18n::tr("Suprimir"));menu.addItem(68,i18n::tr("Dividir en el cursor  ⌥X"));menu.addSeparator();
             menu.addItem(70,i18n::tr("Historial…"));menu.addItem(69,i18n::tr("Comandos de teclado…"));
         }
-        if (index == 5)
+        if (index == 6)
         {
             juce::PopupMenu sizes;const float current=juce::Desktop::getInstance().getGlobalScaleFactor();
             for(int n=0;n<(int)std::size(interfaceScales);++n)sizes.addItem(50+n,juce::String(juce::roundToInt(interfaceScales[n]*100))+" %",true,std::abs(current-interfaceScales[n])<0.01f);
             menu.addSubMenu(i18n::tr("Tamaño de la interfaz y de la letra"),sizes);
         }
-        if(index==6){menu.addItem(40,juce::String::fromUTF8("Español"),true,i18n::language()==i18n::Language::spanish);menu.addItem(41,"English",true,i18n::language()==i18n::Language::english);}
+        if(index==7){menu.addItem(40,juce::String::fromUTF8("Español"),true,i18n::language()==i18n::Language::spanish);menu.addItem(41,"English",true,i18n::language()==i18n::Language::english);}
         return menu;
     }
     void setInterfaceScale(float scale)
@@ -261,6 +262,7 @@ private:
         if (!window) return;
         auto& c = window->content();
         if (item >= 100 && item < 200) { c.transportMenuItem(item); return; }
+        if (item >= 200 && item < 220) { c.audioMenuItem(item); return; }
         switch (item)
         {
             case 1: c.newProject(); break; case 2: c.openProject(); break; case 3: c.saveProject(); break;
