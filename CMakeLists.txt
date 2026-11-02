@@ -29,7 +29,7 @@ target_sources(Silente PRIVATE src/Main.cpp src/AudioEngine.cpp src/MainComponen
     src/ui/theme/ToolIcons.cpp src/ui/theme/TrackColourPicker.cpp
     src/i18n/Translations.cpp src/i18n/UiTranslation.cpp
     src/ui/plugins/PluginSelector.cpp src/audio/DeviceSettings.cpp src/ui/audio/AudioSettingsPanel.cpp
-    src/audio/Metronome.cpp src/audio/RecordingModes.cpp src/audio/EventEdit.cpp src/ui/metronome/MetronomePanel.cpp src/ui/metronome/TapTempoPanel.cpp src/ui/mixconsole/MixConsole.cpp src/ui/project/ChannelTab.cpp src/ui/project/FadeEditor.cpp src/app/KeyCommands.cpp src/ui/keys/KeyCommandsPanel.cpp
+    src/audio/Metronome.cpp src/audio/RecordingModes.cpp src/audio/EventEdit.cpp src/audio/RangeEdit.cpp src/ui/metronome/MetronomePanel.cpp src/ui/metronome/TapTempoPanel.cpp src/ui/mixconsole/MixConsole.cpp src/ui/project/ChannelTab.cpp src/ui/project/FadeEditor.cpp src/app/KeyCommands.cpp src/ui/keys/KeyCommandsPanel.cpp
     src/io/Mp3Encoder.cpp src/io/AudioFileFormats.cpp src/io/VideoAudio.mm src/io/TrackExport.cpp
     src/ui/io/FormatSelector.cpp src/ui/io/ExportDialog.cpp src/ui/io/ConversionPanel.cpp)
 target_compile_definitions(Silente PRIVATE

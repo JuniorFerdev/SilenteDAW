@@ -3,6 +3,7 @@
 #include "../src/audio/RecordingModes.h"
 #include "../src/audio/EventEdit.h"
 #include "../src/audio/FadeCurves.h"
+#include "../src/audio/RangeEdit.h"
 #include "../src/AudioEngine.h"
 #include <cmath>
 #include <functional>
@@ -636,6 +637,34 @@ int runEngineTests(const juce::File& outputDir)
         AudioEngine restored; setup(restored); requireOk(restored.loadProject(file));
         const auto& r = restored.tracks[0]->clips[0];
         require(r.fadeInShape == 1 && r.fadeOutShape == 2 && r.muted && r.crossfade && std::abs(r.fadeIn - 0.2) < 1e-9 && std::abs(r.fadeOut - 0.3) < 1e-9, "Fade settings not restored");
+    });
+
+    suite.run("range editing: delete, delete time, insert silence, truncate, duplicate, fades", [&]
+    {
+        const auto base = [&] { return std::vector<AudioClip> { constantClip(0.0, 4.0, 0.5f) }; };
+        const audio::TimeRange r { 1.0, 2.0 };
+        std::vector<MidiNote> none;
+        auto a = base(); audio::deleteRange(a, none, r, 120.0);
+        require(a.size() == 2, "Delete: two parts expected");
+        near(a[0].durationSeconds, 1.0, 1e-9, "Delete: left part"); near(a[1].startSeconds, 2.0, 1e-9, "Delete: right part start"); near(a[1].offsetSeconds, 2.0, 1e-9, "Delete: right part offset");
+        auto b = base(); audio::deleteTime(b, none, r, 120.0);
+        require(b.size() == 2, "Delete time: two parts"); near(b[1].startSeconds, 1.0, 1e-9, "Delete time closes the gap"); near(b[1].offsetSeconds, 2.0, 1e-9, "Delete time keeps the audio");
+        auto c = base(); audio::insertSilence(c, none, r, 120.0);
+        require(c.size() == 2, "Insert silence: split at the range start"); near(c[1].startSeconds, 2.0, 1e-9, "Insert silence moves the rest right"); near(c[1].offsetSeconds, 1.0, 1e-9, "Insert silence keeps the audio");
+        auto d = base(); d.push_back(constantClip(1.25, 0.5, 0.5f)); d.push_back(constantClip(5.0, 1.0, 0.5f)); audio::truncate(d, { 1.0, 3.0 });
+        near(d[0].startSeconds, 1.0, 1e-9, "Truncate start"); near(d[0].durationSeconds, 2.0, 1e-9, "Truncate length"); near(d[0].offsetSeconds, 1.0, 1e-9, "Truncate offset");
+        near(d[1].startSeconds, 1.25, 1e-9, "Event inside the range untouched"); near(d[2].startSeconds, 5.0, 1e-9, "Event outside the range untouched");
+        auto e = base(); audio::duplicateRange(e, none, r, 120.0);
+        require(e.size() == 2, "Duplicate adds the range content on top"); near(e[1].startSeconds, 2.0, 1e-9, "Duplicate goes after the range"); near(e[1].offsetSeconds, 1.0, 1e-9, "Duplicate copies the range audio");
+        auto f = base(); audio::adjustFadesToRange(f, { 0.0, 1.0 }); near(f[0].fadeIn, 1.0, 1e-9, "Range over the start sets the fade-in");
+        audio::adjustFadesToRange(f, { 3.0, 4.0 }); near(f[0].fadeOut, 1.0, 1e-9, "Range over the end sets the fade-out");
+        auto g = base(); audio::adjustFadesToRange(g, { 1.0, 3.0 }); near(g[0].fadeIn, 1.0, 1e-9, "Inner range: fade-in to its start"); near(g[0].fadeOut, 1.0, 1e-9, "Inner range: fade-out from its end");
+        // MIDI at 120 BPM (2 beats per second): notes at beats 1, 3 and 5.
+        const auto notes = [] { std::vector<MidiNote> n(3); n[0].startBeats = 1; n[1].startBeats = 3; n[2].startBeats = 5; for (auto& x : n) x.lengthBeats = 1; return n; };
+        std::vector<AudioClip> empty; auto m = notes(); audio::deleteTime(empty, m, r, 120.0);
+        require(m.size() == 2 && std::abs(m[0].startBeats - 1) < 1e-9 && std::abs(m[1].startBeats - 3) < 1e-9, "Delete time on MIDI");
+        auto s2 = notes(); audio::insertSilence(empty, s2, r, 120.0);
+        require(std::abs(s2[0].startBeats - 1) < 1e-9 && std::abs(s2[1].startBeats - 5) < 1e-9 && std::abs(s2[2].startBeats - 7) < 1e-9, "Insert silence on MIDI");
     });
 
     suite.run("punch in/out records only between the locators", [&]
