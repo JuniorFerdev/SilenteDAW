@@ -47,6 +47,7 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Herramienta 2 «Selección de rango» en la barra (entre Selección y Dividir): arrastrar sobre una o varias pistas, Mayús amplía, doble clic cubre un evento o el hueco entre eventos; resaltado sobre las pistas y «Inicio/Fin/Duración del rango» en la línea de información.
 - Operaciones (`src/audio/RangeEdit.*`, audio y MIDI): Dividir ⇧X, Truncar, Suprimir intervalo de tiempo ⇧Retroceso, Insertar silencio ⇧⌘E, Ajustar fundidos al rango A, Suprimir (Retroceso) y Duplicar (⌘D) con rango activo. Edición › Rango y clic derecho sobre el rango; cada operación es un paso de Deshacer.
 - Pruebas: motor 36/36 (cada operación con posiciones y desplazamientos exactos, MIDI a 120 BPM), flujo 78 (arrastrar rango, suprimir intervalo, deshacer, insertar silencio), idiomas 760. Captura: build/workflow-check/range.png.
+- Universal probada (incluye vista02 y fundidos01): motor 36/36, io 6/6, flujo 78/78 en arm64 y x86_64; sulphuric idéntico; layout.xml del usuario intacto.
 - Pendiente: mover/copiar el contenido arrastrando el rango, empujar bordes, cortar/copiar/pegar rango.
 
 ## Tramo · 01-11-2026 · fundidos01 · Fundidos y volumen de eventos (manual págs. 396–418)
