@@ -48,6 +48,7 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Empujar (por el valor de rejilla): ⌥← / ⌥→ inicio del rango, ⌥⇧← / ⌥⇧→ final; ⌘← / ⌘→ desplaza el rango sin mover el contenido.
 - Cortar / copiar / pegar con rango: portapapeles por pistas; pega en el cursor sobre la pista seleccionada y las siguientes (⌥V en su posición original). Motor: `copyRange` y `pasteContent` en `src/audio/RangeEdit.*`.
 - Pruebas: motor 36/36 (mover = copiar, suprimir, pegar; MIDI en su sitio), flujo 82 (arrastrar, ⌥ copiar con capas, ⌥→, copiar/pegar), idiomas.
+- Universal probada: motor 36/36, io 6/6, flujo 82/82 en arm64 y x86_64; sulphuric idéntico; layout.xml del usuario intacto.
 
 ## Tramo · 02-11-2026 · rango01 · Edición de rangos (manual págs. 295–305)
 
