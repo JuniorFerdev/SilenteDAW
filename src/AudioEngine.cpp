@@ -121,7 +121,12 @@ struct AudioEngine::RecordingSession
         juce::File file;
         std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> writer;
         juce::MidiBuffer midi;
+        // Live waveform: preallocated min/max pairs filled by the audio thread; `count` is
+        // published after the pair is written, so the message thread reads only finished pairs.
+        struct Overview { std::vector<float> minMax; std::atomic<int> count { 0 }; float lo = 0.0f, hi = 0.0f; int filled = 0; };
+        std::unique_ptr<Overview> overview;
     };
+    int samplesPerPeak = 480;
     // One lap per pass through the cycle (one in a linear recording): where it sits in the
     // project and which part of the recorded file it is.
     struct Lap { double start = 0.0; juce::int64 fileOffset = 0, length = 0; };
@@ -697,6 +702,9 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
             }
             session.laps[(size_t) (session.lapCount - 1)].length += written;
             session.captured += written;
+            recordLapStart = session.laps[(size_t) (session.lapCount - 1)].start;
+            recordLapOffset = session.laps[(size_t) (session.lapCount - 1)].fileOffset;
+            recordCaptured = session.captured;
             session.lastEnd = at + written / rate;
             const auto projectSample = static_cast<juce::int64>(std::llround(start * rate));
             for (auto& entry : session.entries)
@@ -712,6 +720,20 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
                         else { scratch.clear(ch, 0, written); channels[ch] = scratch.getReadPointer(ch); }
                     }
                     if (!entry.writer->write(channels, written)) session.failed = true;
+                    if (auto* view = entry.overview.get())
+                        for (int i = 0; i < written; ++i)
+                        {
+                            const float l = channels[0][i], r = channels[1][i];
+                            view->lo = juce::jmin(view->lo, l, r); view->hi = juce::jmax(view->hi, l, r);
+                            if (++view->filled < session.samplesPerPeak) continue;
+                            const int n = view->count.load(std::memory_order_relaxed);
+                            if (2 * n + 1 < static_cast<int>(view->minMax.size()))
+                            {
+                                view->minMax[(size_t) (2 * n)] = view->lo; view->minMax[(size_t) (2 * n + 1)] = view->hi;
+                                view->count.store(n + 1, std::memory_order_release);
+                            }
+                            view->lo = view->hi = 0.0f; view->filled = 0;
+                        }
                 }
                 else if (projectSample < std::numeric_limits<int>::max() - samples)
                     entry.midi.addEvents(liveMidi, offset + a, written, static_cast<int>(projectSample) - offset);
@@ -1154,6 +1176,7 @@ juce::Result AudioEngine::beginRecording(const juce::File& directory, RecordOpti
     auto session = std::make_unique<RecordingSession>();
     session->start = positionSeconds.load(); session->rate = sampleRate.load(); session->bpm = tempo.load();
     session->captureFrom = options.captureFrom;
+    session->samplesPerPeak = juce::jmax(16, (int) std::lround(session->rate / 100.0));
     const int bits = recordBitDepth.load() == 16 ? 16 : recordBitDepth.load() == 32 ? 32 : 24;
     diskThread.startThread();
     for (const auto& track : tracks)
@@ -1170,6 +1193,8 @@ juce::Result AudioEngine::beginRecording(const juce::File& directory, RecordOpti
                                                    .withSampleFormat(bits == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint : juce::AudioFormatWriterOptions::SampleFormat::integral));
             if (!writer) return juce::Result::fail(i18n::tr("No se pudo crear ") + entry.file.getFileName());
             entry.writer = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(writer.release(), diskThread, 262144);
+            entry.overview = std::make_unique<RecordingSession::Entry::Overview>();
+            entry.overview->minMax.resize(2 * 2 * 3600 * 100); // two hours at one pair per 10 ms
         }
         else entry.midi.ensureSize(1024 * 1024);
         session->entries.push_back(std::move(entry));
@@ -1177,7 +1202,7 @@ juce::Result AudioEngine::beginRecording(const juce::File& directory, RecordOpti
     recordingSession = std::move(session);
     const auto countIn = options.countIn ? static_cast<juce::int64>(std::llround(click.countInBars.load() * 4 * 60.0 / juce::jlimit(20.0, 400.0, tempo.load()) * sampleRate.load())) : 0;
     countInLength = countIn; countInSamples = countIn;
-    capturing = false; punchedOut = false;
+    capturing = false; punchedOut = false; recordLapStart = -1.0; recordLapOffset = 0; recordCaptured = 0;
     recording = true; chaseRequested = true; playing = true;
     return juce::Result::ok();
 }
@@ -1186,12 +1211,25 @@ juce::File AudioEngine::audioFolder() const
     return projectFile != juce::File() ? projectFile.getParentDirectory().getChildFile("Audio")
                                        : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Silente/Audio");
 }
+bool AudioEngine::recordingOverview(const Track& track, const float*& minMax, int& count, int& samplesPerPeak) const
+{
+    if (! recordingSession) return false;
+    for (const auto& entry : recordingSession->entries)
+        if (entry.track.get() == &track && entry.overview)
+        {
+            minMax = entry.overview->minMax.data();
+            count = entry.overview->count.load(std::memory_order_acquire);
+            samplesPerPeak = recordingSession->samplesPerPeak;
+            return true;
+        }
+    return false;
+}
 void AudioEngine::cancelRecording()
 {
     std::unique_ptr<RecordingSession> session;
     {
         const juce::ScopedLock lock(modelLock);
-        recording = false; capturing = false;
+        recording = false; capturing = false; recordLapStart = -1.0;
         session = std::move(recordingSession);
     }
     if (session) for (auto& entry : session->entries) if (entry.writer) { entry.writer.reset(); entry.file.deleteFile(); }
@@ -1201,7 +1239,7 @@ juce::Result AudioEngine::endRecording()
     std::unique_ptr<RecordingSession> session;
     {
         const juce::ScopedLock lock(modelLock);
-        recording = false; capturing = false;
+        recording = false; capturing = false; recordLapStart = -1.0;
         if (!recordingSession) return juce::Result::ok();
         session = std::move(recordingSession);
     }

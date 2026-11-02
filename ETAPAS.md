@@ -42,6 +42,12 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Tramo · 02-11-2026 · grabacion02 · Evento rojo al grabar (manual pág. 356)
+
+- Mientras se graba, cada pista armada muestra un evento rojo «Grabando…» desde el punto donde empezó a escribirse la entrada (o el punch in, o el inicio de la vuelta en ciclo) hasta el cursor, con la forma de onda en vivo.
+- Motor: picos mín/máx cada 10 ms escritos por el hilo de audio en memoria reservada antes de grabar (2 h por pista, sin asignaciones en el hilo de audio) y publicados con un contador atómico; posición y longitud de la vuelta en `recordLapStart/recordLapOffset/recordCaptured`.
+- Pruebas: motor 37/37 (nada antes del punch in, inicio exacto, 1 s = 100 picos que siguen la entrada, limpieza al terminar), flujo 83 (evento creciendo 3 s). Captura: build/workflow-check/recording-live.png.
+
 ## Tramo · 02-11-2026 · rango02 · Mover, copiar y empujar rangos (manual págs. 300–303)
 
 - Arrastrar dentro del rango (herramienta 2) mueve su contenido en el tiempo y a otras pistas, dejando hueco en el origen; con ⌥ lo copia. Vista previa del destino mientras se arrastra; el rango sigue al contenido. Todas las capas bajo el rango se mueven y conservan su orden.

@@ -212,6 +212,7 @@ public:
                 }
                 if(selected) { g.setColour(ink.withAlpha(.65f));g.fillRoundedRectangle(r.getRight()-5,r.getCentreY()-8,2,16,1); }
             }
+            drawRecording(g,t,y);
         }
         if(hasRange)
         {   // Range highlight over its rows (a zero-length range is the range cursor).
@@ -350,6 +351,28 @@ public:
     juce::Rectangle<float> fadeInHandle(const AudioClip& c,juce::Rectangle<float> r)const{return {juce::jlimit(r.getX(),juce::jmax(r.getX(),r.getRight()-10.0f),r.getX()+(float)(c.fadeIn*pixelsPerSecond)-5.0f),r.getY()+23.0f,10.0f,8.0f};}
     juce::Rectangle<float> fadeOutHandle(const AudioClip& c,juce::Rectangle<float> r)const{return {juce::jlimit(r.getX(),juce::jmax(r.getX(),r.getRight()-10.0f),r.getRight()-(float)(c.fadeOut*pixelsPerSecond)-5.0f),r.getY()+23.0f,10.0f,8.0f};}
     juce::Rectangle<float> volumeHandle(juce::Rectangle<float> r)const{return {r.getX()+4.0f,r.getBottom()-14.0f,10.0f,10.0f};}
+    // Cubase draws the take being recorded as a red event that grows with its waveform.
+    void drawRecording(juce::Graphics& g,const Track& t,int y)
+    {
+        if(!engine.recording.load()||!t.armed.load()||!t.hasEvents())return;
+        const double start=engine.recordLapStart.load();if(start<0.0)return;
+        const double rate=engine.currentSampleRate();const auto offset=engine.recordLapOffset.load();
+        const double length=(double)(engine.recordCaptured.load()-offset)/rate;
+        const juce::Rectangle<float> r(secondsToX(start),(float)y+8,juce::jmax(2.0f,(float)(length*pixelsPerSecond)),lane-16.0f);
+        g.setColour(coral.withAlpha(.55f));g.fillRoundedRectangle(r,2);g.setColour(coral);g.drawRoundedRectangle(r.reduced(.5f),2,1.2f);
+        text(g,i18n::tr("Grabando…"),r.withHeight(22).reduced(8,0).toNearestInt(),11,eventInk);
+        const float* minMax=nullptr;int count=0,samplesPerPeak=1;
+        if(!engine.recordingOverview(t,minMax,count,samplesPerPeak)||!minMax)return;
+        const auto w=r.withTrimmedTop(24).reduced(0,5);const float half=w.getHeight()*.5f,scale=w.getHeight()*.48f*waveZoom;
+        const double peaksPerPixel=rate/samplesPerPeak/pixelsPerSecond;const int first=(int)(offset/samplesPerPeak);
+        g.setColour(eventInk.withAlpha(.85f));
+        for(int x=juce::jmax(header,(int)w.getX());x<juce::jmin(getWidth(),(int)w.getRight());++x)
+        {
+            const int i0=first+(int)((x-w.getX())*peaksPerPixel),i1=juce::jmax(i0+1,first+(int)((x+1-w.getX())*peaksPerPixel));if(i0>=count)break;
+            float lo=0,hi=0;for(int i=i0;i<juce::jmin(i1,count);++i){lo=juce::jmin(lo,minMax[2*i]);hi=juce::jmax(hi,minMax[2*i+1]);}
+            g.drawVerticalLine(x,w.getCentreY()-juce::jmin(half,hi*scale),w.getCentreY()+juce::jmin(half,-lo*scale)+1);
+        }
+    }
     void drawFades(juce::Graphics& g,const AudioClip& c,juce::Rectangle<float> r,bool selected)
     {
         const auto area=r.withTrimmedTop(22.0f);
@@ -1331,6 +1354,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         syncing=true;if(!projectTitle.isBeingEdited())projectTitle.setText(engine.projectName,juce::dontSendNotification);if(!tempo.isMouseButtonDown())tempo.setValue(engine.tempo,juce::dontSendNotification);syncing=false;
         play.setToggleState(engine.playing,juce::dontSendNotification);play.setButtonText(engine.playing?juce::String::fromUTF8("Ⅱ"):juce::String::fromUTF8("▶"));loop.setToggleState(engine.looping,juce::dontSendNotification);click.setToggleState(engine.metronome,juce::dontSendNotification);
         record.setColour(juce::TextButton::buttonColourId,engine.capturing?coral:engine.recording?coral.withAlpha(.3f):raised);
+        if(engine.recording.load())arrangement.repaint(); // the red event grows
         punchInButton.setToggleState(engine.punchIn.load(),juce::dontSendNotification);punchOutButton.setToggleState(engine.punchOut.load(),juce::dontSendNotification);
         if(engine.recording.load()&&engine.punchedOut.exchange(false))
         {   // Punch out passed: the take is closed, playback continues (or stops after the post-roll).

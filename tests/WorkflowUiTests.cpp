@@ -103,12 +103,22 @@ private:
         expect(engine.recording.load()&&engine.playing.load()&&!engine.capturing.load(),"play with Punch In waits for the punch-in point");
         AudioBuffer<float> out(2,128),in(2,128);for(int c=0;c<2;++c)in.getWritePointer(c)[0]=0,juce::FloatVectorOperations::fill(in.getWritePointer(c),0.25f,128);
         for(int done=0;done<48000*3/10;done+=128){out.clear();engine.renderOfflineBlock(out,128,in);}
+        capture(view,output.getChildFile("recording.png")); // the red event while the take is still open
         view.transportMenuItem(0); // refresh: the punch out closes the take
         expect(!engine.recording.load()&&engine.playing.load(),"punch out ends recording, playback continues");
         expect(track->clips.size()==1&&std::abs(track->clips[0].startSeconds-0.1)<1e-4&&std::abs(track->clips[0].durationSeconds-0.1)<1e-4,"punched take sits between the locators");
         expect(view.editHistory().size()>0&&view.editHistory()[view.editHistory().size()-1]==i18n::tr("Grabar"),"recording is an undo step named Grabar");
         view.runCommand("undo");expect(engine.tracks.size()>0&&engine.tracks.back()->clips.empty(),"undo removes the recorded take");
         view.runCommand("stop");view.runCommand("punchIn");view.runCommand("punchOut");
+        {   // Three seconds of a sung-like signal from bar 2: the growing red event with its waveform.
+            engine.clear();engine.prepareForOffline(48000,128,true);auto voz=engine.addAudioTrack("Voz");voz->inputLeft=0;voz->inputRight=1;voz->armed=true;
+            engine.seek(1.0);const bool ok=engine.beginRecording(output.getChildFile("rec-preview"),{-1.0,false}).wasOk();
+            AudioBuffer<float> o(2,128),i(2,128);double t=0;
+            for(int done=0;done<48000*3;done+=128){for(int k=0;k<128;++k){const float v=(float)(0.7*std::sin(t*2*3.14159*220)*std::abs(std::sin(t*3.0)));i.setSample(0,k,v);i.setSample(1,k,v);t+=1.0/48000;}o.clear();engine.renderOfflineBlock(o,128,i);}
+            view.transportMenuItem(0);capture(view,output.getChildFile("recording-live.png"));
+            expect(ok&&engine.recording.load()&&std::abs(engine.recordLapStart.load()-1.0)<1e-3&&engine.recordCaptured.load()>=48000*3-128,"red event grows from where recording started");
+            engine.cancelRecording();engine.pause();
+        }
         engine.clear();engine.prepareForOffline(48000,128);
         fadeChecks();
     }

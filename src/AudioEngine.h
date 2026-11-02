@@ -121,6 +121,11 @@ public:
     std::atomic<int> audioRecordMode { 1 }, recordBitDepth { 24 };
     // Audio thread → UI: input is being written now; the punch-out point has been passed.
     std::atomic<bool> capturing { false }, punchedOut { false };
+    // Live recording for the project window (the red event that grows): where the current lap
+    // started (seconds, -1 = nothing captured yet), its offset in the take file and the samples
+    // captured so far. Written by the audio thread.
+    std::atomic<double> recordLapStart { -1.0 };
+    std::atomic<juce::int64> recordLapOffset { 0 }, recordCaptured { 0 };
     juce::String projectName { i18n::tr("Sin título") }, lastWarning;
     juce::File projectFile;
 
@@ -159,6 +164,9 @@ public:
     juce::Result beginRecording(const juce::File& directory, RecordOptions options = {});
     // «Regrabar»: drops the takes of the running recording (their files are deleted).
     void cancelRecording();
+    // Waveform of the take being recorded on `track` (message thread): min/max pairs, one per
+    // `samplesPerPeak` samples of the take file. False when the track is not recording audio.
+    bool recordingOverview(const Track& track, const float*& minMax, int& count, int& samplesPerPeak) const;
     juce::Result endRecording();
     // Where new audio files of the project go (recordings, glued events): «Audio» in its folder.
     juce::File audioFolder() const;

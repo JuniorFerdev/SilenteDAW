@@ -692,6 +692,25 @@ int runEngineTests(const juce::File& outputDir)
         near(clip.audio->getSample(1, clip.audio->getNumSamples() - 1), 0.15, 1e-4, "Last recorded sample is the input before punch out");
     });
 
+    suite.run("live recording view: lap start, captured length and waveform peaks", [&]
+    {
+        AudioEngine engine; auto track = recorder(engine);
+        engine.loopStart = 1.0; engine.loopEnd = 3.0; engine.punchIn = true; engine.seek(0.5);
+        requireOk(engine.beginRecording(dir.getChildFile("live"), { -1.0, false }));
+        recordInput(engine, 0.25);
+        near(engine.recordLapStart.load(), -1.0, 1e-12, "Nothing shown before the punch-in");
+        recordInput(engine, 1.25); // project 0.5 → 2.0 s: one second captured from 1.0 s
+        near(engine.recordLapStart.load(), 1.0, 1.0 / rate, "Red event starts at the punch-in");
+        near((double) engine.recordCaptured.load() / rate, 1.0, 2.0 * block / rate, "Red event length follows the recording");
+        const float* peaks = nullptr; int count = 0, perPeak = 0;
+        require(engine.recordingOverview(*track, peaks, count, perPeak) && peaks != nullptr, "No live waveform");
+        require(perPeak == 480 && std::abs(count - 100) <= 1, "Expected 100 peaks of 10 ms, got " + juce::String(count));
+        // The input is a ramp of the render clock (seconds / 10): the last peak is near 1.5 s → 0.15.
+        near(peaks[2 * (count - 1) + 1], 0.15, 0.002, "Last peak does not follow the input");
+        requireOk(engine.endRecording());
+        near(engine.recordLapStart.load(), -1.0, 1e-12, "Live view not cleared after recording");
+    });
+
     suite.run("cycle recording makes one take per lap and the last lap is heard", [&]
     {
         AudioEngine engine; auto track = recorder(engine);

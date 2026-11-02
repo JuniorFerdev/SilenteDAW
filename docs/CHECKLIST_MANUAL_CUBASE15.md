@@ -33,7 +33,8 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ Grabación en ciclo con una toma por vuelta; modos Mantener historial / Ciclo historial + reemplazar / Reemplazar.
 - ✅ Modos de grabación: Punch in/out o Regrabar; inicio en cursor, localizador izquierdo o selección.
 - ✅ Formato 16/24/32 bit flotante; carpeta Audio del proyecto; deshacer grabación.
-- ⬜ Evento rojo creciendo al grabar, pregrabación (60 s), carriles de tomas, modos MIDI, compensación de latencia de entrada.
+- ✅ Evento rojo «Grabando…» que crece con la forma de onda en vivo (por vuelta de ciclo, desde el punch in).
+- ⬜ Pregrabación (60 s), carriles de tomas, modos MIDI, compensación de latencia de entrada.
 
 ## Partes, eventos y fundidos (253–294, 396–418)
 - ✅ Mover, redimensionar, dividir, duplicar, borrar, color de evento.
