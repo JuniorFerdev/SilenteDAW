@@ -157,8 +157,8 @@ std::vector<KeyCommand> build()
     add("zoomFull", "Alejar al máximo", "Zoom Full", 'F', S);
     add("zoomIn", "Acercar zoom", "Zoom In", 'H');
     add("zoomOut", "Alejar zoom", "Zoom Out", 'G');
-    add("", "Ampliar zoom vertical", "Zoom In Vertically", 'H', S);
-    add("", "Reducir zoom vertical", "Zoom Out Vertically", 'G', S);
+    add("zoomInVertical", "Ampliar zoom vertical", "Zoom In Vertically", 'H', S);
+    add("zoomOutVertical", "Reducir zoom vertical", "Zoom Out Vertically", 'G', S);
     add("zoomSelection", "Zoom a la selección", "Zoom to Selection", 'S', A);
     return list;
 }

@@ -13,6 +13,7 @@
 #include "ui/project/ChannelTab.h"
 #include "ui/project/TrackFinder.h"
 #include "ui/project/SnapGrid.h"
+#include "ui/project/ZoneSplitter.h"
 #include "app/KeyCommands.h"
 #include "ui/keys/KeyCommandsPanel.h"
 #include "ui/project/EditHistoryPanel.h"
@@ -73,7 +74,9 @@ public:
     std::set<juce::String>& hiddenTracks = filter.hiddenTracks;
     double pixelsPerSecond = 75, scrollSeconds = 0;
     int firstTrack = 0;
-    static constexpr int header = 250, ruler = 30, lane = 60;
+    static constexpr int header = 250, ruler = 30, minLane = 40, maxLane = 240;
+    // Track height (Cubase: vertical zoom) and waveform zoom of the event display.
+    int lane = 60; float waveZoom = 1.0f;
     double xToSeconds(float x) const { return juce::jmax(0.0, scrollSeconds + (x - header)/pixelsPerSecond); }
     float secondsToX(double s) const { return (float)(header + (s-scrollSeconds)*pixelsPerSecond); }
     // Snap with the project window's Ajustar settings; the dragged event is not its own magnet.
@@ -157,8 +160,9 @@ public:
                 g.setColour(chosen?activeInk:juce::Colours::white);g.fillEllipse((float)v.getX()+(float)v.getWidth()*p-5.0f,(float)v.getCentreY()-5.0f,10.0f,10.0f);
                 text(g,db<=-60.0f?juce::String::fromUTF8("-∞"):juce::String(db,2)+" dB",{v.getRight()+6,y+4,52,22},10,headerInk,juce::Justification::centredRight);
             }
-            if(t.hasEvents()){chip(g,juce::String::fromUTF8("●"),{98,y+32,22,20},t.armed,coral);chip(g,juce::String::fromUTF8("◉"),{122,y+32,22,20},t.monitor,meterWarning);}
-            if(t.kind!=TrackKind::folder){chip(g,"R",{150,y+32,22,20},false,mint);chip(g,"W",{174,y+32,22,20},false,coral);chip(g,"e",{202,y+32,22,20},false,accent);}
+            // Second row only when the track is tall enough (Cubase hides it on small tracks).
+            if(lane>=56&&t.hasEvents()){chip(g,juce::String::fromUTF8("●"),{98,y+32,22,20},t.armed,coral);chip(g,juce::String::fromUTF8("◉"),{122,y+32,22,20},t.monitor,meterWarning);}
+            if(lane>=56&&t.kind!=TrackKind::folder){chip(g,"R",{150,y+32,22,20},false,mint);chip(g,"W",{174,y+32,22,20},false,coral);chip(g,"e",{202,y+32,22,20},false,accent);}
             meter(g,{(float)header-7.0f,(float)y+4,3.0f,(float)lane-9},juce::jmax(t.peakL.load(),t.peakR.load()));
             g.setColour(line.withAlpha(.65f)); g.drawHorizontalLine(y+lane-1,0,(float)getWidth());
             juce::Graphics::ScopedSaveState state(g); g.reduceClipRegion(header,y,getWidth()-header,lane);
@@ -168,7 +172,7 @@ public:
                 auto r=juce::Rectangle<float>(secondsToX(0),(float)y+8, (float)(end*beat*pixelsPerSecond),lane-16.0f);
                 g.setColour(colour.withAlpha(.82f));g.fillRoundedRectangle(r,2);g.setColour(colour.brighter(.25f));g.drawRoundedRectangle(r.reduced(.5f),2,1);
                 text(g,t.name + juce::String::fromUTF8(" · MIDI"),r.removeFromTop(22).toNearestInt().reduced(8,0),11,eventInk);
-                for (auto& n:t.notes) { float x=secondsToX(n.startBeats*beat); float ny=(float)y+35+(84-n.pitch)*.75f; ny=juce::jlimit((float)y+34,(float)y+lane-13,ny); g.setColour(eventInk.withAlpha(.85f));g.fillRoundedRectangle(x,ny,juce::jmax(3.0f,(float)(n.lengthBeats*beat*pixelsPerSecond)-2),3,1); }
+                for (auto& n:t.notes) { float x=secondsToX(n.startBeats*beat); float ny=(float)y+35+(84-n.pitch)*.75f; ny=juce::jlimit((float)y+34,juce::jmax((float)y+34,(float)y+lane-13),ny); g.setColour(eventInk.withAlpha(.85f));g.fillRoundedRectangle(x,ny,juce::jmax(3.0f,(float)(n.lengthBeats*beat*pixelsPerSecond)-2),3,1); }
             }
             for(int c=0;c<(int)t.clips.size();++c)
             {
@@ -222,7 +226,7 @@ public:
                 const auto v=volumeRect(ruler+visualRow(i)*lane).expanded(6,4);
                 if(v.contains(e.getPosition())){if(beforeEdit)beforeEdit();volumeDrag=i;if(e.getNumberOfClicks()>1)t.gain=1.0f;else setVolumeFrom(t,e.x);if(changed)changed();repaint();return;}
                 if(dy>=5&&dy<25){if(e.x>=46&&e.x<68){if(beforeEdit)beforeEdit();t.mute=!t.mute;if(changed)changed();}else if(e.x>=70&&e.x<92){if(beforeEdit)beforeEdit();t.solo=!t.solo;if(changed)changed();}}
-                else if(dy>=32&&dy<52)
+                else if(lane>=56&&dy>=32&&dy<52)
                 {
                     if(e.x>=98&&e.x<120&&t.hasEvents()){if(beforeEdit)beforeEdit();t.armed=!t.armed;if(changed)changed();}
                     else if(e.x>=122&&e.x<144&&t.hasEvents()){if(beforeEdit)beforeEdit();t.monitor=!t.monitor;if(changed)changed();}
@@ -322,12 +326,14 @@ private:
     {
         if(!c.audio||c.audio->getNumSamples()<1)return;const int x0=juce::jmax(header,(int)r.getX()),x1=juce::jmin(getWidth(),(int)r.getRight());
         const float* data=c.audio->getReadPointer(0);const int size=c.audio->getNumSamples();g.setColour(colour.withAlpha(.8f));
-        for(int x=x0;x<x1;x+=2){double rel=(x-secondsToX(c.startSeconds))/pixelsPerSecond;const int a=juce::jlimit(0,size-1,(int)((c.offsetSeconds+rel)*c.sourceRate));const int b=juce::jlimit(a+1,size,(int)((c.offsetSeconds+rel+2/pixelsPerSecond)*c.sourceRate));float lo=0,hi=0;const int step=juce::jmax(1,(b-a)/32);for(int n=a;n<b;n+=step){lo=juce::jmin(lo,data[n]);hi=juce::jmax(hi,data[n]);}g.drawVerticalLine(x,r.getCentreY()-hi*r.getHeight()*.48f,r.getCentreY()-lo*r.getHeight()*.48f+1);}
+        for(int x=x0;x<x1;x+=2){double rel=(x-secondsToX(c.startSeconds))/pixelsPerSecond;const int a=juce::jlimit(0,size-1,(int)((c.offsetSeconds+rel)*c.sourceRate));const int b=juce::jlimit(a+1,size,(int)((c.offsetSeconds+rel+2/pixelsPerSecond)*c.sourceRate));float lo=0,hi=0;const int step=juce::jmax(1,(b-a)/32);for(int n=a;n<b;n+=step){lo=juce::jmin(lo,data[n]);hi=juce::jmax(hi,data[n]);}
+            // Waveform zoom enlarges the drawing only; peaks beyond the event are clipped at its edges.
+            const float half=r.getHeight()*.5f,scale=r.getHeight()*.48f*waveZoom;g.drawVerticalLine(x,r.getCentreY()-juce::jmin(half,hi*scale),r.getCentreY()+juce::jmin(half,-lo*scale)+1);}
     }
     void clipMenu() {juce::PopupMenu m;m.addItem(1,i18n::tr("Dividir en el cursor"),selectedClip>=0);m.addItem(2,i18n::tr("Duplicar"),selectedClip>=0);m.addItem(3,i18n::tr("Eliminar"),selectedClip>=0);m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this)](int r){if(!safe)return;if(r==1)safe->splitSelected();if(r==2)safe->duplicateSelected();if(r==3)safe->deleteSelected();});}
     void trackMenu(int i)
     {
-        juce::PopupMenu m;m.addItem(1,i18n::tr("Renombrar pista…"));m.addItem(3,i18n::tr("Color de pista…"));m.addSeparator();m.addItem(2,i18n::tr("Eliminar pista"));m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this),i](int r){if(!safe)return;if(r==3){if(safe->editColour)safe->editColour(i,safe->localAreaToGlobal(juce::Rectangle<int>{0,ruler+safe->visualRow(i)*lane,25,lane}));return;}if(r==2){if(safe->beforeEdit)safe->beforeEdit();safe->engine.removeTrack(i);safe->selectedTrack=juce::jmax(0,i-1);if(safe->selectTrack)safe->selectTrack(safe->selectedTrack);if(safe->changed)safe->changed();safe->repaint();}if(r==1){auto* alert=new juce::AlertWindow(i18n::tr("Nombre de la pista"),"",juce::MessageBoxIconType::NoIcon);alert->addTextEditor("name",safe->engine.tracks[(size_t)i]->name);alert->addButton(i18n::tr("Guardar"),1,juce::KeyPress(juce::KeyPress::returnKey));alert->addButton(i18n::tr("Cancelar"),0,juce::KeyPress(juce::KeyPress::escapeKey));alert->enterModalState(true,juce::ModalCallbackFunction::create([safe,alert,i](int result){if(safe&&result==1){const juce::ScopedLock lock(safe->engine.modelLock);if(i<(int)safe->engine.tracks.size()){if(safe->beforeEdit)safe->beforeEdit();safe->engine.tracks[(size_t)i]->name=alert->getTextEditorContents("name");if(safe->changed)safe->changed();}}}),true);}});
+        juce::PopupMenu m;m.addItem(1,i18n::tr("Renombrar pista…"));m.addItem(3,i18n::tr("Color de pista…"));m.addSeparator();m.addItem(2,i18n::tr("Eliminar pista"));m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this),i](int r){if(!safe)return;if(r==3){if(safe->editColour)safe->editColour(i,safe->localAreaToGlobal(juce::Rectangle<int>{0,ruler+safe->visualRow(i)*safe->lane,25,safe->lane}));return;}if(r==2){if(safe->beforeEdit)safe->beforeEdit();safe->engine.removeTrack(i);safe->selectedTrack=juce::jmax(0,i-1);if(safe->selectTrack)safe->selectTrack(safe->selectedTrack);if(safe->changed)safe->changed();safe->repaint();}if(r==1){auto* alert=new juce::AlertWindow(i18n::tr("Nombre de la pista"),"",juce::MessageBoxIconType::NoIcon);alert->addTextEditor("name",safe->engine.tracks[(size_t)i]->name);alert->addButton(i18n::tr("Guardar"),1,juce::KeyPress(juce::KeyPress::returnKey));alert->addButton(i18n::tr("Cancelar"),0,juce::KeyPress(juce::KeyPress::escapeKey));alert->enterModalState(true,juce::ModalCallbackFunction::create([safe,alert,i](int result){if(safe&&result==1){const juce::ScopedLock lock(safe->engine.modelLock);if(i<(int)safe->engine.tracks.size()){if(safe->beforeEdit)safe->beforeEdit();safe->engine.tracks[(size_t)i]->name=alert->getTextEditorContents("name");if(safe->changed)safe->changed();}}}),true);}});
     }
 };
 
@@ -544,23 +550,38 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     std::unique_ptr<ui::MixConsole> lowerConsole; // «MixConsole en la zona inferior» (manual p. 89)
     juce::TextButton snapTypeButton,gridButton;
     juce::TextButton punchInButton,punchOutButton;
+    // Waveform zoom (top) and track height (bottom) at the right edge of the event display, and
+    // the draggable borders of the zones; sizes are kept in layout.xml.
+    juce::Slider waveZoomSlider{juce::Slider::LinearVertical,juce::Slider::NoTextBox},trackHeightSlider{juce::Slider::LinearVertical,juce::Slider::NoTextBox};
+    ui::ZoneSplitter channelSplit{true},inspectorSplit{true},rightSplit{true},lowerSplit{false};
+    int channelWidth=132,inspectorWidth=196,rightWidth=0,lowerHeight=0,dragBase=0;
     juce::TextButton allMuteOff{"M"},allSoloOff{"S"},hubButton,mixConsoleButton,zoneChannelButton,zoneLeftButton,zoneLowerButton,zoneRightButton,layoutButton;
     juce::TextButton trackTabButton{i18n::tr("Pista")},editorTabButton{i18n::tr("Editor")};
     bool showChannel=true,showLeft=true,showLower=true,showRight=true,showStatusLine=true,showInfoLine=true,showTransport=true,editorInspector=false;
     juce::Rectangle<int> channelRect,statusRect,infoRect,transportRect;
     std::vector<std::pair<juce::Rectangle<int>,int>> statusFields;
     juce::int64 freeBytes=0;double freeBytesTime=-10.0;
-    static juce::File layoutFile(){return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Silente/layout.xml");}
+    static juce::File layoutFile(){return MainComponent::settingsFolder().getChildFile("layout.xml");}
     void loadLayout()
     {
         auto xml=juce::XmlDocument::parse(layoutFile());if(!xml||!xml->hasTagName("PROJECTWINDOW"))return;
         showChannel=xml->getBoolAttribute("channel",showChannel);showLeft=xml->getBoolAttribute("left",showLeft);showLower=xml->getBoolAttribute("lower",showLower);showRight=xml->getBoolAttribute("right",showRight);
         showStatusLine=xml->getBoolAttribute("statusLine",showStatusLine);showInfoLine=xml->getBoolAttribute("infoLine",showInfoLine);showTransport=xml->getBoolAttribute("transport",showTransport);
+        channelWidth=juce::jlimit(110,320,xml->getIntAttribute("channelWidth",channelWidth));inspectorWidth=juce::jlimit(170,420,xml->getIntAttribute("inspectorWidth",inspectorWidth));
+        rightWidth=xml->getIntAttribute("rightWidth",0);lowerHeight=xml->getIntAttribute("lowerHeight",0);
+        arrangement.lane=juce::jlimit(Arrangement::minLane,Arrangement::maxLane,xml->getIntAttribute("trackHeight",arrangement.lane));
+        arrangement.waveZoom=(float)juce::jlimit(1.0,16.0,xml->getDoubleAttribute("waveZoom",1.0));
+    }
+    void setTrackHeight(int value)
+    {   // Keeps the top visible track in place while the rows grow or shrink.
+        arrangement.lane=juce::jlimit(Arrangement::minLane,Arrangement::maxLane,value);trackHeightSlider.setValue(arrangement.lane,juce::dontSendNotification);arrangement.repaint();
     }
     void saveLayout()
     {
         juce::XmlElement xml("PROJECTWINDOW");xml.setAttribute("channel",showChannel);xml.setAttribute("left",showLeft);xml.setAttribute("lower",showLower);xml.setAttribute("right",showRight);
         xml.setAttribute("statusLine",showStatusLine);xml.setAttribute("infoLine",showInfoLine);xml.setAttribute("transport",showTransport);
+        xml.setAttribute("channelWidth",channelWidth);xml.setAttribute("inspectorWidth",inspectorWidth);xml.setAttribute("rightWidth",rightWidth);xml.setAttribute("lowerHeight",lowerHeight);
+        xml.setAttribute("trackHeight",arrangement.lane);xml.setAttribute("waveZoom",(double)arrangement.waveZoom);
         layoutFile().getParentDirectory().createDirectory();xml.writeTo(layoutFile());
     }
     void toggleZone(bool& flag){flag=!flag;saveLayout();owner.resized();owner.repaint();}
@@ -612,6 +633,24 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         timelineScroll.addListener(this);
         owner.addAndMakeVisible(clickOptions);owner.addAndMakeVisible(tapButton);
         loadLayout();loadTransport();registerKeyActions();
+        for(auto* c:std::initializer_list<juce::Component*>{&waveZoomSlider,&trackHeightSlider,&channelSplit,&inspectorSplit,&rightSplit,&lowerSplit})owner.addAndMakeVisible(c);
+        waveZoomSlider.setRange(1.0,16.0,0.01);waveZoomSlider.setSkewFactorFromMidPoint(4.0);waveZoomSlider.setValue(arrangement.waveZoom,juce::dontSendNotification);
+        waveZoomSlider.setTooltip(i18n::tr("Zoom de forma de onda"));waveZoomSlider.setComponentID("wave-zoom");waveZoomSlider.setDoubleClickReturnValue(true,1.0);
+        waveZoomSlider.onValueChange=[this]{arrangement.waveZoom=(float)waveZoomSlider.getValue();arrangement.repaint();};waveZoomSlider.onDragEnd=[this]{saveLayout();};
+        trackHeightSlider.setRange(Arrangement::minLane,Arrangement::maxLane,1.0);trackHeightSlider.setValue(arrangement.lane,juce::dontSendNotification);
+        trackHeightSlider.setTooltip(i18n::tr("Altura de pistas  ⇧H / ⇧G"));trackHeightSlider.setComponentID("track-height");trackHeightSlider.setDoubleClickReturnValue(true,60.0);
+        trackHeightSlider.onValueChange=[this]{setTrackHeight((int)trackHeightSlider.getValue());};trackHeightSlider.onDragEnd=[this]{saveLayout();};
+        const auto splitter=[this](ui::ZoneSplitter& z,int& size,int sign,std::function<int()> current,int lo,std::function<int()> hi)
+        {
+            z.onStart=[this,current]{dragBase=current();};
+            z.onDrag=[this,&size,sign,lo,hi](int offset){size=juce::jlimit(lo,juce::jmax(lo,hi()),dragBase+sign*offset);owner.resized();};
+            z.onEnd=[this]{saveLayout();};
+        };
+        splitter(channelSplit,channelWidth,1,[this]{return channelRect.getWidth();},110,[this]{return juce::jmin(320,owner.getWidth()-inspectorRect.getWidth()-browserRect.getWidth()-400);});
+        splitter(inspectorSplit,inspectorWidth,1,[this]{return inspectorRect.getWidth();},170,[this]{return juce::jmin(420,owner.getWidth()-channelRect.getWidth()-browserRect.getWidth()-400);});
+        splitter(rightSplit,rightWidth,-1,[this]{return browserRect.getWidth();},160,[this]{return juce::jmin(480,owner.getWidth()-channelRect.getWidth()-inspectorRect.getWidth()-400);});
+        splitter(lowerSplit,lowerHeight,-1,[this]{return lowerRect.getHeight();},150,[this]{return juce::jmax(150,channelRect.getHeight()-140);});
+        channelSplit.setComponentID("split-channel");inspectorSplit.setComponentID("split-left");rightSplit.setComponentID("split-right");lowerSplit.setComponentID("split-lower");
         channelTab=std::make_unique<ui::ChannelTab>(engine,plugins);owner.addAndMakeVisible(*channelTab);
         lowerConsole=std::make_unique<ui::MixConsole>(engine,plugins,consoleHooks(),true);owner.addAndMakeVisible(*lowerConsole);
         channelTab->beforeEdit=[this]{pushUndo(i18n::tr("Cambio en el canal"));};channelTab->openSettings=[this](int i){openChannelSettings(i);};channelTab->changed=[this]{markDirty();};
@@ -887,7 +926,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     // «Modos de grabación» (manual p. 351): Record while recording stops (0) or re-records (1);
     // Record in stop mode starts at the cursor (0), left locator/punch in (1) or selection (2).
     int recordRestartMode=0,recordStartMode=0;bool stopAfterPunchOut=false;double recordStartedAt=0.0;
-    static juce::File transportFile(){return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Silente/transport.xml");}
+    static juce::File transportFile(){return MainComponent::settingsFolder().getChildFile("transport.xml");}
     void loadTransport(){if(auto x=juce::XmlDocument::parse(transportFile())){startMode=juce::jlimit(0,3,x->getIntAttribute("startMode"));returnToStart=x->getBoolAttribute("returnToStart");usePreRoll=x->getBoolAttribute("preRoll");usePostRoll=x->getBoolAttribute("postRoll");autoScroll=x->getBoolAttribute("autoScroll",true);stationary=x->getBoolAttribute("stationary");preRollBars=x->getDoubleAttribute("preRollBars",1.0);postRollBars=x->getDoubleAttribute("postRollBars",1.0);
         recordRestartMode=juce::jlimit(0,1,x->getIntAttribute("recordRestart"));recordStartMode=juce::jlimit(0,2,x->getIntAttribute("recordStart"));stopAfterPunchOut=x->getBoolAttribute("stopAfterPunchOut");}}
     void saveTransport(){juce::XmlElement x("TRANSPORT");x.setAttribute("startMode",startMode);x.setAttribute("returnToStart",returnToStart);x.setAttribute("preRoll",usePreRoll);x.setAttribute("postRoll",usePostRoll);x.setAttribute("autoScroll",autoScroll);x.setAttribute("stationary",stationary);x.setAttribute("preRollBars",preRollBars);x.setAttribute("postRollBars",postRollBars);x.setAttribute("recordRestart",recordRestartMode);x.setAttribute("recordStart",recordStartMode);x.setAttribute("stopAfterPunchOut",stopAfterPunchOut);transportFile().getParentDirectory().createDirectory();x.writeTo(transportFile());}
@@ -1083,7 +1122,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     void layout()
     {
         const int w=owner.getWidth(),h=owner.getHeight();
-        const int left=showLeft?196:0,channelW=showChannel?132:0,right=showRight?(w>=1250?212:180):0;
+        const int left=showLeft?inspectorWidth:0,channelW=showChannel?channelWidth:0,right=showRight?(rightWidth>0?rightWidth:(w>=1250?212:180)):0;
         int top=41;statusRect=infoRect={};
         if(showStatusLine){statusRect={0,top,w,24};top+=24;}
         if(showInfoLine){infoRect={0,top,w,22};top+=22;}
@@ -1091,7 +1130,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         transportRect=showTransport?juce::Rectangle<int>(0,h-bottom,w,47):juce::Rectangle<int>();
         channelRect={0,top,channelW,h-top-bottom};inspectorRect={channelW,top,left,h-top-bottom};
         browserRect={w-right,top,right,h-top-bottom};centreRect={channelW+left,top,w-channelW-left-right,h-top-bottom};
-        lowerRect=showLower?centreRect.removeFromBottom(juce::jlimit(280,380,(int)(h*0.4))):juce::Rectangle<int>();
+        lowerRect=showLower?centreRect.removeFromBottom(lowerHeight>0?juce::jlimit(150,juce::jmax(150,centreRect.getHeight()-140),lowerHeight):juce::jlimit(280,380,(int)(h*0.4))):juce::Rectangle<int>();
         // Toolbar in the order of the manual (pp. 58–66); zone controls on the right.
         undoButton.setBounds(50,7,28,28);redoButton.setBounds(80,7,28,28);
         allMuteOff.setBounds(120,8,26,26);allSoloOff.setBounds(148,8,26,26);mixConsoleButton.setBounds(186,7,30,28);
@@ -1102,10 +1141,18 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         addTrackButton.setBounds(centreRect.getX()+4,centreRect.getY()+4,24,22);
         splitButton.setVisible(false);duplicateButton.setVisible(false);scan.setVisible(false);browser.setVisible(false);demo.setVisible(false);master.setVisible(false);
         const int dx=inspectorRect.getX();
-        inspectorTab.setBounds(dx+3,top+3,93,25);visibilityTab.setBounds(dx+99,top+3,93,25);
-        trackTabButton.setBounds(dx+3,inspectorRect.getBottom()-28,93,25);editorTabButton.setBounds(dx+99,inspectorRect.getBottom()-28,93,25);
+        const int tabW=(left-10)/2;
+        inspectorTab.setBounds(dx+3,top+3,tabW,25);visibilityTab.setBounds(dx+6+tabW,top+3,tabW,25);
+        trackTabButton.setBounds(dx+3,inspectorRect.getBottom()-28,tabW,25);editorTabButton.setBounds(dx+6+tabW,inspectorRect.getBottom()-28,tabW,25);
         visibility.setBounds(inspectorRect.withTrimmedTop(31).withTrimmedBottom(31));rightRack.setBounds(browserRect);channelTab->setBounds(channelRect);
-        auto timeline=centreRect;timelineScroll.setBounds(timeline.removeFromBottom(12).withTrimmedLeft(Arrangement::header));arrangement.setBounds(timeline);
+        auto timeline=centreRect;auto zoomStrip=timeline.removeFromRight(16);timelineScroll.setBounds(timeline.removeFromBottom(12).withTrimmedLeft(Arrangement::header));arrangement.setBounds(timeline);
+        waveZoomSlider.setBounds(zoomStrip.getX(),zoomStrip.getY()+Arrangement::ruler,16,juce::jmin(90,zoomStrip.getHeight()/2-Arrangement::ruler));
+        trackHeightSlider.setBounds(zoomStrip.getX(),zoomStrip.getBottom()-12-juce::jmin(110,zoomStrip.getHeight()/2),16,juce::jmin(110,zoomStrip.getHeight()/2));
+        channelSplit.setBounds(channelRect.getRight()-3,channelRect.getY(),6,channelRect.getHeight());channelSplit.setVisible(showChannel);
+        inspectorSplit.setBounds(inspectorRect.getRight()-3,inspectorRect.getY(),6,inspectorRect.getHeight());inspectorSplit.setVisible(showLeft);
+        rightSplit.setBounds(browserRect.getX()-3,browserRect.getY(),6,browserRect.getHeight());rightSplit.setVisible(showRight);
+        lowerSplit.setBounds(lowerRect.getX(),lowerRect.getY()-3,lowerRect.getWidth(),6);lowerSplit.setVisible(showLower);
+        for(auto* z:{&channelSplit,&inspectorSplit,&rightSplit,&lowerSplit})z->toFront(false);
         mixerTab.setButtonText(i18n::tr("MixConsole"));pianoTab.setButtonText(i18n::tr("Editor"));
         if(showLower)
         {
@@ -1367,7 +1414,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         int at=(int)(std::find(v.begin(),v.end(),selected)-v.begin());if(at>=(int)v.size())at=0;
         at=absolute?(offset<0?0:(int)v.size()-1):juce::jlimit(0,(int)v.size()-1,at+offset);
         select(v[(size_t)at]);arrangement.selectedClip=-1;
-        const int rows=juce::jmax(1,(arrangement.getHeight()-Arrangement::ruler)/Arrangement::lane);
+        const int rows=juce::jmax(1,(arrangement.getHeight()-Arrangement::ruler)/arrangement.lane);
         if(at<arrangement.firstTrack)arrangement.firstTrack=at;else if(at>=arrangement.firstTrack+rows)arrangement.firstTrack=at-rows+1;
         refresh();
     }
@@ -1394,6 +1441,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         k["autoScroll"]=[this]{autoScroll=!autoScroll;saveTransport();notice=autoScroll?i18n::tr("Desplazamiento automático activado"):i18n::tr("Desplazamiento automático desactivado");refresh();};
         k["stationary"]=[this]{stationary=!stationary;if(stationary)autoScroll=true;saveTransport();refresh();};k["stop"]=[this]{stopTransport();};k["record"]=[this]{toggleRecord();};
         k["cycle"]=[this]{engine.looping=!engine.looping.load();markDirty();refresh();};
+        k["zoomInVertical"]=[this]{setTrackHeight((int)std::lround(arrangement.lane*1.25));saveLayout();};k["zoomOutVertical"]=[this]{setTrackHeight((int)std::lround(arrangement.lane/1.25));saveLayout();};
         k["punchIn"]=[this]{engine.punchIn=!engine.punchIn.load();markDirty();refresh();};k["punchOut"]=[this]{engine.punchOut=!engine.punchOut.load();markDirty();refresh();};
         k["metronome"]=[this]{toggleMetronome();};
         k["goStart"]=[this]{engine.seek(0);arrangement.scrollSeconds=0;refresh();};
@@ -1488,6 +1536,9 @@ MainComponent::~MainComponent(){stopTimer();ui.reset();}
 void MainComponent::paint(juce::Graphics& g){ui->paint(g);}
 void MainComponent::mouseDown(const juce::MouseEvent& e){ui->statusClick(e.getPosition());}
 void MainComponent::resized(){if(ui)ui->layout();}
+static juce::File& settingsOverride(){static juce::File folder;return folder;}
+juce::File MainComponent::settingsFolder(){return settingsOverride()!=juce::File()?settingsOverride():juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Silente");}
+void MainComponent::useSettingsFolder(const juce::File& folder){settingsOverride()=folder;}
 void MainComponent::timerCallback(){ui->refresh();}
 void MainComponent::newProject(){ui->confirmDiscard([this]{ui->stopTransport();ui->plugins.closeEditors();ui->engine.clear();ui->selected=0;ui->arrangement.selectedClip=-1;ui->arrangement.scrollSeconds=0;ui->arrangement.firstTrack=0;ui->undoStack.clear();ui->redoStack.clear();ui->dirty=false;ui->notice=i18n::tr("Nueva sesión. Añade una pista o arrastra tus archivos.");ui->refresh();});}
 void MainComponent::openProject(){ui->open();}

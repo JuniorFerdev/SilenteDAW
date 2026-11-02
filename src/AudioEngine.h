@@ -65,6 +65,7 @@ struct Track
     bool isMidi = false; // instrument or midi kind
     bool hasEvents() const noexcept { return kind==TrackKind::audio||isMidi; }
     int inputLeft=0,inputRight=1; // Physical device channels; equal indices select mono.
+    int stripWidth=0; // MixConsole channel width in pixels (0 = default); message thread only
     std::atomic<float> gain { 0.8f }, pan { 0.0f }, peakL { 0.0f }, peakR { 0.0f };
     std::atomic<bool> mute { false }, solo { false }, armed { false }, monitor { false };
     std::atomic<float> lowGainDb { 0.0f }, midGainDb { 0.0f }, highGainDb { 0.0f };

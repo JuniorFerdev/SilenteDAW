@@ -18,6 +18,10 @@ public:
     bool keyPressed(const juce::KeyPress&) override;
     bool isInterestedInFileDrag(const juce::StringArray&) override;
     void filesDropped(const juce::StringArray&, int, int) override;
+    // Folder for the window layout and transport options (~/Library/Silente). Test and capture
+    // runs point it elsewhere so they never overwrite the user's own settings.
+    static juce::File settingsFolder();
+    static void useSettingsFolder(const juce::File&);
     void newProject();
     void openProject();
     void saveProject();

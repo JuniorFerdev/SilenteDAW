@@ -3,6 +3,7 @@
 #include "../../plugins/PluginSelection.h"
 #include "../plugins/PluginSlotButton.h"
 #include "../theme/Drawing.h"
+#include "../project/ZoneSplitter.h"
 
 namespace silente::ui
 {
@@ -67,6 +68,10 @@ public:
         for (auto* c : std::initializer_list<juce::Component*> { &input, &output, &instrument, &low, &mid, &high, &pan, &mute, &solo, &arm, &monitor, &edit, &fader, &volume })
             addAndMakeVisible(c);
         for (auto& b : inserts) addAndMakeVisible(b);
+        addAndMakeVisible(edge); edge.setComponentID("mix-width-" + id);
+        edge.onStart = [this] { widthAtStart = getWidth(); };
+        edge.onDrag = [this](int offset) { owner.setStripWidth(index, widthAtStart + offset, juce::ModifierKeys::currentModifiers.isAltDown()); };
+        edge.onEnd = [this] { changed(); };
         for (int k = 0; k < Track::sendCount; ++k)
         {
             auto& target = sendTargets[(size_t) k];
@@ -296,6 +301,7 @@ public:
         f.removeFromRight(14); // scale labels
         scaleArea = juce::Rectangle<int>(f.getRight(), f.getY(), 14, f.getHeight());
         fader.setBounds(f.withTrimmedLeft(6));
+        edge.setBounds(getWidth() - 5, 0, 5, getHeight()); edge.toFront(false);
     }
 
     void paint(juce::Graphics& g) override
@@ -382,8 +388,9 @@ private:
     AudioEngine& engine;
     PluginManager& plugins;
     MixConsoleHooks& hooks;
-    int index;
+    int index, widthAtStart = 0;
     std::shared_ptr<Track> track;
+    ZoneSplitter edge { true };
     juce::TextButton input, output, mute, solo, arm, monitor, edit;
     ui::PluginSlotButton instrument;
     std::array<ui::PluginSlotButton, insertSlots> inserts;
@@ -641,7 +648,7 @@ juce::StringArray MixConsole::currentLayoutKey() const
     {
         const auto& t = *engine.tracks[i];
         if (! passesFilter(t)) continue;
-        key.add(t.id + (pinnedLeft.count(t.id) ? ":L" : pinnedRight.count(t.id) ? ":R" : ":C") + ":" + juce::String((int) i));
+        key.add(t.id + (pinnedLeft.count(t.id) ? ":L" : pinnedRight.count(t.id) ? ":R" : ":C") + ":" + juce::String((int) i) + ":" + juce::String(t.stripWidth));
     }
     return key;
 }
@@ -669,17 +676,33 @@ void MixConsole::rebuild()
 void MixConsole::layoutStrips()
 {
     const int height = juce::jmax(200, scroller.getHeight() - scroller.getScrollBarThickness());
-    int left = 0, centre = 0, right = 0;
+    int left = 0, centre = 0, right = 0; // x of the next strip in each area
     for (auto& s : strips)
     {
         const auto& t = s->getTrack();
         if (! t) continue;
-        if (pinnedLeft.count(t->id)) s->setBounds(left++ * stripWidth, 0, stripWidth, height);
-        else if (pinnedRight.count(t->id)) s->setBounds(right++ * stripWidth, 0, stripWidth, height);
-        else s->setBounds(centre++ * stripWidth, 0, stripWidth, height);
+        const int w = widthOf(*s);
+        int& x = pinnedLeft.count(t->id) ? left : pinnedRight.count(t->id) ? right : centre;
+        s->setBounds(x, 0, w, height); x += w;
     }
-    for (auto& s : strips) if (! s->getTrack()) s->setBounds(right * stripWidth + 6, 0, stripWidth, height);
-    scrolled.setSize(juce::jmax(centre * stripWidth, scroller.getWidth()), height);
+    for (auto& s : strips) if (! s->getTrack()) s->setBounds(right + 6, 0, widthOf(*s), height);
+    scrolled.setSize(juce::jmax(centre, scroller.getWidth()), height);
+}
+
+int MixConsole::widthOf(const Strip& s) const
+{
+    const auto& t = s.getTrack();
+    return juce::jlimit(minStripWidth, maxStripWidth, t ? (t->stripWidth > 0 ? t->stripWidth : stripWidth) : outputWidth);
+}
+
+void MixConsole::setStripWidth(int trackIndex, int width, bool all)
+{
+    width = juce::jlimit(minStripWidth, maxStripWidth, width);
+    if (all || trackIndex < 0) outputWidth = width;
+    for (size_t i = 0; i < engine.tracks.size(); ++i)
+        if (all || (int) i == trackIndex) engine.tracks[i]->stripWidth = width;
+    layoutKey = currentLayoutKey();
+    resized();
 }
 
 void MixConsole::resetClips() { for (auto& s : strips) s->resetClip(); }
@@ -696,10 +719,16 @@ void MixConsole::resized()
     leftZone->setVisible(showLeftZone);
     if (showLeftZone) leftZone->setBounds(r.removeFromLeft(leftZoneWidth));
     legend->setBounds(compact ? juce::Rectangle<int>() : r.removeFromLeft(legendWidth));
-    int pinnedL = 0, pinnedR = 1; // the output channel always sits on the right
-    for (auto& s : strips) if (const auto& t = s->getTrack()) { pinnedL += pinnedLeft.count(t->id) ? 1 : 0; pinnedR += pinnedRight.count(t->id) ? 1 : 0; }
-    leftArea.setBounds(r.removeFromLeft(pinnedL * stripWidth));
-    rightArea.setBounds(r.removeFromRight(pinnedR * stripWidth + 6));
+    int pinnedL = 0, pinnedR = 0; // widths; the output channel always sits on the right
+    for (auto& s : strips)
+    {
+        const auto& t = s->getTrack();
+        if (! t) pinnedR += widthOf(*s);
+        else if (pinnedLeft.count(t->id)) pinnedL += widthOf(*s);
+        else if (pinnedRight.count(t->id)) pinnedR += widthOf(*s);
+    }
+    leftArea.setBounds(r.removeFromLeft(pinnedL));
+    rightArea.setBounds(r.removeFromRight(pinnedR + 6));
     scroller.setBounds(r);
     layoutStrips();
     for (auto& s : strips) s->resized();

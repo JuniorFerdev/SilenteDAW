@@ -701,5 +701,7 @@
   "16 bit": "16 bit",
   "24 bit": "24 bit",
   "32 bit flotante": "32 bit float",
-  "Detén la grabación antes de cambiar el formato.": "Stop recording before changing the format."
+  "Detén la grabación antes de cambiar el formato.": "Stop recording before changing the format.",
+  "Zoom de forma de onda": "Waveform Zoom",
+  "Altura de pistas  ⇧H / ⇧G": "Track Height  ⇧H / ⇧G"
 }

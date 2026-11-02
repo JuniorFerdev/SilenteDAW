@@ -117,6 +117,11 @@ public:
         }
         plugins = std::make_unique<PluginManager>(*engine);
         const bool screenshot = args.contains("--screenshot");
+        if (screenshot || args.contains("--check-workflow"))
+        {
+            auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("Silente-test-settings");
+            folder.deleteRecursively(); MainComponent::useSettingsFolder(folder);
+        }
         juce::Result audioResult = juce::Result::ok();
         if (!screenshot&&!args.contains("--check-workflow")) audioResult = engine->initialise();
         engine->clear();

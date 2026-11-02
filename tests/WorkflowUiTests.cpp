@@ -6,6 +6,7 @@
 #include "../src/ui/io/ExportDialog.h"
 #include "../src/ui/project/TrackFilter.h"
 #include "../src/ui/project/SnapGrid.h"
+#include "../src/ui/project/ZoneSplitter.h"
 #include "../src/app/KeyCommands.h"
 #include <cmath>
 
@@ -150,6 +151,16 @@ private:
             ui::MixConsole lower(engine,manager,hooks,true);lower.setSize(1000,260);
             auto* fader=find(lower,"mix-fader-0");
             expect(fader!=nullptr&&fader->getHeight()>40&&fader->getBottom()<=fader->getParentComponent()->getHeight(),"lower-zone MixConsole with folded racks keeps the fader inside the channel");
+            if(auto* edge=dynamic_cast<ui::ZoneSplitter*>(find(lower,"mix-width-0"));edge&&fader)
+            {   // Drag the right edge of channel 1 wider: only that channel grows, the next one moves.
+                auto* strip=fader->getParentComponent();auto* next=find(lower,"mix-fader-1");const int width=strip->getWidth(),nextX=next?next->getParentComponent()->getX():0;
+                edge->onStart();edge->onDrag(40);edge->onEnd();
+                expect(strip->getWidth()==width+40&&engine.tracks[0]->stripWidth==width+40&&(!next||(next->getParentComponent()->getX()==nextX+40&&next->getParentComponent()->getWidth()==width)),"MixConsole channel width follows its edge drag; the others keep theirs");
+                edge->onStart();edge->onDrag(-500);
+                expect(strip->getWidth()==ui::MixConsole::minStripWidth,"MixConsole channel width stops at the minimum");
+                lower.setStripWidth(0,0,true);for(auto& t:engine.tracks)t->stripWidth=0;
+            }
+            else expect(false,"MixConsole channel edge exists");
             capture(lower,output.getChildFile("mixconsole-lower.png"));
         }
         {
@@ -168,6 +179,25 @@ private:
         {
             auto* arrangementView=find(view,"arrangement");const int before=arrangementView->getHeight();lower->onClick();const int hidden=arrangementView->getHeight();lower->onClick();
             expect(hidden>before&&arrangementView->getHeight()==before,"project window lower zone hides and shows from the toolbar");
+            // Zone borders: drag the Inspector border and the lower zone border, then put them back.
+            auto* leftSplit=dynamic_cast<ui::ZoneSplitter*>(find(view,"split-left"));auto* lowerSplit=dynamic_cast<ui::ZoneSplitter*>(find(view,"split-lower"));
+            if(leftSplit&&lowerSplit&&leftSplit->isVisible()&&lowerSplit->isVisible())
+            {
+                const int x=arrangementView->getX(),height=arrangementView->getHeight();
+                leftSplit->onStart();leftSplit->onDrag(60);lowerSplit->onStart();lowerSplit->onDrag(-50);
+                expect(arrangementView->getX()==x+60&&arrangementView->getHeight()==height-50,"dragging the zone borders resizes the Inspector and the lower zone");
+                leftSplit->onStart();leftSplit->onDrag(-60);lowerSplit->onStart();lowerSplit->onDrag(50); // no onEnd: the user's layout.xml is not written
+                expect(arrangementView->getX()==x&&arrangementView->getHeight()==height,"zone borders return to their sizes");
+            }
+            else expect(false,"zone borders exist");
+            auto* heightSlider=dynamic_cast<Slider*>(find(view,"track-height"));auto* waveSlider=dynamic_cast<Slider*>(find(view,"wave-zoom"));
+            if(heightSlider&&waveSlider)
+            {
+                const double h0=heightSlider->getValue();view.runCommand("zoomInVertical");const double h1=heightSlider->getValue();view.runCommand("zoomOutVertical");
+                expect(h1>h0&&std::abs(heightSlider->getValue()-h0)<=1.0,"Shift+H / Shift+G change the track height slider");
+                expect(waveSlider->getMinimum()==1.0&&waveSlider->getMaximum()==16.0&&waveSlider->getRight()<=view.getWidth(),"waveform zoom slider at the right of the event display");
+            }
+            else expect(false,"track height and waveform zoom sliders exist");
         }
         else expect(false,"project window zone buttons exist");
         if(auto* right=dynamic_cast<TextButton*>(find(view,"zone-right"));right&&find(view,"arrangement")&&right->onClick)

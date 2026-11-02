@@ -877,7 +877,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
     for (const auto& track : tracks)
     {
         auto t = object();
-        set(t, "id", track->id); set(t, "name", track->name); set(t, "colour", track->colour.toString());
+        set(t, "id", track->id); set(t, "name", track->name); set(t, "colour", track->colour.toString()); set(t, "stripWidth", track->stripWidth);
         set(t, "kind", trackKindId(track->kind)); set(t, "isMidi", track->isMidi); set(t, "gain", track->gain.load()); set(t, "pan", track->pan.load());
         set(t, "mute", track->mute.load()); set(t, "solo", track->solo.load());
         set(t,"inputLeft",track->inputLeft);set(t,"inputRight",track->inputRight);
@@ -973,6 +973,7 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
         auto track = std::make_shared<Track>();
         track->id = t.getProperty("id", juce::Uuid().toString()).toString(); track->name = t.getProperty("name", i18n::tr("Pista")).toString();
         track->colour = juce::Colour::fromString(t.getProperty("colour", "ffa994ff").toString());
+        track->stripWidth = juce::jlimit(0, 240, static_cast<int>(t.getProperty("stripWidth", 0)));
         track->kind = trackKindFromId(t.getProperty("kind", {}).toString(), static_cast<bool>(t["isMidi"]));
         track->isMidi = track->kind == TrackKind::instrument || track->kind == TrackKind::midi;
         track->output = t.getProperty("output", {}).toString();

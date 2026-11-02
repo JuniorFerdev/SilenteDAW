@@ -27,6 +27,7 @@ class MixConsole final : public juce::Component, private juce::Timer
 public:
     enum Rack { routing, inserts, equaliser, sends, rackCount };
     static constexpr int stripWidth = 98, legendWidth = 78, toolbarHeight = 40, leftZoneWidth = 230;
+    static constexpr int minStripWidth = 64, maxStripWidth = 240;
 
     // compact: the lower-zone MixConsole of the project window (no left zone, racks folded).
     MixConsole(AudioEngine&, PluginManager&, MixConsoleHooks, bool compact = false);
@@ -41,6 +42,8 @@ public:
     int racksHeight() const;
     void resetClips();
     int visibleStripCount() const { return (int) strips.size(); }
+    // Channel width (Cubase: drag the right edge of a channel; ⌥ resizes all of them).
+    void setStripWidth(int trackIndex, int width, bool all); // trackIndex -1 = output channel
 
 private:
     class Strip;
@@ -63,7 +66,8 @@ private:
     std::vector<std::unique_ptr<Strip>> strips;
     juce::StringArray layoutKey;
     bool showLeftZone = true, compact = false;
-    int toolbar = toolbarHeight;
+    int toolbar = toolbarHeight, outputWidth = stripWidth;
+    int widthOf(const Strip&) const;
 
     bool passesFilter(const Track&) const;
     void rebuild();
