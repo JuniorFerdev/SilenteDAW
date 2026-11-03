@@ -5,6 +5,7 @@
 #include "ui/metronome/MetronomePanel.h"
 #include "PluginManager.h"
 #include "ui/plugins/PluginEditorWindow.h"
+#include "diagnostics/NativeWindows.h"
 #include "../tests/EngineTests.h"
 #include "../tests/LocalisationUiTests.h"
 #include "../tests/WorkflowUiTests.h"
@@ -103,6 +104,8 @@ public:
                     report->setProperty("scale",juce::Desktop::getInstance().getGlobalScaleFactor());report->setProperty("samples",juce::var(*sizes));
                     juce::StringArray distinct;for(int k=10;k<sizes->size();++k)distinct.addIfNotAlreadyThere((*sizes)[k]["w"].toString()+"x"+(*sizes)[k]["h"].toString());
                     report->setProperty("sizesAfter1s",distinct.joinIntoString(" "));report->setProperty("stable",distinct.size()==1);
+                    const auto windows=diagnostics::nativeWindowTitles();report->setProperty("windows",windows.joinIntoString(" | "));
+                    report->setProperty("demoMode",windows.joinIntoString(" ").containsIgnoreCase("DEMO"));
                     output.replaceWithText(juce::JSON::toString(juce::var(report.get())));probeWindow.reset();probePlugin.reset();setApplicationReturnValue(0);quit();
                 });
             });
