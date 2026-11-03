@@ -42,6 +42,13 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Corrección · 02-11-2026 · permiso del micrófono repetido
+
+- Síntoma (Fer): macOS pedía acceso al micrófono unas 8 veces al abrir Silente y otra vez al usar WhatsApp con Silente abierto.
+- Causa: el paquete Silente-Universal.app no estaba firmado (solo la firma automática del enlazador en el ejecutable, identificador «Silente», Info.plist sin vincular). Sin identidad estable macOS no guarda la respuesta y pregunta en cada apertura de la entrada de audio (al arrancar y cada vez que otro programa toma el micrófono y Silente reabre el dispositivo).
+- Corrección: `scripts/sign_app.sh` firma el paquete (ad hoc, local) con identificador `audio.silente.studio` y requisito designado `identifier "audio.silente.studio"`, así el permiso queda guardado también tras recompilar. build_universal.sh y build_intel.sh lo usan. No hay certificado de Apple en este Mac: no está notarizada.
+- Verificado: firma válida y requisito estable; universal arm64/x86_64 motor 37/37, io 6/6, flujo 83/83 con la app firmada. Falta la confirmación de Fer en uso real (un solo «Permitir»).
+
 ## Tramo · 02-11-2026 · grabacion02 · Evento rojo al grabar (manual pág. 356)
 
 - Mientras se graba, cada pista armada muestra un evento rojo «Grabando…» desde el punto donde empezó a escribirse la entrada (o el punch in, o el inicio de la vuelta en ciclo) hasta el cursor, con la forma de onda en vivo.
