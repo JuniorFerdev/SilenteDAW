@@ -309,6 +309,10 @@ public:
         const auto colour = track ? track->colour : accent;
         const bool selected = index >= 0 && hooks.selected && hooks.selected() == index;
         g.fillAll(track ? panel : masterPanel);
+        // The meters repaint 30 times a second on their own: then only they are drawn.
+        const bool metersOnly = meterArea.getUnion(peakArea).getUnion(clipArea).expanded(2).contains(g.getClipBounds());
+        if (! metersOnly)
+        {
         // Name bar on top, in the channel colour (Cubase shows the name above the racks too).
         g.setColour(track ? colour : masterPanel.brighter(.25f)); g.fillRect(2, 2, getWidth() - 4, topName - 4);
         text(g, track ? track->name : i18n::tr("Stereo Out"), { 6, 2, getWidth() - 12, topName - 4 }, 10.0f, track ? eventInk : ink);
@@ -344,6 +348,7 @@ public:
             lastLabel = ty;
             g.drawText(db > 0 ? "+" + juce::String((int) db) : juce::String((int) db), juce::Rectangle<float>((float) scaleArea.getX(), ty - 5.0f, 14.0f, 10.0f), juce::Justification::centred);
         }
+        }
         for (int c = 0; c < 2; ++c)
         {
             auto bar = meterArea.toFloat().withTrimmedTop(0).withWidth(10.0f).translated(c * 13.0f, 0.0f);
@@ -367,6 +372,7 @@ public:
         const float peakDb = juce::jmax(meters.maxDb[0], meters.maxDb[1]);
         g.setColour(bg); g.fillRect(peakArea);
         text(g, peakDb <= -99.0f ? juce::String::fromUTF8("−∞") : juce::String(peakDb, 1), peakArea, 11, peakDb > 0.0f ? coral : ink, juce::Justification::centred);
+        if (metersOnly) return;
         // Name block.
         g.setColour(colour.withAlpha(selected ? .55f : .3f)); g.fillRect(name);
         g.setColour(colour); g.fillRect(name.getX(), name.getY(), name.getWidth(), 3);

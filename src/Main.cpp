@@ -12,6 +12,7 @@
 #include "../tests/DeviceTests.h"
 #include "../tests/IoTests.h"
 #include <iostream>
+#include <sys/resource.h>
 
 namespace silente
 {
@@ -205,10 +206,19 @@ public:
         {
             // Plays the project with the real window open (master muted) and reports dropped blocks.
             engine->masterGain=0.0f;engine->seek(0);engine->play();const auto out=juce::File(args[2]);const int callbacksBefore=engine->deviceCallbacks.load(),underrunsBefore=engine->audioUnderruns.load();
-            juce::Timer::callAfterDelay((int)(args[3].getDoubleValue()*1000),[this,out,callbacksBefore,underrunsBefore]
+            const auto cpuTime=[]{rusage u{};getrusage(RUSAGE_SELF,&u);return u.ru_utime.tv_sec+u.ru_stime.tv_sec+(u.ru_utime.tv_usec+u.ru_stime.tv_usec)*1e-6;};
+            const double cpuBefore=cpuTime(),wallBefore=juce::Time::getMillisecondCounterHiRes()*0.001;
+            auto loads=std::make_shared<std::pair<double,int>>(0.0,0);auto peak=std::make_shared<float>(0.0f);
+            auto steady=std::make_shared<std::pair<double,double>>(0.0,0.0); // cpu and wall time 5 s after the start
+            juce::Timer::callAfterDelay(5000,[steady,cpuTime]{steady->first=cpuTime();steady->second=juce::Time::getMillisecondCounterHiRes()*0.001;});
+            for(int n=1;n<(int)(args[3].getDoubleValue()*10);++n)juce::Timer::callAfterDelay(n*100,[this,loads,peak]{loads->first+=engine->dspLoadAverage.load();++loads->second;*peak=juce::jmax(*peak,engine->dspLoadPeak.load());});
+            juce::Timer::callAfterDelay((int)(args[3].getDoubleValue()*1000),[this,out,callbacksBefore,underrunsBefore,cpuTime,cpuBefore,wallBefore,loads,peak,steady]
             {
+                const double now=juce::Time::getMillisecondCounterHiRes()*0.001,cpu=100.0*(cpuTime()-cpuBefore)/(now-wallBefore);
+                const double steadyCpu=steady->second>0?100.0*(cpuTime()-steady->first)/(now-steady->second):0.0;
+                out.appendText("process cpu "+juce::String(cpu,1)+" %\nsteady cpu "+juce::String(steadyCpu,1)+" %\naudio load avg "+juce::String(loads->second?100.0*loads->first/loads->second:0.0,1)+" %\naudio load peak "+juce::String(100.0f**peak,1)+" %\n");
                 const int underruns=engine->audioUnderruns.load()-underrunsBefore,callbacks=engine->deviceCallbacks.load()-callbacksBefore;
-                out.replaceWithText("position "+juce::String(engine->positionSeconds.load())+"\ncallbacks "+juce::String(callbacks)+"\nunderruns "+juce::String(underruns)+"\ndropped "+juce::String(callbacks>0?100.0*underruns/callbacks:0.0,1)+" %\n");
+                out.appendText("position "+juce::String(engine->positionSeconds.load())+"\ncallbacks "+juce::String(callbacks)+"\nunderruns "+juce::String(underruns)+"\ndropped "+juce::String(callbacks>0?100.0*underruns/callbacks:0.0,1)+" %\n");
                 engine->stop();setApplicationReturnValue(underruns==0?0:1);quit();
             });
         }

@@ -36,6 +36,7 @@ target_compile_definitions(Silente PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:Silente,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}"
     JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 JUCE_PLUGINHOST_VST=0
+    JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS=1
     JUCE_MODAL_LOOPS_PERMITTED=1
 )
 target_link_libraries(Silente PRIVATE SilenteLocales silente_lame "-framework AVFoundation" "-framework CoreMedia" juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)

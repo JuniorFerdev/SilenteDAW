@@ -80,7 +80,14 @@ void ChannelTab::refresh()
         }
         syncing = false;
     }
-    repaint();
+    // Repaint the column only when what it shows changed; otherwise just the meters (24 Hz).
+    juce::String shown = juce::String(index) + (track ? track->name + track->colour.toString() + juce::String(track->lowGainDb.load()) + juce::String(track->midGainDb.load())
+                                                         + juce::String(track->highGainDb.load()) + juce::String((int) track->plugins.size()) : juce::String());
+    if (track) for (const auto& send : track->sends) shown << send.target << juce::String(send.levelDb.load());
+    if (shown != lastShown) { lastShown = shown; repaint(); return; }
+    const bool active = track && (track->peakL.load() > 1.0e-6f || track->peakR.load() > 1.0e-6f);
+    if (active || metersActive) repaint(meterArea.expanded(2));
+    metersActive = active;
 }
 
 void ChannelTab::resized()

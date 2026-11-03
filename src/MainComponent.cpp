@@ -155,15 +155,18 @@ public:
         if(filter.filtering()){g.setColour(accent.withAlpha(.35f));g.fillRoundedRectangle(filterButton().toFloat(),3);}
         drawToolIcon(g,ToolIcon::filter,filterButton().toFloat().reduced(4),filter.filtering()?ink:muted);
         drawToolIcon(g,ToolIcon::search,searchButton().toFloat().reduced(4),muted);
-        auto visible=visibleTracks();
+        auto visible=visibleTracks();const auto dirtyArea=g.getClipBounds();
         for (int rowIndex=firstTrack;rowIndex<(int)visible.size();++rowIndex)
         {
             int i=visible[(size_t)rowIndex];const int y=ruler+(rowIndex-firstTrack)*lane; if (y>getHeight()) break;
+            if(!dirtyArea.intersects(juce::Rectangle<int>(0,y,getWidth(),lane)))continue; // only rows in the area being repainted
             auto& t=*engine.tracks[(size_t)i]; const auto colour=t.colour;
             g.setColour(i==selectedTrack ? selectedTrackColour() : panel); g.fillRect(0,y,header,lane);
             if (i==selectedTrack) { g.setColour(colour.withAlpha(.035f)); g.fillRect(header,y,getWidth()-header,lane); }
             // Cubase track header: colour strip with type icon and number; row 1 M · S · name · volume;
             // row 2 record · monitor · R · W · e; thin level meter at the right edge.
+            if(dirtyArea.getX()<header)
+            {
             g.setColour(colour); g.fillRect(0,y,strip,lane-1);
             trackIcon(g,t.kind,{4.0f,(float)y+6,15.0f,15.0f},eventInk);
             text(g,juce::String(i+1),{18,y+5,strip-20,18},10,eventInk,juce::Justification::centredRight);
@@ -183,7 +186,9 @@ public:
             if(lane>=56&&t.hasEvents()){chip(g,juce::String::fromUTF8("●"),{98,y+32,22,20},t.armed,coral);chip(g,juce::String::fromUTF8("◉"),{122,y+32,22,20},t.monitor,meterWarning);}
             if(lane>=56&&t.kind!=TrackKind::folder){chip(g,"R",{150,y+32,22,20},false,mint);chip(g,"W",{174,y+32,22,20},false,coral);chip(g,"e",{202,y+32,22,20},false,accent);}
             meter(g,{(float)header-7.0f,(float)y+4,3.0f,(float)lane-9},juce::jmax(t.peakL.load(),t.peakR.load()));
+            }
             g.setColour(line.withAlpha(.65f)); g.drawHorizontalLine(y+lane-1,0,(float)getWidth());
+            if(dirtyArea.getRight()<=header)continue; // nothing of the event lane is being repainted
             juce::Graphics::ScopedSaveState state(g); g.reduceClipRegion(header,y,getWidth()-header,lane);
             if (t.isMidi && !t.notes.empty())
             {
@@ -195,7 +200,7 @@ public:
             }
             for(int c=0;c<(int)t.clips.size();++c)
             {
-                const auto& clip=t.clips[(size_t)c]; auto r=clipRect(i,clip); if (!r.intersects(juce::Rectangle<float>{(float)header,0,(float)getWidth()-header,(float)getHeight()})) continue;
+                const auto& clip=t.clips[(size_t)c]; auto r=clipRect(i,clip); if (!r.intersects(dirtyArea.toFloat().expanded(2.0f))) continue;
                 const bool selected=i==selectedTrack&&c==selectedClip;
                 const auto tone=clip.colour.isTransparent()?colour:clip.colour; // own event colour overrides the track's
                 const juce::Graphics::ScopedSaveState faded(g);if(clip.muted)g.setOpacity(.35f); // muted events look switched off
@@ -366,7 +371,8 @@ public:
         const auto w=r.withTrimmedTop(24).reduced(0,5);const float half=w.getHeight()*.5f,scale=w.getHeight()*.48f*waveZoom;
         const double peaksPerPixel=rate/samplesPerPeak/pixelsPerSecond;const int first=(int)(offset/samplesPerPeak);
         g.setColour(eventInk.withAlpha(.85f));
-        for(int x=juce::jmax(header,(int)w.getX());x<juce::jmin(getWidth(),(int)w.getRight());++x)
+        const auto dirty=g.getClipBounds();
+        for(int x=juce::jmax(header,(int)w.getX(),dirty.getX()-1);x<juce::jmin(getWidth(),(int)w.getRight(),dirty.getRight()+1);++x)
         {
             const int i0=first+(int)((x-w.getX())*peaksPerPixel),i1=juce::jmax(i0+1,first+(int)((x+1-w.getX())*peaksPerPixel));if(i0>=count)break;
             float lo=0,hi=0;for(int i=i0;i<juce::jmin(i1,count);++i){lo=juce::jmin(lo,minMax[2*i]);hi=juce::jmax(hi,minMax[2*i+1]);}
@@ -398,6 +404,18 @@ public:
         text(g,c.gain<=0.0f?juce::String::fromUTF8("-∞ dB"):juce::String(db,1)+" dB",juce::Rectangle<float>(v.getRight()+4,v.getY()-3,60,16).toNearestInt(),9.5f,eventInk);
     }
     bool playTool=false; // Herramienta reproducir: plays while the button is held
+    // Timer repaint while nothing else changed: the cursor strips, the header meters and, when
+    // recording, the lanes (the red event grows). Everything else repaints only when it changes.
+    int lastCursorX=-100;bool metersActive=false;
+    void liveRepaint()
+    {
+        const int x=(int)secondsToX(engine.positionSeconds.load());
+        if(x!=lastCursorX){repaint(lastCursorX-6,0,13,getHeight());repaint(x-6,0,13,getHeight());lastCursorX=x;}
+        bool active=false;for(const auto& t:engine.tracks)active|=t->peakL.load()>1e-6f||t->peakR.load()>1e-6f;
+        if(active||metersActive)repaint(header-8,ruler,6,getHeight()-ruler);
+        metersActive=active;
+        if(engine.recording.load())repaint(header,ruler,getWidth()-header,getHeight()-ruler);
+    }
     void zoomAt(float x,double factor)
     {   // Herramienta zoom: the clicked time stays under the pointer.
         const double at=xToSeconds(x);zoom(factor);scrollSeconds=juce::jmax(0.0,at-(x-header)/pixelsPerSecond);repaint();
@@ -482,7 +500,8 @@ private:
     static void chip(juce::Graphics& g,const juce::String& s,juce::Rectangle<int> r,bool on,juce::Colour colour) {g.setColour(on?colour:raised);g.fillRoundedRectangle(r.toFloat(),3);g.setColour(line);g.drawRoundedRectangle(r.toFloat().reduced(.5f),3,1);text(g,s,r,10,on?activeInk:ink,juce::Justification::centred);}
     void drawWave(juce::Graphics& g,const AudioClip& c,juce::Rectangle<float> r,juce::Colour colour)
     {
-        if(!c.audio||c.audio->getNumSamples()<1)return;const int x0=juce::jmax(header,(int)r.getX()),x1=juce::jmin(getWidth(),(int)r.getRight());
+        if(!c.audio||c.audio->getNumSamples()<1)return;const auto dirty=g.getClipBounds();
+        const int x0=juce::jmax(header,(int)r.getX(),dirty.getX()-2),x1=juce::jmin(getWidth(),(int)r.getRight(),dirty.getRight()+2); // only the strip being repainted
         const float* data=c.audio->getReadPointer(0);const int size=c.audio->getNumSamples();g.setColour(colour.withAlpha(.8f));
         for(int x=x0;x<x1;x+=2){double rel=(x-secondsToX(c.startSeconds))/pixelsPerSecond;const float env=c.gain*audio::fadeEnvelope(rel,c.durationSeconds,c.fadeIn,c.fadeInShape,c.fadeOut,c.fadeOutShape);const int a=juce::jlimit(0,size-1,(int)((c.offsetSeconds+rel)*c.sourceRate));const int b=juce::jlimit(a+1,size,(int)((c.offsetSeconds+rel+2/pixelsPerSecond)*c.sourceRate));float lo=0,hi=0;const int step=juce::jmax(1,(b-a)/32);for(int n=a;n<b;n+=step){lo=juce::jmin(lo,data[n]);hi=juce::jmax(hi,data[n]);}
             // Waveform zoom enlarges the drawing only; peaks beyond the event are clipped at its edges.
@@ -622,7 +641,14 @@ public:
     }
     std::function<void()> addPlugin,importFiles,loadDemo;std::function<void(int)> select;
     void setTab(int i){tab=i;vsti.setToggleState(i==0,juce::dontSendNotification);media.setToggleState(i==1,juce::dontSendNotification);meters.setToggleState(i==2,juce::dontSendNotification);scan.setVisible(i==0);add.setVisible(i==0);import.setVisible(i==1);example.setVisible(i==1);reset.setVisible(i==2);repaint();}
-    void tick(){heldL=juce::jmax(heldL,engine.masterPeakL.load());heldR=juce::jmax(heldR,engine.masterPeakR.load());scan.setButtonText(plugins.isScanning()?i18n::tr("Detener búsqueda"):i18n::tr("Buscar plugins…"));repaint();}
+    void tick()
+    {   // Only the meter tab and the scan progress change by themselves.
+        heldL=juce::jmax(heldL,engine.masterPeakL.load());heldR=juce::jmax(heldR,engine.masterPeakR.load());const bool scanning=plugins.isScanning();
+        scan.setButtonText(scanning?i18n::tr("Detener búsqueda"):i18n::tr("Buscar plugins…"));
+        if(isShowing()&&((tab==2&&(engine.playing.load()||engine.masterPeakL.load()>1e-6f||engine.masterPeakR.load()>1e-6f))||scanning||scanning!=wasScanning))repaint();
+        wasScanning=scanning;
+    }
+    bool wasScanning=false;
     void resized()override{int third=(getWidth()-12)/3;vsti.setBounds(4,3,third,25);media.setBounds(6+third,3,third,25);meters.setBounds(8+2*third,3,third,25);scan.setBounds(11,getHeight()-78,getWidth()-22,28);add.setBounds(11,getHeight()-43,getWidth()-22,28);import.setBounds(11,75,getWidth()-22,30);example.setBounds(11,113,getWidth()-22,30);reset.setBounds(17,getHeight()-50,getWidth()-34,28);}
     void paint(juce::Graphics& g)override
     {
@@ -1349,7 +1375,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         instrument.setTooltip(i18n::tr("Clic: abrir instrumento. Flecha: seleccionar o sustituir."));
         if(!master.isMouseButtonDown())master.setValue(juce::Decibels::gainToDecibels(engine.masterGain.load(),-60.0f),juce::dontSendNotification);syncing=false;
     }
-    void refresh()
+    void refresh(bool fromTimer=false)
     {
         syncing=true;if(!projectTitle.isBeingEdited())projectTitle.setText(engine.projectName,juce::dontSendNotification);if(!tempo.isMouseButtonDown())tempo.setValue(engine.tempo,juce::dontSendNotification);syncing=false;
         play.setToggleState(engine.playing,juce::dontSendNotification);play.setButtonText(engine.playing?juce::String::fromUTF8("Ⅱ"):juce::String::fromUTF8("▶"));loop.setToggleState(engine.looping,juce::dontSendNotification);click.setToggleState(engine.metronome,juce::dontSendNotification);
@@ -1362,7 +1388,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
             if(stopAfterPunchOut){const double until=engine.loopEnd.load()+(usePostRoll?postRollBars*barSeconds():0.0);if(engine.positionSeconds.load()>=until)engine.pause();else engine.stopAt=until;}
         }scan.setButtonText(plugins.isScanning()?i18n::tr("Detener búsqueda"):i18n::tr("Buscar plugins"));
         double time=engine.positionSeconds;const int mins=(int)time/60,secs=(int)time%60,ms=(int)(time*1000)%1000;transportTime.setText(juce::String(mins).paddedLeft('0',2)+":"+juce::String(secs).paddedLeft('0',2)+"."+juce::String(ms).paddedLeft('0',3),juce::dontSendNotification);
-        {const auto countIn=engine.countInSamples.load();status.setText(countIn>0?i18n::tr("Precuenta… ")+juce::String((int)std::ceil(countIn/engine.currentSampleRate()*engine.tempo.load()/60.0)):notice,juce::dontSendNotification);}rightRack.tick();visibility.repaint();trackColour.setEnabled(currentTrack()!=nullptr);if(channelWindow)if(auto* panel=dynamic_cast<ChannelPanel*>(channelWindow->getContentComponent()))panel->refresh();
+        {const auto countIn=engine.countInSamples.load();status.setText(countIn>0?i18n::tr("Precuenta… ")+juce::String((int)std::ceil(countIn/engine.currentSampleRate()*engine.tempo.load()/60.0)):notice,juce::dontSendNotification);}rightRack.tick();trackColour.setEnabled(currentTrack()!=nullptr);if(channelWindow)if(auto* panel=dynamic_cast<ChannelPanel*>(channelWindow->getContentComponent()))panel->refresh();
         const double view=juce::jmax(1.0,(arrangement.getWidth()-Arrangement::header)/arrangement.pixelsPerSecond);timelineScroll.setRangeLimits(0,juce::jmax(engine.duration()+8,arrangement.scrollSeconds+view));timelineScroll.setCurrentRange(arrangement.scrollSeconds,view,juce::dontSendNotification);
         {bool anyMute=false,anySolo=false;for(auto& t:engine.tracks){anyMute|=t->mute.load();anySolo|=t->solo.load();}allMuteOff.setToggleState(anyMute,juce::dontSendNotification);allSoloOff.setToggleState(anySolo,juce::dontSendNotification);}
         if(channelTab)channelTab->setTrack(selected);
@@ -1381,7 +1407,37 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
 #endif
             if(window->getName()!=title)window->setName(title);
         }
-        undoButton.setEnabled(!undoStack.empty());redoButton.setEnabled(!redoStack.empty());arrangement.selectedTrack=selected;piano.track=selected;syncInspector();mixer.refresh();arrangement.repaint();piano.repaint();owner.repaint();
+        undoButton.setEnabled(!undoStack.empty());redoButton.setEnabled(!redoStack.empty());arrangement.selectedTrack=selected;piano.track=selected;syncInspector();if(mixer.isShowing())mixer.refresh();
+        // Calls from edits repaint everything; the 24 Hz timer repaints the whole window only when
+        // something visible changed, otherwise just the cursor, meters and transport.
+        const auto signature=viewSignature();
+        if(!fromTimer||signature!=lastSignature){lastSignature=signature;arrangement.repaint();piano.repaint();owner.repaint();return;}
+        arrangement.liveRepaint();if(piano.isShowing()&&engine.playing.load())piano.repaint();
+        if(!transportRect.isEmpty())
+        {   // Only what moves by itself: the musical position box and the beat lights (the time label repaints itself).
+            const int ty=transportRect.getY(),cx=owner.getWidth()/2;
+            owner.repaint(cx-300,ty+10,150,26);owner.repaint(cx+516,ty+20,52,10);
+        }
+    }
+    juce::uint64 lastSignature=0;
+    juce::uint64 viewSignature()const
+    {   // Everything the window draws, except the playback position and the meters.
+        juce::uint64 h=1469598103934665603ull;const auto mix=[&h](double v){juce::uint64 bits;std::memcpy(&bits,&v,sizeof bits);h=(h^bits)*1099511628211ull;};
+        mix(engine.tracks.size());mix(selected);mix(arrangement.selectedClip);mix(arrangement.tool);mix(dirty);mix(undoStack.size());mix(redoStack.size());
+        mix(engine.looping.load());mix(engine.loopStart.load());mix(engine.loopEnd.load());mix(engine.punchIn.load());mix(engine.punchOut.load());mix(engine.tempo.load());
+        mix(engine.metronome.load());mix(engine.recording.load());mix(engine.playing.load());mix(engine.capturing.load());mix(engine.recordBitDepth.load());
+        mix(arrangement.scrollSeconds);mix(arrangement.pixelsPerSecond);mix(arrangement.lane);mix(arrangement.waveZoom);mix(arrangement.firstTrack);
+        mix(arrangement.hasRange);mix(arrangement.rangeStart);mix(arrangement.rangeEnd);mix(arrangement.rangeFirstRow);mix(arrangement.rangeLastRow);
+        mix((double)notice.hashCode64());mix(owner.getWidth());mix(owner.getHeight());
+        mix(engine.currentSampleRate());mix(engine.currentBlockSize());
+        if(auto* device=engine.deviceManager.getCurrentAudioDevice()){mix((double)device->getName().hashCode64());mix(device->getActiveInputChannels().countNumberOfSetBits());mix(device->getActiveOutputChannels().countNumberOfSetBits());}
+        for(const auto& t:engine.tracks)
+        {
+            mix(t->mute.load());mix(t->solo.load());mix(t->armed.load());mix(t->monitor.load());mix(t->gain.load());mix(t->pan.load());mix((double)t->colour.getARGB());
+            mix((double)t->name.hashCode64());mix(t->clips.size());mix(t->notes.size());mix(t->plugins.size());mix(t->stripWidth);
+            for(const auto& c:t->clips){mix(c.startSeconds);mix(c.durationSeconds);mix(c.offsetSeconds);mix(c.gain);mix(c.fadeIn);mix(c.fadeOut);mix(c.muted);mix((double)c.colour.getARGB());}
+        }
+        return h;
     }
     void layout()
     {
@@ -1513,10 +1569,10 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         const Field fields[]{{i18n::tr("Entradas audio"),ins?i18n::tr("Conectadas"):i18n::tr("No conectadas"),ins?ink:coral,1},{i18n::tr("Salidas audio"),outs?i18n::tr("Conectadas"):i18n::tr("No conectadas"),outs?ink:coral,1},
             {i18n::tr("Tiempo de grabación máx."),recordTime,ink,0},{i18n::tr("Formato de grabación"),juce::String(rate/1000.0,1)+" kHz - "+(engine.recordBitDepth.load()==32?i18n::tr("32 bit flotante"):juce::String(engine.recordBitDepth.load())+" bit"),ink,2},
             {i18n::tr("Pan law de proyecto"),"-3 dB",ink,0},{i18n::tr("Tamaño de búfer"),juce::String(engine.currentBlockSize()),ink,1}};
-        const juce::Font f(juce::FontOptions(10.0f));int x=8;
+        int x=8;
         for(const auto& field:fields)
         {
-            const int lw=(int)juce::GlyphArrangement::getStringWidth(f,field.label)+10,vw=(int)juce::GlyphArrangement::getStringWidth(f,field.value)+12;
+            const int lw=(int)textWidth(field.label,10.0f)+10,vw=(int)textWidth(field.value,10.0f)+12;
             const juce::Rectangle<int> box(x,statusRect.getY()+3,lw+vw,statusRect.getHeight()-6);if(box.getRight()>owner.getWidth()-8)break;
             g.setColour(raised.withAlpha(.6f));g.fillRoundedRectangle(box.toFloat(),3.0f);
             text(g,field.label,box.withWidth(lw).withTrimmedLeft(6),10,muted);text(g,field.value,box.withTrimmedLeft(lw),10,field.colour);
@@ -1536,8 +1592,10 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         if(showLeft)g.drawVerticalLine(inspectorRect.getRight(),(float)top,(float)inspectorRect.getBottom());
         if(showRight)g.drawVerticalLine(browserRect.getX(),(float)top,(float)browserRect.getBottom());
         if(showLower)g.drawHorizontalLine(lowerRect.getY(),(float)lowerRect.getX(),(float)lowerRect.getRight());
-        paintStatusLine(g);
-        if(!infoRect.isEmpty())
+        // Each zone is drawn only when it lies in the area being repainted.
+        const auto dirty=g.getClipBounds();
+        if(dirty.intersects(statusRect))paintStatusLine(g);
+        if(!infoRect.isEmpty()&&dirty.intersects(infoRect))
         {   // Línea de información (manual p. 74): the selected event, or «Sin objeto seleccionado».
             juce::String info=i18n::tr("Sin objeto seleccionado");
             if(auto t=currentTrack();t&&arrangement.selectedClip>=0&&arrangement.selectedClip<(int)t->clips.size())
@@ -1549,7 +1607,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
                 info=i18n::tr("Inicio del rango ")+juce::String(arrangement.rangeStart,3)+" s   ·   "+i18n::tr("Fin del rango ")+juce::String(arrangement.rangeEnd,3)+" s   ·   "+i18n::tr("Duración del rango ")+juce::String(arrangement.rangeEnd-arrangement.rangeStart,3)+" s";
             text(g,info,infoRect,10,muted,juce::Justification::centred);
         }
-        if(inspectorShown())
+        if(inspectorShown()&&dirty.intersects(inspectorRect))
         {
             auto t=currentTrack();
             if(t){g.setColour(t->colour);g.fillRoundedRectangle(insp.nameBar.toFloat(),3);text(g,t->name,insp.nameBar.reduced(8,0),12,activeInk);}
@@ -1561,13 +1619,13 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
             if(!insp.output.isEmpty()&&t){g.setColour(bg);g.fillRoundedRectangle(insp.output.toFloat(),3);text(g,juce::String::fromUTF8("⇥  ")+(t->output.isEmpty()?juce::String("Stereo Out"):(engine.findTrack(t->output)?engine.findTrack(t->output)->name:juce::String("Stereo Out"))),insp.output.reduced(8,0),11,ink);}
             if(!insp.eqLabels.isEmpty()){const int k=insp.eqLabels.getWidth()/3;const juce::String bands[]{i18n::tr("GRAVES"),i18n::tr("MEDIOS"),i18n::tr("AGUDOS")};for(int n=0;n<3;++n)text(g,bands[n],insp.eqLabels.withX(insp.eqLabels.getX()+n*k).withWidth(k),8,muted,juce::Justification::centred);}
         }
-        else if(showLeft&&editorInspector&&!visibilityVisible)
+        else if(showLeft&&editorInspector&&!visibilityVisible&&dirty.intersects(inspectorRect))
         {
             auto area=inspectorRect.reduced(12).withTrimmedTop(36);
             if(showLower&&pianoVisible&&currentTrack()&&currentTrack()->isMidi){auto t=currentTrack();text(g,i18n::tr("Editor de teclas"),area.removeFromTop(22),12,ink);text(g,t->name,area.removeFromTop(20),11,t->colour);text(g,juce::String((int)t->notes.size())+i18n::tr(" notas"),area.removeFromTop(20),10,muted);}
             else{font(g,11);g.setColour(muted);g.drawFittedText(i18n::tr("El inspector del editor solo contiene información si hay un editor abierto en la zona inferior."),area.withHeight(60),juce::Justification::topLeft,4);}
         }
-        if(showTransport)
+        if(showTransport&&dirty.intersects(transportRect))
         {
             const int ty=transportRect.getY();
             const int cx=w/2;
@@ -1829,7 +1887,7 @@ void MainComponent::resized(){if(ui)ui->layout();}
 static juce::File& settingsOverride(){static juce::File folder;return folder;}
 juce::File MainComponent::settingsFolder(){return settingsOverride()!=juce::File()?settingsOverride():juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Silente");}
 void MainComponent::useSettingsFolder(const juce::File& folder){settingsOverride()=folder;}
-void MainComponent::timerCallback(){ui->refresh();}
+void MainComponent::timerCallback(){ui->refresh(true);}
 void MainComponent::newProject(){ui->confirmDiscard([this]{ui->stopTransport();ui->plugins.closeEditors();ui->engine.clear();ui->selected=0;ui->arrangement.selectedClip=-1;ui->arrangement.scrollSeconds=0;ui->arrangement.firstTrack=0;ui->undoStack.clear();ui->redoStack.clear();ui->dirty=false;ui->notice=i18n::tr("Nueva sesión. Añade una pista o arrastra tus archivos.");ui->refresh();});}
 void MainComponent::openProject(){ui->open();}
 void MainComponent::saveProject(){ui->save();}

@@ -110,6 +110,8 @@ public:
     std::atomic<double> positionSeconds { 0.0 }, tempo { 120.0 }, loopStart { 0.0 }, loopEnd { 8.0 };
     std::atomic<float> masterGain { 0.8f }, masterPeakL { 0.0f }, masterPeakR { 0.0f };
     std::atomic<int> audioUnderruns { 0 }, clippedSamples { 0 }, deviceCallbacks { 0 };
+    // Audio load (Cubase: «Carga de audio»): time spent rendering a device block / its duration.
+    std::atomic<float> dspLoadAverage { 0.0f }, dspLoadPeak { 0.0f };
     audio::Metronome click;
     // Recording count-in still to play, in samples (0 = none). The transport waits meanwhile.
     std::atomic<juce::int64> countInSamples { 0 }, countInLength { 0 };

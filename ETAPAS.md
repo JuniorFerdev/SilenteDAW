@@ -42,6 +42,15 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Tramo · 02-11-2026 · rendimiento01 · Interfaz más ligera (sobre todo en Rosetta) y cierre al salir
+
+- Medido con sulphuric (20 s de reproducción con la ventana abierta): el motor de audio usa 1,5–2,3 % (nativo/Rosetta); más del 90 % de la CPU era dibujar la interfaz. Nuevo medidor de carga de audio en el motor (`dspLoadAverage/Peak`) y `--ui-playback-check` informa CPU total y estable.
+- Perfil (`sample`): el texto se componía con HarfBuzz en cada fotograma; la ventana se repintaba entera 24 veces por segundo; columna Canal y zona derecha también; las tiras repintaban todo para cada medidor.
+- Cambios: caché de composición de texto y de anchos (`theme::text`, `textWidth`); el temporizador repinta todo solo si cambió algo visible (firma del estado), si no, solo cursor, medidores y posición del transporte; descarte por región en ventana principal, visor y tiras; repintado por regiones con Metal (`JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS=1`; sin él, repintar por partes salía peor).
+- Resultado (CPU del proceso reproduciendo): nativo ~34 % → ~24 %; Rosetta 38–98 % (muy irregular) → 32–36 % estable. Hilo principal dibujando: ~25 % → ~14 %. Audio idéntico (sulphuric bit a bit).
+- Cierre al salir: la caché de texto, al ser estática, liberaba fuentes después de que JUCE cerrara su tipografía y abortaba en cada salida (16 informes, todos de mis pruebas con la compilación de desarrollo; ninguno de la app instalada). Ahora se libera en el cierre ordenado de JUCE (DeletedAtShutdown): 0 cierres en las corridas siguientes.
+- Pruebas: universal arm64 y x86_64 motor 37/37, io 6/6, flujo 83/83; sulphuric idéntico.
+
 ## Corrección · 02-11-2026 · ventana de plugin colapsada, parpadea y no se mueve
 
 - Síntoma (Fer): al abrir un Waves en Silente la ventana queda estrecha, parpadea, se queda pegada y no deja moverla.

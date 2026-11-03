@@ -30,6 +30,7 @@ private:
     juce::Slider fader;
     juce::Label volume;
     juce::Rectangle<int> meterArea, nameArea, eqArea, insertsHeader, sendsHeader, sendsArea, bottomName, scaleArea;
-    bool syncing = false;
+    bool syncing = false, metersActive = false;
+    juce::String lastShown;
 };
 }

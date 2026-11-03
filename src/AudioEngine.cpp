@@ -356,7 +356,11 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputs, i
     ++deviceCallbacks;
     const float* physicalInputs[DeviceSettings::channelLimit] {};
     for(int physical=0;physical<DeviceSettings::channelLimit;++physical){const int index=inputMap[(size_t)physical];if(index>=0&&index<inChannels&&inputs)physicalInputs[physical]=inputs[index];}
+    const auto started=juce::Time::getHighResolutionTicks();
     render(outputs,outChannels,samples,physicalInputs,DeviceSettings::channelLimit);
+    const double seconds=juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks()-started);
+    const float load=(float)(seconds*sampleRate.load()/juce::jmax(1,samples));
+    dspLoadAverage=dspLoadAverage.load()*0.98f+load*0.02f;dspLoadPeak=juce::jmax(load,dspLoadPeak.load()*0.995f);
 }
 void AudioEngine::renderOfflineBlock(juce::AudioBuffer<float>& output, int samples)
 {
