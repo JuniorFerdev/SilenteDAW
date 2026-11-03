@@ -4,6 +4,7 @@
 #include "MainComponent.h"
 #include "ui/metronome/MetronomePanel.h"
 #include "PluginManager.h"
+#include "ui/plugins/PluginEditorWindow.h"
 #include "../tests/EngineTests.h"
 #include "../tests/LocalisationUiTests.h"
 #include "../tests/WorkflowUiTests.h"
@@ -71,6 +72,41 @@ public:
             const int index=args.indexOf("--audio-inventory");juce::AudioDeviceManager manager;DeviceSettings settings(manager);
             const auto output=juce::File(args.size()>index+1?args[index+1]:"/tmp/Silente-audio.json");output.getParentDirectory().createDirectory();
             output.replaceWithText(juce::JSON::toString(settings.inventory()));quit();return;
+        }
+        if(args.size()>=3&&args[0]=="--probe-editor")
+        {   // Opens the plugin's editor at the user's interface size and records the window size for
+            // 4 s: a stable window keeps one size. «legacy» reproduces the window before 02-11-2026.
+            juce::Desktop::getInstance().setGlobalScaleFactor(loadInterfaceScale());
+            const auto output=juce::File(args[2]);const bool legacy=args.contains("legacy");juce::PluginDescription description;
+            auto xml=juce::XmlDocument::parse(juce::File(args[1]));
+            if(!xml||!xml->getChildByName("PLUGIN")||!description.loadFromXml(*xml->getChildByName("PLUGIN"))){setApplicationReturnValue(2);quit();return;}
+            probeFormats=std::make_unique<juce::AudioPluginFormatManager>();juce::addDefaultFormatsToManager(*probeFormats);
+            probeFormats->createPluginInstanceAsync(description,48000,512,[this,output,legacy,name=description.name](std::unique_ptr<juce::AudioPluginInstance> plugin,const juce::String& error)
+            {
+                if(!plugin){output.replaceWithText("{\"status\":\"error\",\"error\":"+juce::JSON::toString(error)+"}");setApplicationReturnValue(1);quit();return;}
+                struct Legacy final:juce::DocumentWindow
+                {
+                    explicit Legacy(juce::AudioProcessor& p):juce::DocumentWindow("legacy",juce::Colours::black,juce::DocumentWindow::closeButton)
+                    {setUsingNativeTitleBar(true);auto* e=p.createEditorIfNeeded();if(!e)e=new juce::GenericAudioProcessorEditor(p);setContentOwned(e,true);setResizable(e->isResizable(),false);centreWithSize(e->getWidth(),e->getHeight());setVisible(true);}
+                    ~Legacy()override{clearContentComponent();}
+                };
+                auto* processor=plugin.release();probePlugin.reset(processor);
+                if(legacy)probeWindow=std::make_unique<Legacy>(*processor);else probeWindow=std::make_unique<ui::PluginEditorWindow>(*processor,name);
+                auto sizes=std::make_shared<juce::Array<juce::var>>();
+                for(int n=1;n<=40;++n)juce::Timer::callAfterDelay(n*100,[this,sizes,n,output,legacy,name]
+                {
+                    if(!probeWindow)return;auto* content=probeWindow->getContentComponent();
+                    juce::DynamicObject::Ptr s=new juce::DynamicObject();s->setProperty("t",n*100);s->setProperty("w",probeWindow->getWidth());s->setProperty("h",probeWindow->getHeight());
+                    s->setProperty("editorW",content?content->getWidth():0);s->setProperty("editorH",content?content->getHeight():0);sizes->add(juce::var(s.get()));
+                    if(n<40)return;
+                    juce::DynamicObject::Ptr report=new juce::DynamicObject();report->setProperty("plugin",name);report->setProperty("mode",legacy?"legacy":"fixed");
+                    report->setProperty("scale",juce::Desktop::getInstance().getGlobalScaleFactor());report->setProperty("samples",juce::var(*sizes));
+                    juce::StringArray distinct;for(int k=10;k<sizes->size();++k)distinct.addIfNotAlreadyThere((*sizes)[k]["w"].toString()+"x"+(*sizes)[k]["h"].toString());
+                    report->setProperty("sizesAfter1s",distinct.joinIntoString(" "));report->setProperty("stable",distinct.size()==1);
+                    output.replaceWithText(juce::JSON::toString(juce::var(report.get())));probeWindow.reset();probePlugin.reset();setApplicationReturnValue(0);quit();
+                });
+            });
+            return;
         }
         if(args.size()>=3&&args[0]=="--probe-plugin")
         {
@@ -234,6 +270,8 @@ private:
     std::unique_ptr<AudioEngine> engine;
     std::unique_ptr<PluginManager> plugins;
     std::unique_ptr<juce::AudioPluginFormatManager> probeFormats;
+    std::unique_ptr<juce::AudioProcessor> probePlugin;
+    std::unique_ptr<juce::DocumentWindow> probeWindow;
     std::unique_ptr<MainWindow> window;
     juce::StringArray getMenuBarNames() override { return { i18n::tr("Archivo"), i18n::tr("Edición"), i18n::tr("Pista"), i18n::tr("Audio"), i18n::tr("Transporte"), i18n::tr("Estudio"), i18n::tr("Ventana"), i18n::tr("Idioma"), i18n::tr("Ayuda") }; }
     juce::PopupMenu getMenuForIndex(int index, const juce::String&) override

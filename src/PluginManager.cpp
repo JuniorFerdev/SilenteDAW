@@ -1,3 +1,4 @@
+#include "ui/plugins/PluginEditorWindow.h"
 #include "i18n/Translations.h"
 #include "PluginManager.h"
 #include "i18n/UiTranslation.h"
@@ -133,20 +134,12 @@ public:
     void closeButtonPressed() override { setVisible(false); }
 };
 
-class PluginManager::EditorWindow final : public DocumentWindow
+class PluginManager::EditorWindow final : public ui::PluginEditorWindow
 {
 public:
     std::shared_ptr<PluginSlot> slot;
-    EditorWindow(std::shared_ptr<PluginSlot> item,const String& context) : DocumentWindow(context + juce::String::fromUTF8(" · ") + item->description.name, Colour(panel), DocumentWindow::closeButton), slot(std::move(item))
-    {
-        setUsingNativeTitleBar(true);
-        auto* editor = slot->processor->createEditorIfNeeded();
-        if (editor == nullptr) editor = new GenericAudioProcessorEditor(*slot->processor);
-        setContentOwned(editor, true);
-        setResizable(editor->isResizable(), false); centreWithSize(editor->getWidth(), editor->getHeight()); setVisible(true);
-    }
-    ~EditorWindow() override { clearContentComponent(); }
-    void closeButtonPressed() override { setVisible(false); }
+    EditorWindow(std::shared_ptr<PluginSlot> item,const String& context)
+        : ui::PluginEditorWindow(*item->processor, context + juce::String::fromUTF8(" · ") + item->description.name), slot(std::move(item)) {}
 };
 
 File PluginManager::settingsDirectory()
