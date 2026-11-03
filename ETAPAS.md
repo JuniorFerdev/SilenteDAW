@@ -42,6 +42,14 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Corrección · 02-11-2026 · ventana de plugin colapsada, parpadea y no se mueve
+
+- Síntoma (Fer): al abrir un Waves en Silente la ventana queda estrecha, parpadea, se queda pegada y no deja moverla.
+- Causa: la escala de interfaz (115 %, visual01) también escalaba la ventana del plugin. La vista nativa del plugin no se escala y se redimensiona; la ventana la reajustaba y así en bucle. Reproducido con `--probe-editor … legacy`: C4 pasó de 574×415 a 3162×2484, 22366×17584… hasta millones de píxeles en 4 s.
+- Corrección: `src/ui/plugins/PluginEditorWindow.*` (como el AudioPluginHost de JUCE): escala 1 para la ventana del plugin, la ventana sigue el tamaño del editor y respeta sus límites más el marco nativo. PluginManager la usa.
+- Verificado con la app universal: C4 574×415 y Abbey Road Chambers 732×625 estables en arm64 y x86_64 (Rosetta); motor 37/37, io 6/6, flujo 83/83. Falta confirmación de Fer moviendo y cerrando ventanas.
+- Licencia Waves: la ventana DEMO MODE listó solo Abbey Road Chambers. Pendiente que Fer compruebe si esa licencia está activa en Waves Central y si en Cubase (Rosetta) también sale en demo; no se tocan licencias ni instalaciones de Waves.
+
 ## Análisis · 02-11-2026 · Waves en nativo (pregunta de Fer)
 
 - Instalado: Waves V14 (versiones de shell 14.12 a 14.31). Los WaveShell AU, VST3 y VST son universales (x86_64 + arm64) y los 239 plugins de «Plug-Ins V14» también (DSP en GenericMacArm.dylib / GenericMacIntel.dylib). Ninguno es solo Intel.
