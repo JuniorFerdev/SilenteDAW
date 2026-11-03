@@ -88,7 +88,25 @@ public:
             probeFormats->createPluginInstanceAsync(description,48000,512,[this,output,report](std::unique_ptr<juce::AudioPluginInstance> plugin,const juce::String& error)
             {
                 report->setProperty("status",plugin?"created":"error");report->setProperty("error",error);
-                if(plugin){report->setProperty("inputs",plugin->getTotalNumInputChannels());report->setProperty("outputs",plugin->getTotalNumOutputChannels());}
+                if(plugin)
+                {
+                    report->setProperty("inputs",plugin->getTotalNumInputChannels());report->setProperty("outputs",plugin->getTotalNumOutputChannels());
+                    // Two seconds of a 440 Hz tone at −12 dB: an unlicensed Waves plugin answers with silence.
+                    plugin->setNonRealtime(true);plugin->prepareToPlay(48000,512);
+                    const int channels=juce::jmax(2,plugin->getTotalNumInputChannels(),plugin->getTotalNumOutputChannels());
+                    juce::AudioBuffer<float> block(channels,512);juce::MidiBuffer midi;double phase=0,inSum=0,outSum=0;float outPeak=0;juce::int64 counted=0;
+                    for(int n=0;n<188;++n)
+                    {
+                        block.clear();
+                        for(int i=0;i<512;++i){const float v=0.25f*(float)std::sin(phase);phase+=2*juce::MathConstants<double>::pi*440/48000;for(int c=0;c<juce::jmin(2,plugin->getTotalNumInputChannels());++c)block.setSample(c,i,v);inSum+=v*v;}
+                        plugin->processBlock(block,midi);
+                        if(n>=94)for(int c=0;c<juce::jmin(2,plugin->getTotalNumOutputChannels());++c)for(int i=0;i<512;++i){const float v=block.getSample(c,i);outSum+=v*v;outPeak=juce::jmax(outPeak,std::abs(v));++counted;}
+                    }
+                    report->setProperty("inputRmsDb",juce::Decibels::gainToDecibels((float)std::sqrt(inSum/(188.0*512)),-150.0f));
+                    report->setProperty("outputRmsDb",juce::Decibels::gainToDecibels((float)std::sqrt(outSum/juce::jmax<juce::int64>(1,counted)),-150.0f));
+                    report->setProperty("outputPeak",outPeak);report->setProperty("processesAudio",outPeak>1.0e-4f);
+                    plugin->releaseResources();
+                }
                 output.replaceWithText(juce::JSON::toString(juce::var(report.get())));setApplicationReturnValue(plugin?0:1);quit();
             });
             juce::Timer::callAfterDelay(20000,[this,output,report]{report->setProperty("status","timeout");output.replaceWithText(juce::JSON::toString(juce::var(report.get())));setApplicationReturnValue(3);quit();});return;

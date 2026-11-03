@@ -42,6 +42,14 @@ Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar na
 - Motor: `stopAt` y `playRange` (la reproducción se detiene sola al final del rango).
 - Pruebas: motor 26/26 (nueva: rango de reproducción se detiene), flujo 54.
 
+## Análisis · 02-11-2026 · Waves en nativo (pregunta de Fer)
+
+- Instalado: Waves V14 (versiones de shell 14.12 a 14.31). Los WaveShell AU, VST3 y VST son universales (x86_64 + arm64) y los 239 plugins de «Plug-Ins V14» también (DSP en GenericMacArm.dylib / GenericMacIntel.dylib). Ninguno es solo Intel.
+- El catálogo nativo de Silente (~/Library/Silente/Plugins.xml) ya tiene 584 entradas de Waves; el de Rosetta (Plugins-Intel.xml) está vacío.
+- `--probe-plugin` ahora también procesa 2 s de un tono de 440 Hz a −12 dB y mide la salida. En arm64 nativo: C4 (s), CLA-76 (s), H-Reverb (s) y Abbey Road Chambers (s) se crean y procesan audio de verdad (salida distinta de la entrada: compresión, color, reverberación).
+- Conclusión: no hace falta Rosetta ni un puente Intel para estos Waves. Si algún día hubiera un plugin solo Intel, la vía sería alojarlo en un proceso aparte bajo Rosetta (como Logic con AUHostingService o los puentes de Reaper/Bitwig); no está implementado.
+- Pendiente de Fer: abrir el editor de un Waves en Silente nativo y confirmar que no aparece en modo demo.
+
 ## Corrección · 02-11-2026 · permiso del micrófono repetido
 
 - Síntoma (Fer): macOS pedía acceso al micrófono unas 8 veces al abrir Silente y otra vez al usar WhatsApp con Silente abierto.
