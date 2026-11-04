@@ -96,4 +96,4 @@ Pedido separado, diferido por Fer: **10 plugins de inserción por pista**, regis
 
 Código: `Track::sendCount`, resolución de destinos y lista de envíos activos en el motor; rack con desplazamiento en MixConsole y columna Canal. La rueda en el rack no cambia el nivel de sus perillas. El callback recorre solo envíos activos por muestra, sin añadir asignaciones ni E/S.
 
-Verificado en Apple Silicon: motor 38/38, formatos 6/6, interfaz 87/87, idiomas 769 y cambio ES→EN→ES. Compilación de desarrollo; distribución universal sin reconstruir. Detalle en `ETAPAS.md`. Esta investigación no significa que las funciones pendientes estén entregadas.
+Entrega del 04-11-2026: universal actualizada con envios16 y ajustes01; motor 38/38, formatos 6/6 e interfaz 106/106 en arm64 y x86_64. Idiomas 793 y cambio ES→EN→ES comprobados en ajustes01. Arranque de la app entregada y apertura de Ajustes observados bajo Rosetta. Detalle en `ETAPAS.md`. Esta investigación no significa que las funciones pendientes estén entregadas.

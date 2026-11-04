@@ -45,7 +45,7 @@ hardware real. Actualizar al cerrar cada tramo.
 - ⬜ Editor de fundido cruzado completo (solapado, empujar, igual energía en cruce), fundidos automáticos, curvas de volumen de evento con puntos, fundidos por rango.
 
 ## MixConsole (451–533)
-- ✅ 04-11-2026 · 16 envíos FX por canal (Cubase 16): rack desplazable y columna Canal hasta 13–16; señal por cada ranura, pre/post, persistencia y proyectos de cuatro ranuras probados. Compilación de desarrollo Apple Silicon; entrega universal aún sin actualizar.
+- ✅ 04-11-2026 · 16 envíos FX por canal (Cubase 16): rack desplazable y columna Canal hasta 13–16; señal por cada ranura, pre/post, persistencia y proyectos de cuatro ranuras probados. Entrega universal actualizada y probada en arm64 y x86_64.
 - ⬜ Pedido de Fer · 04-11-2026: hasta **10 plugins de inserción por pista**. Ampliar las ranuras en Canal, Inspector, configuración de canal y ambas MixConsole; conservar instrumento separado, orden de procesamiento, bypass, guardado/carga y Deshacer. Verificar señal a través de las diez inserciones y apertura de sus editores. Pendiente para un tramo posterior; no implementado aún.
 - ✅ Ventana F3 y MixConsole inferior, racks Enrutado/Inserciones/EQ/Envíos, grupos y FX, solo/mute, medidores con pico.
 - ✅ Ancho de canal arrastrando su borde (⌥: todos), guardado en el proyecto.
@@ -60,7 +60,7 @@ hardware real. Actualizar al cerrar cada tramo.
 - ⬜ Editar y guardar asignaciones propias.
 
 ## Ajustes (referencia Cubase 16)
-- ✅ Ventana no modal reutilizable: Audio/MIDI, escala de interfaz, Transporte, Metrónomo y consulta de comandos de teclado; navegación y buscador transversal con resultados por control/comando. Preferencias y cambio de idioma comprobados en desarrollo Apple Silicon.
+- ✅ Ventana no modal reutilizable: Audio/MIDI, escala de interfaz, Transporte, Metrónomo y consulta de comandos de teclado; navegación y buscador transversal con resultados por control/comando. Preferencias y cambio de idioma comprobados; entrega universal actualizada y flujo probado en arm64 y x86_64.
 - ⬜ Preferencias de color de pistas, carpetas y consola del video; otras páginas avanzadas de Ajustes y asignaciones de teclas editables.
 
 ## Pedidos de Fer · 04-11-2026 · investigación y desarrollo pendientes

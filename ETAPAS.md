@@ -11,7 +11,14 @@
 5. El usuario revisa el resultado antes de iniciar la etapa siguiente.
 6. Comunicaciones breves. Sin búsquedas amplias, lecturas completas, capturas repetidas ni pruebas generales si no aportan a la etapa activa.
 
-## Último tramo · 04-11-2026 · ajustes01 · Ajustes con buscador
+## Entrega actual · 04-11-2026 · Universal con envios16 y ajustes01
+
+- Por pedido de Fernando «actualiza la app», sustituida `releases/macOS/Silente-Universal.app` con las fuentes del commit `2bc21b3` (incluye envios16). Universal **arm64 + x86_64**, firma local válida con identidad estable `audio.silente.studio`. El ejecutable entregado coincide por SHA-256 con el candidato probado (`1621bfd14d38bb64a16c8db8ef1795a15f79b41f471627e35e5b22b00e9fa2b1`).
+- Candidato firmado probado en ambas arquitecturas: **38/38 motor, 6/6 formatos, 106/106 interfaz**. Informes `build/update-arm64/` y `build/update-x86_64/`. Preferencias de layout, interfaz, metrónomo, transporte y audio intactas durante las pruebas aisladas. Sin ensayo físico de audio/grabación ni nueva validación de plugins Waves.
+- Se cerró la sesión vacía que estaba abierta, se actualizó y se volvió a abrir **bajo Rosetta**, conservando el modo que Fernando usaba. Comprobado desde la app entregada: Edición › Ajustes abre las cinco páginas nuevas. Captura nativa: `build/update-ajustes-rosetta.png`. Se deja abierta la ventana de Ajustes.
+- Respaldo anterior verificado: `backups/Silente-Universal-antes-envios16-ajustes01-2026-11-04.zip`; copia adicional anterior en `build/update-app-anterior.app`. Las demás novedades de Cubase 16 siguen en la checklist; no forman parte de esta entrega.
+
+## Tramo · 04-11-2026 · ajustes01 · Ajustes con buscador
 
 - Ventana **no modal**, redimensionable y reutilizable, con cinco páginas operativas: Audio/MIDI, Apariencia (escala de interfaz), Transporte, Metrónomo y consulta de Comandos de teclado. Acceso desde **Edición › Ajustes…**; Audio/F4, ajustes del metrónomo y comandos de teclado abren su página en esta misma ventana. Se puede editar el proyecto sin cerrarla.
 - Buscador transversal por categorías, nombres de controles y comandos; admite varias palabras, mayúsculas y palabras sin tilde. Cada resultado abre su página, desplaza solo si hace falta y resalta el control. Intro elige el resultado; Escape limpia la búsqueda. Las páginas se conservan al navegar; no se inventaron páginas de Control Room, plugins o configuración avanzada que aún no existen.
