@@ -45,6 +45,8 @@ hardware real. Actualizar al cerrar cada tramo.
 - ⬜ Editor de fundido cruzado completo (solapado, empujar, igual energía en cruce), fundidos automáticos, curvas de volumen de evento con puntos, fundidos por rango.
 
 ## MixConsole (451–533)
+- ✅ 04-11-2026 · 16 envíos FX por canal (Cubase 16): rack desplazable y columna Canal hasta 13–16; señal por cada ranura, pre/post, persistencia y proyectos de cuatro ranuras probados. Compilación de desarrollo Apple Silicon; entrega universal aún sin actualizar.
+- ⬜ Pedido de Fer · 04-11-2026: hasta **10 plugins de inserción por pista**. Ampliar las ranuras en Canal, Inspector, configuración de canal y ambas MixConsole; conservar instrumento separado, orden de procesamiento, bypass, guardado/carga y Deshacer. Verificar señal a través de las diez inserciones y apertura de sus editores. Pendiente para un tramo posterior; no implementado aún.
 - ✅ Ventana F3 y MixConsole inferior, racks Enrutado/Inserciones/EQ/Envíos, grupos y FX, solo/mute, medidores con pico.
 - ✅ Ancho de canal arrastrando su borde (⌥: todos), guardado en el proyecto.
 - ⬜ Contraste completo con el capítulo (instantáneas, enlaces de canales, rack de cadena de canal, etc.).
@@ -56,6 +58,12 @@ hardware real. Actualizar al cerrar cada tramo.
 ## Comandos de teclado (1607–1628)
 - ✅ Tabla de ~130 comandos por defecto con ventana de consulta; los marcados ✓ funcionan.
 - ⬜ Editar y guardar asignaciones propias.
+
+## Pedidos de Fer · 04-11-2026 · investigación y desarrollo pendientes
+- ⬜ **Editor MIDI completo:** el piano roll actual es básico y no equivale a la ventana avanzada de Cubase. Investigar el capítulo Editores MIDI (1170–1304), documentación vigente de Cubase 16 y videos completos; guardar referencias, capturas y una matriz de herramientas, selección, información de notas, velocidades/controladores, zoom, cuantización, navegación y ventanas. Incluir Rasgueo y Estirar selección de Cubase 16. Diseñar y probar por subetapas, sin declarar completo el editor por tener notas dibujadas.
+- ⬜ **Barra de herramientas contextual sobre las pistas:** estudiar la paleta de símbolos al hacer clic derecho en el visor de eventos. Inventariar selección, rango, dividir/cortar, pegar, dibujar, borrar, enmudecer, zoom, reproducción, fundido X, localizadores y punch según el contexto real y la configuración de Cubase. Distinguir herramientas de edición, comandos del menú y botones de transporte; confirmar cada icono con captura y referencia antes de asignarle una acción. Silente aún no reproduce este flujo completo.
+- ⬜ Antes de cada nuevo tramo, informar a Fer qué función se desarrollará, qué hará y cómo se verificará; mantener avances mientras se ejecuta.
+- Seguimiento de novedades sin plugins nuevos: `docs/CUBASE16_NOVEDADES_Y_PLAN.md`.
 
 ## Pendientes grandes (sin empezar)
 Automatización, editores MIDI completos, Pool, MediaBay, efectos de audio propios, tempo y tipo de compás, marcadores, pista de arreglos, VariAudio, sampler.

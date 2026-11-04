@@ -9,6 +9,13 @@ using namespace theme;
 
 ChannelTab::ChannelTab(AudioEngine& e, PluginManager& p) : engine(e), plugins(p)
 {
+    addAndMakeVisible(sendScroll);
+    sendScroll.setComponentID("channel-send-scroll");
+    sendScroll.setRangeLimits(0, Track::sendCount);
+    sendScroll.setCurrentRange(0, 4);
+    sendScroll.setSingleStepSize(1);
+    sendScroll.setTitle(i18n::tr("Desplazar envíos (1–16)"));
+    sendScroll.addListener(this);
     for (auto& b : inserts) addAndMakeVisible(b);
     for (auto* c : std::initializer_list<juce::Component*> { &mute, &solo, &edit, &arm, &monitor, &fader, &volume }) addAndMakeVisible(c);
     arm.setButtonText(juce::String::fromUTF8("●")); monitor.setButtonText(juce::String::fromUTF8("◉"));
@@ -60,7 +67,7 @@ void ChannelTab::refresh()
     // The track may have been removed or replaced since the last selection.
     if (track && (! juce::isPositiveAndBelow(index, (int) engine.tracks.size()) || engine.tracks[(size_t) index] != track)) { track = nullptr; index = -1; }
     const bool has = track != nullptr;
-    for (auto* c : std::initializer_list<juce::Component*> { &mute, &solo, &edit, &fader, &volume }) c->setVisible(has);
+    for (auto* c : std::initializer_list<juce::Component*> { &mute, &solo, &edit, &fader, &volume, &sendScroll }) c->setVisible(has);
     arm.setVisible(has && track->hasEvents()); monitor.setVisible(has && track->hasEvents());
     for (auto& b : inserts) b.setVisible(has);
     if (has)
@@ -102,6 +109,8 @@ void ChannelTab::resized()
     r.removeFromTop(4);
     sendsHeader = r.removeFromTop(18); r.removeFromTop(2);
     sendsArea = r.removeFromTop(4 * 17); r.removeFromTop(8);
+    sendScroll.setBounds(sendsArea.removeFromRight(9));
+    sendsArea.removeFromRight(2);
     bottomName = r.removeFromBottom(22); r.removeFromBottom(4);
     auto row = r.removeFromBottom(22);
     arm.setBounds(row.removeFromLeft(row.getWidth() / 2 - 2)); row.removeFromLeft(4); monitor.setBounds(row);
@@ -145,19 +154,20 @@ void ChannelTab::paint(juce::Graphics& g)
         g.setColour(line.brighter(.3f)); g.drawHorizontalLine(eqArea.getCentreY(), (float) eqArea.getX(), (float) eqArea.getRight());
         g.setColour(accent); g.strokePath(curve, juce::PathStrokeType(1.4f));
     }
-    for (auto [area, title] : { std::pair<juce::Rectangle<int>, juce::String> { insertsHeader, i18n::tr("Inserciones") }, { sendsHeader, i18n::tr("Envíos") } })
+    for (auto [area, title] : { std::pair<juce::Rectangle<int>, juce::String> { insertsHeader, i18n::tr("Inserciones") }, { sendsHeader, i18n::tr("Envíos") + " " + juce::String(firstSend + 1) + "–" + juce::String(firstSend + 4) } })
     {
         g.setColour(raised); g.fillRoundedRectangle(area.toFloat(), 2.5f);
         juce::Path arrow; arrow.addTriangle((float) area.getX() + 6, (float) area.getY() + 7, (float) area.getX() + 13, (float) area.getY() + 7, (float) area.getX() + 9.5f, (float) area.getY() + 12);
         g.setColour(ink); g.fillPath(arrow); text(g, title, area.withTrimmedLeft(18), 10.0f, ink);
     }
-    for (int k = 0; k < Track::sendCount; ++k)
+    for (int rowIndex = 0; rowIndex < 4; ++rowIndex)
     {
-        const auto row = sendsArea.withY(sendsArea.getY() + k * 17).withHeight(15);
+        const int k = firstSend + rowIndex;
+        const auto row = sendsArea.withY(sendsArea.getY() + rowIndex * 17).withHeight(15);
         const auto& send = track->sends[(size_t) k];
         const auto fx = send.target.isEmpty() ? nullptr : engine.findTrack(send.target);
         g.setColour(fx ? juce::Colour(0xffc4622d) : bg.brighter(.06f)); g.fillRoundedRectangle(row.toFloat(), 2.0f);
-        if (fx) text(g, fx->name + "  " + juce::String(send.levelDb.load(), 1), row.reduced(5, 0), 9.5f, ink);
+        text(g, juce::String(k + 1) + (fx ? " " + fx->name + "  " + juce::String(send.levelDb.load(), 1) : juce::String()), row.reduced(5, 0), 9.5f, fx ? ink : muted);
     }
     font(g, 8.0f); g.setColour(muted);
     for (float db : { 6.0f, 0.0f, -6.0f, -12.0f, -24.0f, -48.0f })
@@ -177,5 +187,21 @@ void ChannelTab::paint(juce::Graphics& g)
     }
     g.setColour(track->colour); g.fillRoundedRectangle(bottomName.toFloat(), 3.0f);
     text(g, track->name, bottomName.reduced(6, 0), 10.5f, eventInk);
+}
+
+void ChannelTab::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    if (sendsArea.contains(e.getPosition()) && wheel.deltaY != 0.0f)
+    {
+        sendScroll.setCurrentRangeStart(juce::jlimit(0, Track::sendCount - 4, firstSend + (wheel.deltaY < 0 ? 1 : -1)), juce::sendNotificationSync);
+        return;
+    }
+    juce::Component::mouseWheelMove(e, wheel);
+}
+
+void ChannelTab::scrollBarMoved(juce::ScrollBar*, double start)
+{
+    firstSend = juce::jlimit(0, Track::sendCount - 4, (int) start);
+    repaint(sendsArea.getUnion(sendsHeader));
 }
 }

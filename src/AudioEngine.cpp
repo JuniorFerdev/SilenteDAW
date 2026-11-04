@@ -77,12 +77,13 @@ struct Track::Runtime
     // (cached indices re-validated by id every block) and render rank.
     juce::AudioBuffer<float> bus;
     int outputIndex = -1, rank = 0;
-    std::array<int, Track::sendCount> sendIndex { -1, -1, -1, -1 };
+    std::array<int, Track::sendCount> sendIndex;
     bool destinationSoloed = false;
     // Per block: index of the clip heard at each sample (later clips cover earlier ones).
     std::vector<int> owner;
     Runtime()
     {
+        sendIndex.fill(-1);
         for (int i = 0; i < 16; ++i) synth.addVoice(new ToneVoice());
         synth.addSound(new ToneSound());
         midi.ensureSize(65536);
@@ -645,12 +646,14 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         // before the fader (pre: after inserts and EQ, follows mute) or after fader and pan.
         float sendGain[Track::sendCount] {};
         bool sendPre[Track::sendCount] {};
+        int activeSends[Track::sendCount] {}, activeSendCount = 0;
         for (int k = 0; k < Track::sendCount; ++k)
         {
             const auto& send = track->sends[static_cast<size_t>(k)];
             sendPre[k] = send.preFader.load();
             const float level = juce::jlimit(-60.0f, 6.0f, finiteGain(send.levelDb.load()));
             sendGain[k] = rt.sendIndex[static_cast<size_t>(k)] < 0 || level <= -60.0f ? 0.0f : juce::Decibels::decibelsToGain(level) * (sendPre[k] && ! audible ? 0.0f : 1.0f);
+            if (sendGain[k] > 0.0f) activeSends[activeSendCount++] = k;
         }
         for (int ch = 0; ch < 2; ++ch)
         {
@@ -658,8 +661,11 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
             auto* dst = rt.outputIndex >= 0 ? tracks[static_cast<size_t>(rt.outputIndex)]->runtime->bus.getWritePointer(ch)
                                             : mixBuffer.getWritePointer(ch, offset);
             float* sendDst[Track::sendCount] {};
-            for (int k = 0; k < Track::sendCount; ++k)
-                if (sendGain[k] > 0.0f) sendDst[k] = tracks[static_cast<size_t>(rt.sendIndex[static_cast<size_t>(k)])]->runtime->bus.getWritePointer(ch);
+            for (int n = 0; n < activeSendCount; ++n)
+            {
+                const int k = activeSends[n];
+                sendDst[k] = tracks[static_cast<size_t>(rt.sendIndex[static_cast<size_t>(k)])]->runtime->bus.getWritePointer(ch);
+            }
             for (int i = 0; i < samples; ++i)
             {
                 const float value = finiteGain(src[i]);
@@ -673,8 +679,11 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
                 const float preFader = rt.delay.getSample(ch, readIndex);
                 const float delayed = preFader * gains[ch];
                 dst[i] += delayed;
-                for (int k = 0; k < Track::sendCount; ++k)
-                    if (sendDst[k] != nullptr) sendDst[k][i] += (sendPre[k] ? preFader : delayed) * sendGain[k];
+                for (int n = 0; n < activeSendCount; ++n)
+                {
+                    const int k = activeSends[n];
+                    sendDst[k][i] += (sendPre[k] ? preFader : delayed) * sendGain[k];
+                }
                 peaks[ch] = juce::jmax(peaks[ch], std::abs(delayed));
             }
         }

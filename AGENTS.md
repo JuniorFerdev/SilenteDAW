@@ -6,6 +6,7 @@ Proyecto independiente de TopoVía y de los documentos académicos de carpetas v
 
 - Leer `ETAPAS.md` para conocer el estado y la etapa activa. Consultar `docs/ARQUITECTURA.md` solo para el módulo pertinente.
 - Una tarea y una entrega comprobable por tramo. No iniciar otra etapa automáticamente.
+- Pedido de Fernando (04-11-2026): anunciar la función concreta antes de desarrollarla y dar avances durante la ejecución. Para replicar una interacción visual, inspeccionar capturas reales y registrar la referencia; no deducir el diseño solo del texto. Mantener una checklist explícita de todas las mejoras solicitadas, con dependencias y pendientes, sin presentar una base parcial como una función completa.
 - No usar subagentes salvo autorización explícita del usuario para el tramo actual.
 - Silente tiene repositorio git local propio (rama main, sin remoto). Hacer commit al cerrar cada tramo y antes de scripts que reescriban archivos; autor Luis Fernando Muñoz Bolaños <fermubol@gmail.com>.
 - Conservar todo el código fuente en este proyecto. No depender del historial de un chat para entender decisiones o compilar.

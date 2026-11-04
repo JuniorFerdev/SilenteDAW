@@ -284,6 +284,46 @@ int runEngineTests(const juce::File& outputDir)
         require(restored.tracks[0]->sends[0].preFader.load() && std::abs(restored.tracks[0]->sends[0].levelDb.load() + 6.0f) < 1.0e-4f, "Send settings not restored");
     });
 
+    suite.run("sixteen independent sends, legacy projects and high-slot persistence", [&]
+    {
+        AudioEngine engine; setup(engine);
+        auto source = importFixture(engine, mono); source->pan = -1.0f; source->gain = 0.5f;
+        auto fx = engine.addTrack(TrackKind::fx, "Sixteen sends"); fx->pan = -1.0f; fx->gain = 1.0f;
+        engine.play();
+        near(render(engine, 2048).getSample(0, 1024), 0.125, 0.0002, "Unused high slots must not route to track zero");
+        double expected = 0.125;
+        for (int k = 0; k < 16; ++k)
+        {
+            requireOk(engine.setSend(*source, k, fx->id));
+            auto& send = source->sends[(size_t) k];
+            send.levelDb = -24.0f - (float) k;
+            send.preFader = k % 2 == 1;
+            expected += (send.preFader.load() ? 0.25 : 0.125) * juce::Decibels::decibelsToGain(send.levelDb.load());
+            near(render(engine, 2048).getSample(0, 1024), expected, 0.0003, "Each slot adds its own pre/post signal " + juce::String(k + 1));
+        }
+        require(engine.setSend(*source, 16, fx->id).failed() && engine.setSend(*source, -1, fx->id).failed(), "Invalid send slot accepted");
+        require(engine.setSend(*fx, 15, fx->id).failed(), "High-slot feedback loop accepted");
+        source->sends[15].enabled = false;
+        const auto full = dir.getChildFile("sixteen-sends.silente"); requireOk(engine.saveProject(full));
+        AudioEngine restored; setup(restored); requireOk(restored.loadProject(full));
+        const auto& last = restored.tracks[0]->sends[15];
+        require(last.target == fx->id && last.preFader.load() && ! last.enabled.load(), "Slot 16 flags lost on load");
+        near(last.levelDb.load(), -39.0, 0.0001, "Slot 16 level lost on load");
+        restored.play();
+        near(render(restored, 2048).getSample(0, 1024), render(engine, 2048).getSample(0, 1024), 0.0001, "Sixteen sends round trip changes the audio");
+
+        auto json = juce::JSON::parse(full);
+        auto* tracks = json["tracks"].getArray(); require(tracks != nullptr, "Missing tracks in fixture");
+        for (auto& t : *tracks) if (auto* sends = t["sends"].getArray()) sends->removeRange(4, sends->size() - 4);
+        const auto legacy = dir.getChildFile("four-sends-legacy.silente");
+        require(legacy.replaceWithText(juce::JSON::toString(json)), "Cannot write legacy fixture");
+        AudioEngine old; setup(old); requireOk(old.loadProject(legacy));
+        for (int k = 4; k < 16; ++k) require(old.tracks[0]->sends[(size_t) k].target.isEmpty(), "Legacy file creates a new send");
+        double legacyExpected = 0.125;
+        for (int k = 0; k < 4; ++k) legacyExpected += (k % 2 ? 0.25 : 0.125) * juce::Decibels::decibelsToGain(-24.0f - (float) k);
+        old.play(); near(render(old, 2048).getSample(0, 1024), legacyExpected, 0.0003, "Legacy four-slot project changes the audio");
+    });
+
     suite.run("mute, solo and sum of independent tracks", [&]
     {
         AudioEngine engine; setup(engine);

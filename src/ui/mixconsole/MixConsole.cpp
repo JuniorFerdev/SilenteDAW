@@ -72,17 +72,25 @@ public:
         edge.onStart = [this] { widthAtStart = getWidth(); };
         edge.onDrag = [this](int offset) { owner.setStripWidth(index, widthAtStart + offset, juce::ModifierKeys::currentModifiers.isAltDown()); };
         edge.onEnd = [this] { changed(); };
+        addAndMakeVisible(sendScroller);
+        sendScroller.setComponentID("mix-send-scroll-" + id);
+        sendScroller.setViewedComponent(&sendContent, false);
+        sendScroller.setScrollBarsShown(true, false);
+        sendScroller.setScrollBarThickness(9);
+        sendScroller.setScrollOnDragMode(juce::Viewport::ScrollOnDragMode::never);
         for (int k = 0; k < Track::sendCount; ++k)
         {
             auto& target = sendTargets[(size_t) k];
             auto& level = sendLevels[(size_t) k];
-            addAndMakeVisible(target); addAndMakeVisible(level);
+            sendContent.addAndMakeVisible(target); sendContent.addAndMakeVisible(level);
             target.setComponentID("mix-send-" + juce::String(index) + "-" + juce::String(k));
+            level.setComponentID("mix-send-level-" + id + "-" + juce::String(k));
             target.onClick = [this, k] { sendMenu(k); };
             level.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
             level.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
             level.setRange(minimumDb, maximumDb, 0.1); level.setSkewFactorFromMidPoint(-12.0);
             level.setDoubleClickReturnValue(true, 0.0);
+            level.setScrollWheelEnabled(false); // Wheel navigation must not change a send level.
             level.setColour(juce::Slider::rotarySliderOutlineColourId, line);
             level.onDragStart = [this] { edited(); };
             level.onValueChange = [this, k] { if (! syncing && track) { track->sends[(size_t) k].levelDb = (float) sendLevels[(size_t) k].getValue(); changed(); } };
@@ -207,9 +215,9 @@ public:
                 const auto& send = track->sends[(size_t) k];
                 const auto fx = send.target.isEmpty() ? nullptr : engine.findTrack(send.target);
                 auto& b = sendTargets[(size_t) k];
-                b.setButtonText(fx ? (send.preFader.load() ? juce::String("PRE ") : juce::String()) + fx->name : juce::String());
+                b.setButtonText(juce::String(k + 1) + " " + (fx ? (send.preFader.load() ? juce::String("PRE ") : juce::String()) + fx->name : juce::String()));
                 b.setAlpha(fx && ! send.enabled.load() ? .45f : 1.0f);
-                b.setTooltip(fx ? i18n::tr("Envío: clic para destino, pre/post y activar") : i18n::tr("Añadir envío a un canal FX"));
+                b.setTooltip(juce::String(k + 1) + (fx ? " · " + fx->name + "\n" + i18n::tr("Envío: clic para destino, pre/post y activar") : " · " + i18n::tr("Añadir envío a un canal FX")));
                 sendLevels[(size_t) k].setEnabled(fx != nullptr);
                 if (! sendLevels[(size_t) k].isMouseButtonDown()) sendLevels[(size_t) k].setValue(send.levelDb.load(), juce::dontSendNotification);
                 sendLevels[(size_t) k].setTooltip(fx ? i18n::tr("Nivel de envío: ") + dbText(send.levelDb.load()) + " dB" : juce::String());
@@ -241,9 +249,14 @@ public:
         const auto insertsArea = rack(MixConsole::inserts, rackHeight(MixConsole::inserts));
         const auto eqArea = rack(MixConsole::equaliser, rackHeight(MixConsole::equaliser));
         const auto sendsArea = rack(MixConsole::sends, rackHeight(MixConsole::sends));
+        sendScroller.setBounds(track ? sendsArea.withTrimmedTop(2) : juce::Rectangle<int>());
         if (! sendsArea.isEmpty())
         {
-            auto a = sendsArea.withTrimmedTop(2);
+            const int scrollY = sendScroller.getViewPositionY();
+            const int contentWidth = juce::jmax(20, sendScroller.getWidth() - sendScroller.getScrollBarThickness());
+            sendContent.setSize(contentWidth, 25 * Track::sendCount);
+            sendScroller.setViewPosition(0, scrollY);
+            auto a = sendContent.getLocalBounds();
             for (int k = 0; k < Track::sendCount; ++k)
             {
                 auto row = a.removeFromTop(22); a.removeFromTop(3);
@@ -402,6 +415,8 @@ private:
     std::array<ui::PluginSlotButton, insertSlots> inserts;
     std::array<juce::TextButton, Track::sendCount> sendTargets;
     std::array<juce::Slider, Track::sendCount> sendLevels;
+    juce::Component sendContent;
+    juce::Viewport sendScroller; // Owns no content; destroyed before sendContent.
     juce::Slider low, mid, high, pan, fader;
     juce::Label volume;
     MeterState meters;
@@ -573,7 +588,7 @@ int MixConsole::rackHeight(Rack r)
         case routing: return 62;
         case inserts: return 8 + 25 * (insertSlots + 1) + 4;
         case equaliser: return 54;
-        case sends: return 8 + 25 * Track::sendCount + 4;
+        case sends: return 8 + 25 * 4 + 4; // Scroll all 16 slots; preserve room for the fader.
         case rackCount: break;
     }
     return 0;

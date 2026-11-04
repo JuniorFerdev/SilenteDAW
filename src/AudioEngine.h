@@ -73,7 +73,7 @@ struct Track
     std::atomic<float> gain { 0.8f }, pan { 0.0f }, peakL { 0.0f }, peakR { 0.0f };
     std::atomic<bool> mute { false }, solo { false }, armed { false }, monitor { false };
     std::atomic<float> lowGainDb { 0.0f }, midGainDb { 0.0f }, highGainDb { 0.0f };
-    static constexpr int sendCount = 4;
+    static constexpr int sendCount = 16;
     juce::String output; // group track id; empty = Stereo Out
     std::array<TrackSend, sendCount> sends;
     bool isBus() const noexcept { return kind == TrackKind::fx || kind == TrackKind::group; }

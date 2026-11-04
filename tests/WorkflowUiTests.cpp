@@ -8,6 +8,7 @@
 #include "../src/ui/project/SnapGrid.h"
 #include "../src/ui/project/ZoneSplitter.h"
 #include "../src/ui/project/FadeEditor.h"
+#include "../src/ui/project/ChannelTab.h"
 #include "../src/app/KeyCommands.h"
 #include <cmath>
 #include <iostream>
@@ -223,10 +224,36 @@ private:
         engine.clear();
         auto audio=engine.addAudioTrack("Mix audio");engine.addTrack(TrackKind::folder,"Mix folder");auto fx=engine.addTrack(TrackKind::fx,"Mix FX");engine.addMidiTrack("Mix synth");auto bus=engine.addTrack(TrackKind::group,"Mix Bus");
         expect(engine.setOutput(*audio,bus->id).wasOk()&&engine.setSend(*audio,0,fx->id).wasOk(),"routing API accepts audio-to-group output and send to FX");audio->sends[0].levelDb=-6.0f;
+        engine.setSend(*audio,15,fx->id);
         int undos=0,changes=0;ui::MixConsoleHooks hooks;hooks.beforeEdit=[&undos]{++undos;};hooks.changed=[&changes]{++changes;};hooks.selected=[]{return 0;};
         ui::MixConsole console(engine,manager,hooks);console.setSize(1200,760);
         expect(console.visibleStripCount()==5,"MixConsole shows audio, FX, instrument and group channels plus Stereo Out, not the folder");
-        expect(find(console,"mix-send-0-0")!=nullptr&&find(console,"mix-send-0-3")!=nullptr,"MixConsole shows four send slots per channel");
+        expect(find(console,"mix-send-0-0")!=nullptr&&find(console,"mix-send-0-15")!=nullptr,"MixConsole provides sixteen send slots per channel");
+        if (auto* scroll=dynamic_cast<Viewport*>(find(console,"mix-send-scroll-0")))
+        {
+            auto* fader=find(console,"mix-fader-0"); const auto before=fader->getBounds();
+            scroll->setViewPosition(0,10000);
+            auto* last=find(console,"mix-send-0-15");
+            expect(last&&scroll->getViewArea().contains(last->getBounds())&&fader->getBounds()==before&&fader->getHeight()>100,"Scrolling to send 16 preserves the channel fader and reveals the last slot");
+            expect(dynamic_cast<TextButton*>(last)&&dynamic_cast<TextButton*>(last)->getButtonText().contains(fx->name),"The visible last send displays its FX destination");
+            if(auto* level=dynamic_cast<Slider*>(find(console,"mix-send-level-0-15")))
+            {
+                engine.setSend(*audio,15,fx->id);level->setValue(-18.0,sendNotificationSync);
+                expect(std::abs(audio->sends[15].levelDb.load()+18.0f)<1e-4f&&changes>0,"Send 16 level edits its own model slot");
+            }
+            capture(console,output.getChildFile("mixconsole-sixteen-sends.png"));
+        }
+        else expect(false,"Send rack scrollbar exists");
+        {
+            ui::ChannelTab channel(engine,manager);channel.setSize(160,800);channel.setTrack(0);
+            if(auto* scroll=dynamic_cast<ScrollBar*>(find(channel,"channel-send-scroll")))
+            {
+                scroll->setCurrentRangeStart(12,sendNotificationSync);
+                expect(scroll->getCurrentRangeStart()==12&&scroll->getCurrentRangeSize()==4,"Channel column scrolls to sends 13–16 within its own rack");
+                capture(channel,output.getChildFile("channel-sixteen-sends.png"));
+            }
+            else expect(false,"Channel send scrollbar exists");
+        }
         if(auto* mute=dynamic_cast<TextButton*>(find(console,"mix-mute-0"))){mute->setToggleState(true,dontSendNotification);if(mute->onClick)mute->onClick();expect(audio->mute.load()&&undos>0&&changes>0,"MixConsole mute edits the track with undo and dirty flag");}
         else expect(false,"MixConsole mute button exists");
         if(auto* fader=dynamic_cast<Slider*>(find(console,"mix-fader-2"))){fader->setValue(-6.0,sendNotificationSync);expect(std::abs(fx->gain.load()-Decibels::decibelsToGain(-6.0f))<1e-4f,"MixConsole fader sets channel gain in dB");}

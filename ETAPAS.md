@@ -11,7 +11,15 @@
 5. El usuario revisa el resultado antes de iniciar la etapa siguiente.
 6. Comunicaciones breves. Sin búsquedas amplias, lecturas completas, capturas repetidas ni pruebas generales si no aportan a la etapa activa.
 
-## EN CURSO · Manual etapa 1 · Ventana de proyecto (págs. 55–123)
+## Último tramo · 04-11-2026 · envios16 · Novedades de Cubase 16
+
+- Fernando pidió estudiar el video completo de Estudio Durango y las novedades oficiales, con capturas, e incorporar gradualmente las mejoras del host sin desarrollar plugins nuevos. Investigación y matriz: `docs/CUBASE16_NOVEDADES_Y_PLAN.md`; capturas en `docs/referencias/cubase16/`. Se leyó toda la transcripción automática y se inspeccionaron escenas; no se afirma un visionado continuo íntegro. Manual leído en este tramo: MixConsole, págs. 508–510, incluidas las figuras 508–509.
+- Primer cambio: **16 envíos FX por canal** (antes cuatro). Se guardan todos y se cargan proyectos antiguos de cuatro ranuras sin crear rutas nuevas. MixConsole muestra el rack con desplazamiento; Canal muestra cuatro filas desplazables hasta 13–16, sin invadir el fader. Rueda sobre las perillas de envío no altera el nivel mientras se navega. El motor procesa por muestra solo los envíos activos, con arreglos reservados y sin E/S nueva.
+- Pruebas observadas en Apple Silicon: motor **38/38**, formatos **6/6**, flujo **87/87**, idiomas **769** y cambio ES→EN→ES. Nuevas pruebas: señal acumulada por cada una de las 16 ranuras con pre/post y niveles independientes; índices inválidos y autobucle; persistencia de la ranura 16; compatibilidad de proyecto con cuatro envíos; desplazamiento hasta la última ranura, destino visible y fader intacto; columna Canal hasta 13–16. Capturas: `build/cubase16-workflow/mixconsole-sixteen-sends.png` y `channel-sixteen-sends.png`.
+- Compilación de desarrollo: `build/Silente_artefacts/Release/Silente.app`. **No se reconstruyó ni sustituyó la entrega universal** en este tramo; Rosetta no se volvió a probar. No se hizo prueba física ni se repitió el render de la sesión del usuario. Los destinos siguen limitados a canales FX; cue, MIDI y sidechain son pendientes separados.
+- Pedidos diferidos registrados: **10 plugins de inserción por pista**, **editor MIDI avanzado** (actual básico; requiere videos/manual/diseño/funcionamiento) y **paleta contextual de herramientas al clic derecho** (inventariar símbolos y acciones por contexto). Antes del siguiente tramo: informar a Fernando la funcionalidad concreta; continuar con los pendientes de la matriz, una entrega verificable por vez.
+
+## Manual etapa 1 · Ventana de proyecto (págs. 55–123; historial)
 
 Análisis: `docs/MANUAL_01_VENTANA_PROYECTO.md`. Lectura del PDF sin instalar nada: `swift` + PDFKit (extraer texto por páginas y renderizar páginas a PNG con `PDFPage.thumbnail`); no hay poppler ni Homebrew.
 
