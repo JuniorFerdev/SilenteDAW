@@ -5,6 +5,7 @@ namespace silente::ui
 {
 AudioSettingsPanel::AudioSettingsPanel(AudioEngine& e):engine(e),selector(e.deviceManager,0,DeviceSettings::channelLimit,0,DeviceSettings::channelLimit,true,true,true,false)
 {
+    selector.setComponentID("audio-device-selector");save.setComponentID("audio-save");rescan.setComponentID("audio-rescan");
     setLookAndFeel(&look);for(auto* c:std::initializer_list<juce::Component*>{&selector,&status,&hint,&save,&rescan})addAndMakeVisible(c);
     hint.setText(i18n::tr("Hasta 18 entradas y 18 salidas. Activa los canales que usarás. La mezcla sale por los dos primeros canales de salida activados."),juce::dontSendNotification);
     hint.setColour(juce::Label::textColourId,theme::muted);hint.setFont(juce::Font(juce::FontOptions(12)));

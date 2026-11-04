@@ -4,6 +4,9 @@ Estado a 29-10-2026: tema visual extraído a src/ui/theme/ (Colours, Drawing, Si
 
 ## Situación actual
 
+- `src/ui/settings/SettingsWorkspace.*`: ventana de preferencias con índice de búsqueda y páginas de UI reutilizadas (audio, metrónomo, comandos) y páginas de apariencia/transporte. Recibe callbacks del coordinador para aplicar transporte y escala; no modifica muestras ni procesa audio.
+- `src/app/Preferences.*`: ubicación de preferencias globales y lectura/escritura de escala de interfaz. El modo de pruebas suministra un directorio aislado; `MainComponent::settingsFolder` conserva su API y delega aquí. No es el serializador del proyecto.
+
 - src/i18n/: Translations carga catálogos empaquetados, selecciona idioma y conserva la preferencia; UiTranslation actualiza botones y ayudas sin tocar nombres editables. resources/locales/es.json y en.json contienen los textos; resources/macos/ contiene los mensajes de permiso de micrófono. tests/LocalisationUiTests.cpp comprueba el cambio de idioma y conservación de datos.
 - src/ui/plugins/: PluginSelector contiene búsqueda, grupos y favoritos; PluginSlotButton separa clic de editor y menú de opciones. src/plugins/PluginSelection.h contiene filtros y correspondencia entre instrumentos e insertos. La carga y ventanas todavía se coordinan en PluginManager.
 - src/Main.cpp: entrada, menús, ventana y modos auxiliares.

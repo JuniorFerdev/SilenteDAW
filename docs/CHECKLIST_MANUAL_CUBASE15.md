@@ -59,6 +59,10 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ Tabla de ~130 comandos por defecto con ventana de consulta; los marcados ✓ funcionan.
 - ⬜ Editar y guardar asignaciones propias.
 
+## Ajustes (referencia Cubase 16)
+- ✅ Ventana no modal reutilizable: Audio/MIDI, escala de interfaz, Transporte, Metrónomo y consulta de comandos de teclado; navegación y buscador transversal con resultados por control/comando. Preferencias y cambio de idioma comprobados en desarrollo Apple Silicon.
+- ⬜ Preferencias de color de pistas, carpetas y consola del video; otras páginas avanzadas de Ajustes y asignaciones de teclas editables.
+
 ## Pedidos de Fer · 04-11-2026 · investigación y desarrollo pendientes
 - ⬜ **Editor MIDI completo:** el piano roll actual es básico y no equivale a la ventana avanzada de Cubase. Investigar el capítulo Editores MIDI (1170–1304), documentación vigente de Cubase 16 y videos completos; guardar referencias, capturas y una matriz de herramientas, selección, información de notas, velocidades/controladores, zoom, cuantización, navegación y ventanas. Incluir Rasgueo y Estirar selección de Cubase 16. Diseñar y probar por subetapas, sin declarar completo el editor por tener notas dibujadas.
 - ⬜ **Barra de herramientas contextual sobre las pistas:** estudiar la paleta de símbolos al hacer clic derecho en el visor de eventos. Inventariar selección, rango, dividir/cortar, pegar, dibujar, borrar, enmudecer, zoom, reproducción, fundido X, localizadores y punch según el contexto real y la configuración de Cubase. Distinguir herramientas de edición, comandos del menú y botones de transporte; confirmar cada icono con captura y referencia antes de asignarle una acción. Silente aún no reproduce este flujo completo.

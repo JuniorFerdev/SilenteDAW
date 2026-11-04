@@ -7,6 +7,8 @@
 #include "ui/theme/TrackColourPicker.h"
 #include "ui/plugins/PluginSlotButton.h"
 #include "ui/audio/AudioSettingsPanel.h"
+#include "ui/settings/SettingsWorkspace.h"
+#include "app/Preferences.h"
 #include "ui/metronome/MetronomePanel.h"
 #include "ui/metronome/TapTempoPanel.h"
 #include "ui/mixconsole/MixConsole.h"
@@ -708,9 +710,9 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     juce::MidiKeyboardComponent keyboard;
     juce::TooltipWindow tooltips;
     std::unique_ptr<juce::FileChooser> chooser;
-    std::unique_ptr<UtilityWindow> channelWindow, metronomeWindow, tapWindow;
+    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow;
     std::unique_ptr<ui::MixConsoleWindow> mixConsoleWindow;
-    std::unique_ptr<UtilityWindow> exportWindow, conversionWindow, keyCommandsWindow, historyWindow;
+    std::unique_ptr<UtilityWindow> exportWindow, conversionWindow, historyWindow;
     void showHistory()
     {
         if(!historyWindow)
@@ -730,8 +732,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     }
     void showKeyCommands()
     {
-        if(!keyCommandsWindow){keyCommandsWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Comandos de teclado"),new ui::KeyCommandsPanel([this](const juce::String& id){return keyActions.count(id)>0;}),720,620);keyCommandsWindow->setLookAndFeel(&look);}
-        keyCommandsWindow->setVisible(true);keyCommandsWindow->toFront(true);
+        showSettingsPage(ui::SettingsWorkspace::Page::keys);
     }
     // Project window zones and lines (Cubase manual, «Ventana de proyecto», pp. 55–77).
     std::unique_ptr<ui::ChannelTab> channelTab;
@@ -781,7 +782,6 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         if(inspectorShown())for(size_t n=0;n<insp.sections.size();++n)if(insp.sections[n].contains(p)){sectionOpen[n]=!sectionOpen[n];owner.resized();owner.repaint();return;}
     }
     juce::ShapeButton clickOptions{"metronome-options",muted,ink,accent};juce::TextButton tapButton{"TAP"};
-    juce::Component::SafePointer<juce::DialogWindow> audioWindow;
     std::function<void()> afterSave;
     bool visibilityVisible=false;
     bool dirty = false, pianoVisible = false, syncing = false, closing = false;
@@ -1032,7 +1032,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         click.setTooltip(i18n::tr("Metrónomo · C"));undoButton.setTooltip(i18n::tr("Deshacer edición de pistas, clips o notas · ⌘Z"));redoButton.setTooltip(i18n::tr("Rehacer · ⌘⇧Z"));splitButton.setTooltip(i18n::tr("Dividir el clip de audio seleccionado en el cursor · S"));duplicateButton.setTooltip(i18n::tr("Duplicar clip o nota · ⌘D"));
         refresh();
     }
-    ~Impl(){timelineScroll.removeListener(this);channelWindow.reset();plugins.onChange={};plugins.onTrackCreated={};if(audioWindow)audioWindow->exitModalState(0);owner.setLookAndFeel(nullptr);}
+    ~Impl(){timelineScroll.removeListener(this);settingsWindow.reset();channelWindow.reset();plugins.onChange={};plugins.onTrackCreated={};owner.setLookAndFeel(nullptr);}
 
     void scrollBarMoved(juce::ScrollBar*,double start) override {arrangement.scrollSeconds=start;arrangement.repaint();}
     void setTool(int value)
@@ -1857,8 +1857,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     }
     void showMetronomeSettings()
     {
-        if(metronomeWindow){metronomeWindow->setVisible(true);metronomeWindow->toFront(true);return;}
-        metronomeWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Metrónomo"),new ui::MetronomePanel(engine),460,330);metronomeWindow->setLookAndFeel(&look);
+        showSettingsPage(ui::SettingsWorkspace::Page::metronome);
     }
     void showTapTempo()
     {
@@ -1873,9 +1872,31 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     void toggleMetronome(){engine.metronome=!engine.metronome.load();click.setToggleState(engine.metronome.load(),juce::dontSendNotification);notice=engine.metronome.load()?i18n::tr("Metrónomo activado"):i18n::tr("Metrónomo desactivado");markDirty();}
     void settingsDialog()
     {
-        if(audioWindow){audioWindow->toFront(true);return;}
-        auto* selector=new ui::AudioSettingsPanel(engine);
-        juce::DialogWindow::LaunchOptions options;options.dialogTitle=i18n::tr("Silente · conexiones de audio y MIDI");options.dialogBackgroundColour=panel;options.content.setOwned(selector);options.componentToCentreAround=&owner;options.useNativeTitleBar=true;options.resizable=false;options.escapeKeyTriggersCloseButton=true;audioWindow=options.launchAsync();
+        showSettingsPage(ui::SettingsWorkspace::Page::audio);
+    }
+    void showSettingsPage(ui::SettingsWorkspace::Page page)
+    {
+        if(!settingsWindow)
+        {
+            ui::SettingsHooks hooks;
+            hooks.keyAvailable=[this](const juce::String& id){return keyActions.count(id)>0;};
+            hooks.key=[this](const juce::KeyPress& key){return owner.keyPressed(key);};
+            hooks.readScale=[] {return juce::Desktop::getInstance().getGlobalScaleFactor();};
+            hooks.writeScale=[this](float value){if(owner.onInterfaceScaleChange)owner.onInterfaceScaleChange(value);};
+            hooks.readTransport=[this]{return ui::TransportPreferences{startMode,returnToStart,usePreRoll,usePostRoll,autoScroll,stationary,preRollBars,postRollBars};};
+            hooks.writeTransport=[this](const ui::TransportPreferences& state)
+            {
+                startMode=juce::jlimit(0,3,state.startMode);returnToStart=state.returnToStart;
+                usePreRoll=state.preRoll;usePostRoll=state.postRoll;autoScroll=state.autoScroll;stationary=state.stationary;
+                preRollBars=state.preRollBars;postRollBars=state.postRollBars;saveTransport();refresh();
+            };
+            settingsWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Ajustes"),new ui::SettingsWorkspace(engine,std::move(hooks)),960,730);
+            settingsWindow->setResizeLimits(760,540,2000,1600);settingsWindow->setLookAndFeel(&look);
+        }
+        auto* workspace=dynamic_cast<ui::SettingsWorkspace*>(settingsWindow->getContentComponent());
+        workspace->setSearch({});workspace->showPage(page);
+        settingsWindow->setVisible(true);settingsWindow->toFront(true);
+        owner.fitSettingsToScreen();
     }
 };
 
@@ -1884,9 +1905,8 @@ MainComponent::~MainComponent(){stopTimer();ui.reset();}
 void MainComponent::paint(juce::Graphics& g){ui->paint(g);}
 void MainComponent::mouseDown(const juce::MouseEvent& e){ui->statusClick(e.getPosition());}
 void MainComponent::resized(){if(ui)ui->layout();}
-static juce::File& settingsOverride(){static juce::File folder;return folder;}
-juce::File MainComponent::settingsFolder(){return settingsOverride()!=juce::File()?settingsOverride():juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Silente");}
-void MainComponent::useSettingsFolder(const juce::File& folder){settingsOverride()=folder;}
+juce::File MainComponent::settingsFolder(){return app::preferencesDirectory();}
+void MainComponent::useSettingsFolder(const juce::File& folder){app::usePreferencesDirectory(folder);}
 void MainComponent::timerCallback(){ui->refresh(true);}
 void MainComponent::newProject(){ui->confirmDiscard([this]{ui->stopTransport();ui->plugins.closeEditors();ui->engine.clear();ui->selected=0;ui->arrangement.selectedClip=-1;ui->arrangement.scrollSeconds=0;ui->arrangement.firstTrack=0;ui->undoStack.clear();ui->redoStack.clear();ui->dirty=false;ui->notice=i18n::tr("Nueva sesión. Añade una pista o arrastra tus archivos.");ui->refresh();});}
 void MainComponent::openProject(){ui->open();}
@@ -1894,6 +1914,16 @@ void MainComponent::saveProject(){ui->save();}
 void MainComponent::importFiles(){ui->importChooser();}
 void MainComponent::exportAudio(){ui->exportChooser();}
 void MainComponent::showAudioSettings(){ui->settingsDialog();}
+void MainComponent::showSettings(){ui->showSettingsPage(ui::SettingsWorkspace::Page::appearance);}
+void MainComponent::fitSettingsToScreen()
+{
+    if(ui->settingsWindow)if(auto* display=juce::Desktop::getInstance().getDisplays().getDisplayForRect(ui->settingsWindow->getBounds()))
+    {
+        auto bounds=ui->settingsWindow->getBounds();const auto area=display->userArea.reduced(8);
+        bounds.setSize(juce::jmin(bounds.getWidth(),area.getWidth()),juce::jmin(bounds.getHeight(),area.getHeight()));
+        ui->settingsWindow->setBounds(bounds.constrainedWithin(area));
+    }
+}
 void MainComponent::showMixer(){ui->setPiano(false);}
 void MainComponent::toggleMetronome(){ui->toggleMetronome();}
 void MainComponent::showMixConsole(){ui->showMixConsole();}
@@ -1919,7 +1949,7 @@ void MainComponent::refreshLanguage()
     ui->languageButton.setButtonText(i18n::language()==i18n::Language::spanish?juce::String::fromUTF8("Español"):juce::String("English"));
     ui->notice=ui->engine.tracks.empty()?i18n::tr("Nueva sesión. Añade una pista o arrastra tus archivos."):i18n::tr("Listo. Pulsa Espacio para escuchar la sesión.");
     if(ui->channelWindow){ui->channelWindow->setName(i18n::tr("Silente · Configuración de canal"));i18n::translateControls(*ui->channelWindow);}
-    if(ui->audioWindow){ui->audioWindow->exitModalState(0);ui->audioWindow=nullptr;}
+    if(ui->settingsWindow){ui->settingsWindow->setName(i18n::tr("Silente · Ajustes"));if(auto* workspace=dynamic_cast<ui::SettingsWorkspace*>(ui->settingsWindow->getContentComponent()))workspace->refreshLanguage();}
     ui->refresh();
 }
 void MainComponent::showPlugins(){if(!ui->currentTrack())ui->plugins.showInstrumentSelector();else ui->plugins.showEffectSelector(ui->selected);}

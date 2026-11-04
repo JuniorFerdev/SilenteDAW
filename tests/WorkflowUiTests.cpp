@@ -1,4 +1,5 @@
 #include "WorkflowUiTests.h"
+#include "SettingsUiTests.h"
 #include "../src/MainComponent.h"
 #include "../src/ui/plugins/PluginSelector.h"
 #include "../src/ui/mixconsole/MixConsole.h"
@@ -39,7 +40,8 @@ public:
     WorkflowChecks(MainComponent& v,AudioEngine& e,PluginManager& p,const File& dir,const File& vst,std::function<void(int)> cb)
         :view(v),engine(e),manager(p),output(dir),fixture(vst),complete(std::move(cb))
     {
-        output.createDirectory();initialChecks();mixConsoleChecks();trackListChecks();snapChecks();keyCommandChecks();
+        output.createDirectory();initialChecks();mixConsoleChecks();trackListChecks();snapChecks();
+        runSettingsUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});keyCommandChecks();
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {

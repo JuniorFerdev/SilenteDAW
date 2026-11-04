@@ -24,7 +24,7 @@ Los tiempos son referencias para volver a la demostración; las imágenes conser
 | 06:30–07:10 | Estirar selección MIDI | [Captura](referencias/cubase16/07-02-estirar-midi.jpg). Pendiente; selección múltiple, tiempos y duraciones. |
 | 07:10–07:59 | Detección de tempo | [Captura](referencias/cubase16/07-37-tempo.jpg). Pendiente; distinguir tempo fijo, mapa de tempo y ajuste de audio. |
 | 07:59–10:34 | Module, Omnivocal, Illugen, paquetes de sonidos | Plugins/bibliotecas comerciales excluidos. Explorar medios propios sí sigue pendiente. |
-| 10:34–11:26 | Ajustes con buscador | [Captura](referencias/cubase16/10-41-ajustes.jpg). Pendiente de espacio no modal e índice real de ajustes. |
+| 10:34–11:26 | Ajustes con buscador | [Captura](referencias/cubase16/10-41-ajustes.jpg). Primera etapa implementada: cinco páginas existentes y búsqueda no modal. Otras páginas siguen pendientes. |
 | 11:26–11:58 | Ayuda rápida contextual | [Captura](referencias/cubase16/11-41-ayuda-rapida.jpg). Pendiente; contenido propio y cobertura explícita. |
 | 11:58–12:25 | 16 envíos; 8 cue | [Captura](referencias/cubase16/12-15-envios.jpg). Envíos FX ampliados en este tramo; cue pendiente de Control Room. |
 | 12:25–12:34 | Mayor búfer anticipado | Pendiente de arquitectura de procesamiento; no equivale a aumentar el búfer del dispositivo. |
@@ -40,7 +40,7 @@ Pendiente = no desarrollada aquí. Parcial = hay una base, falta cubrir el compo
 | Función | Estado de Silente / trabajo necesario |
 |---|---|
 | Instrument Stacks | Pendiente: carpeta/canal tocable, capas con rangos de teclas y velocidad, transposición, selección y presets. |
-| Ajustes unificados y búsqueda | Pendiente: reunir opciones existentes, búsqueda transversal, cambios no modales y persistencia. |
+| Ajustes unificados y búsqueda | Parcial, ajustes01: Audio/MIDI, escala, Transporte, Metrónomo y consulta de comandos integrados con búsqueda transversal, ventana no modal y persistencia. Faltan páginas avanzadas y preferencias de color. |
 | Separación de seis stems | Pendiente: motor independiente, licencia de dependencias, CPU/memoria y calidad. No confundir con exportación por canal. |
 | Rasgueo | Pendiente de editor MIDI avanzado. |
 | Estirar selección MIDI | Pendiente de editor MIDI avanzado. |
@@ -83,7 +83,7 @@ Pendiente = no desarrollada aquí. Parcial = hay una base, falta cubrir el compo
 ## Orden de ejecución y aceptación
 
 1. **Envíos 16 (actual):** señal por cada ranura, pre/post, límites, rechazo de bucles, guardado y compatibilidad con cuatro ranuras. Rack desplazable sin invadir el fader. Es una mejora de ruteo del host, no un plugin.
-2. **Ajustes y apariencia:** anunciar antes su alcance; analizar más de cerca el buscador y los tres controles de color antes de construirlos. Mantener el proyecto editable con la ventana abierta.
+2. **Ajustes y apariencia:** ajustes01 reúne cinco páginas existentes en ventana no modal con buscador (106 pruebas UI, idiomas 793). Próxima parte: analizar más de cerca y desarrollar los tres controles de color. Mantener el proyecto editable con la ventana abierta.
 3. **Ayuda rápida y herramientas contextuales:** inventario visual por contexto; distinguir paleta de herramientas, menú de acciones y transporte. No asignar significados a iconos sin comprobarlos.
 4. **Editor MIDI:** investigación específica amplia pedida por Fer; piano roll actual reconocido como básico. Subetapas de selección/navegación, notas, controladores, cuantización y herramientas de versión 16.
 5. **Medios y tempo:** importación móvil, Pool/MediaBay, análisis de tempo y Follow Tempo con ensayos de audio.

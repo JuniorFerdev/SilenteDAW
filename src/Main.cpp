@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "ui/theme/Colours.h"
 #include "MainComponent.h"
+#include "app/Preferences.h"
 #include "ui/metronome/MetronomePanel.h"
 #include "PluginManager.h"
 #include "ui/plugins/PluginEditorWindow.h"
@@ -28,12 +29,7 @@ static juce::String mainWindowTitle()
 
 // «Ventana › Tamaño de la interfaz»: scales every window, text included. Saved per user.
 constexpr float interfaceScales[] { 1.0f, 1.15f, 1.25f, 1.4f, 1.5f };
-static juce::File interfaceFile() { return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Silente/interface.xml"); }
-static float loadInterfaceScale()
-{
-    if (auto xml = juce::XmlDocument::parse(interfaceFile())) return juce::jlimit(1.0f, 1.5f, (float) xml->getDoubleAttribute("scale", 1.15));
-    return 1.15f; // larger than JUCE's default: Fer found the text too small
-}
+static float loadInterfaceScale() { return app::loadInterfaceScale(); }
 
 class SilenteApplication final : public juce::JUCEApplication, private juce::MenuBarModel
 {
@@ -194,6 +190,7 @@ public:
             }
         }
         window = std::make_unique<MainWindow>(*engine, *plugins);
+        window->content().onInterfaceScaleChange=[this](float scale){setInterfaceScale(scale);};
         juce::MenuBarModel::setMacMainMenu(this);
         i18n::setLanguageChangedCallback([this]
         {
@@ -309,6 +306,7 @@ private:
             menu.addItem(66,i18n::tr("Duplicar  ⌘D"));menu.addItem(67,i18n::tr("Suprimir"));menu.addItem(68,i18n::tr("Dividir en el cursor  ⌥X"));
             if (window) menu.addSubMenu(i18n::tr("Rango"), window->content().rangeMenu());
             menu.addSeparator();
+            menu.addItem(28,i18n::tr("Ajustes…"));
             menu.addItem(70,i18n::tr("Historial…"));menu.addItem(69,i18n::tr("Comandos de teclado…"));
         }
         if (index == 6)
@@ -322,10 +320,10 @@ private:
     }
     void setInterfaceScale(float scale)
     {
+        const auto saved=app::saveInterfaceScale(scale);
+        if(saved.failed()){juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,i18n::tr("Ajustes"),saved.getErrorMessage());return;}
         juce::Desktop::getInstance().setGlobalScaleFactor(scale);
-        juce::XmlElement xml("INTERFACE"); xml.setAttribute("scale", (double) scale);
-        interfaceFile().getParentDirectory().createDirectory(); xml.writeTo(interfaceFile());
-        if (window) window->fitToScreen();
+        if (window) { window->fitToScreen();window->content().fitSettingsToScreen(); }
         menuItemsChanged();
     }
     void menuItemSelected(int item, int) override
@@ -345,6 +343,7 @@ private:
             case 14: c.addTrack(TrackKind::fx); break; case 15: c.addTrack(TrackKind::group); break;
             case 20: c.showMixConsole(); break; case 27: c.showMixer(); break; case 21: c.showPlugins(); break; case 22: c.showAudioSettings(); break;
             case 23: engine->panic(); break;
+            case 28: c.showSettings(); break;
             case 24: c.toggleMetronome(); break; case 25: c.showMetronomeSettings(); break; case 26: c.showTapTempo(); break;
             case 40: i18n::setLanguage(i18n::Language::spanish);break;
             case 50: case 51: case 52: case 53: case 54: setInterfaceScale(interfaceScales[item-50]); break;

@@ -28,6 +28,9 @@ public:
     void importFiles();
     void exportAudio();
     void showAudioSettings();
+    void showSettings();
+    void fitSettingsToScreen();
+    std::function<void(float)> onInterfaceScaleChange;
     void showMixer();
     void toggleMetronome();
     void showMixConsole();

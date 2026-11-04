@@ -6,11 +6,11 @@ namespace silente::ui
 {
 // Metronome setup: sound, subdivision, level, accent, recording-only click and count-in.
 // Changes apply immediately and are saved to the user's metronome preferences.
-class MetronomePanel final : public juce::Component
+class MetronomePanel final : public juce::Component, private juce::Timer
 {
 public:
     explicit MetronomePanel(AudioEngine&);
-    ~MetronomePanel() override { setLookAndFeel(nullptr); }
+    ~MetronomePanel() override;
     void resized() override;
     void paint(juce::Graphics&) override;
     static juce::File settingsFile();
@@ -24,5 +24,7 @@ private:
     juce::TextButton preview;
     juce::Label soundLabel, subdivisionLabel, levelLabel, countInLabel;
     void store();
+    bool pendingLevel = false;
+    void timerCallback() override;
 };
 }

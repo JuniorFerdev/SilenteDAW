@@ -1,11 +1,12 @@
 #include "MetronomePanel.h"
 #include "../../i18n/Translations.h"
+#include "../../app/Preferences.h"
 
 namespace silente::ui
 {
 juce::File MetronomePanel::settingsFile()
 {
-    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("Silente/metronome.xml");
+    return app::preferencesDirectory().getChildFile("metronome.xml");
 }
 
 MetronomePanel::MetronomePanel(AudioEngine& e) : engine(e)
@@ -14,6 +15,9 @@ MetronomePanel::MetronomePanel(AudioEngine& e) : engine(e)
     for (auto* c : std::initializer_list<juce::Component*> { &enabled, &sound, &subdivision, &countIn, &level, &accent, &onlyRecording, &preview, &soundLabel, &subdivisionLabel, &levelLabel, &countInLabel })
         addAndMakeVisible(c);
     auto& click = engine.click;
+    sound.setComponentID("metronome-sound");subdivision.setComponentID("metronome-subdivision");
+    countIn.setComponentID("metronome-count-in");level.setComponentID("metronome-level");
+    accent.setComponentID("metronome-accent");onlyRecording.setComponentID("metronome-record-only");
     enabled.setButtonText(i18n::tr("Metrónomo activado  (C)"));
     enabled.setToggleState(engine.metronome.load(), juce::dontSendNotification);
     enabled.onClick = [this] { engine.metronome = enabled.getToggleState(); };
@@ -38,8 +42,8 @@ MetronomePanel::MetronomePanel(AudioEngine& e) : engine(e)
     level.setTextBoxStyle(juce::Slider::TextBoxRight, false, 70, 24);
     level.setRange(-40.0, 6.0, 0.5); level.setTextValueSuffix(" dB");
     level.setValue(click.levelDb.load(), juce::dontSendNotification);
-    level.onValueChange = [this] { engine.click.levelDb = (float) level.getValue(); };
-    level.onDragEnd = [this] { engine.click.requestPreview(); store(); };
+    level.onValueChange = [this] { engine.click.levelDb = (float) level.getValue(); pendingLevel = true; };
+    level.onDragEnd = [this] { engine.click.requestPreview(); store(); pendingLevel = false; };
 
     accent.setButtonText(i18n::tr("Acentuar el primer tiempo del compás"));
     accent.setToggleState(click.accent.load(), juce::dontSendNotification);
@@ -52,6 +56,14 @@ MetronomePanel::MetronomePanel(AudioEngine& e) : engine(e)
     preview.onClick = [this] { engine.click.requestPreview(); };
     for (auto* l : { &soundLabel, &subdivisionLabel, &levelLabel, &countInLabel }) l->setColour(juce::Label::textColourId, theme::muted);
     setSize(460, 330);
+    startTimer(250);
+}
+
+MetronomePanel::~MetronomePanel() { stopTimer();if(pendingLevel)store();setLookAndFeel(nullptr); }
+void MetronomePanel::timerCallback()
+{
+    enabled.setToggleState(engine.metronome.load(),juce::dontSendNotification);
+    if(pendingLevel&&!level.isMouseButtonDown()){store();pendingLevel=false;}
 }
 
 void MetronomePanel::store() { engine.click.save(settingsFile()); }

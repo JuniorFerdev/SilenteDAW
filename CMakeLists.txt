@@ -31,7 +31,8 @@ target_sources(Silente PRIVATE src/Main.cpp src/AudioEngine.cpp src/MainComponen
     src/ui/plugins/PluginSelector.cpp src/audio/DeviceSettings.cpp src/ui/audio/AudioSettingsPanel.cpp
     src/audio/Metronome.cpp src/audio/RecordingModes.cpp src/audio/EventEdit.cpp src/audio/RangeEdit.cpp src/ui/metronome/MetronomePanel.cpp src/ui/metronome/TapTempoPanel.cpp src/ui/mixconsole/MixConsole.cpp src/ui/project/ChannelTab.cpp src/ui/project/FadeEditor.cpp src/ui/plugins/PluginEditorWindow.cpp src/app/KeyCommands.cpp src/ui/keys/KeyCommandsPanel.cpp
     src/io/Mp3Encoder.cpp src/io/AudioFileFormats.cpp src/io/VideoAudio.mm src/diagnostics/NativeWindows.mm src/io/TrackExport.cpp
-    src/ui/io/FormatSelector.cpp src/ui/io/ExportDialog.cpp src/ui/io/ConversionPanel.cpp)
+    src/ui/io/FormatSelector.cpp src/ui/io/ExportDialog.cpp src/ui/io/ConversionPanel.cpp
+    src/app/Preferences.cpp src/ui/settings/SettingsWorkspace.cpp tests/SettingsUiTests.cpp)
 target_compile_definitions(Silente PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:Silente,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}"

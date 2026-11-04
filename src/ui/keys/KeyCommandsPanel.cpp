@@ -10,6 +10,7 @@ KeyCommandsPanel::KeyCommandsPanel(std::function<bool(const juce::String&)> a) :
 {
     setLookAndFeel(&look);
     addAndMakeVisible(search);
+    search.setComponentID("key-commands-search");
     search.setTextToShowWhenEmpty(i18n::tr("Buscar comando o tecla"), muted);
     search.onTextChange = [this] { scroll = 0; update(); };
     setSize(720, 620);
