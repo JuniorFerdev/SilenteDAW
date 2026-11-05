@@ -45,7 +45,7 @@ Las capturas se tomaron navegando por los controles públicos de YouTube, en pau
 3. **Audio/Instrumento/MIDI:** conservar importación, grabación y host existentes; completar las opciones de creación y el flujo básico de partes/editor mostrado. No presentar esto como editor MIDI avanzado completo.
 4. **Regla/Marcador:** tipos sin canal de audio; regla independiente con formatos, marcadores de posición y ciclos con nombre/color, mover/redimensionar, localizar, localizadores y persistencia/deshacer. Las secciones deben permitir navegar de verdad.
 5. **Video:** selector nativo y arrastre, evento con miniaturas, duración/posición, visor que siga Play/pausa/cursor/ciclo, audio extraído opcional y sin reproducción duplicada, guardar/cargar y archivo ausente manejado. Ensayar con video sintético de imagen real, no solo un contenedor de audio.
-6. **Entrega:** pruebas pertinentes de cada módulo, capturas de Silente, compilación y actualización de Universal con respaldo; comprobar arm64 y Rosetta. Mantener fuentes, UI, persistencia, pruebas y referencias organizadas en el workspace de VS Code.
+6. **Entrega:** pruebas pertinentes de cada módulo, capturas de Silente, compilación y actualización de la única Universal, sin respaldos por orden de Fernando del 05-11; comprobar arm64 y Rosetta. Mantener fuentes, UI, persistencia, pruebas y referencias organizadas en el workspace de VS Code.
 
 Estos puntos representan la aceptación global; su avance se detalla abajo, sin dar por entregados los pendientes. Estado y resultados observados se registran en `ETAPAS.md`.
 
@@ -72,11 +72,27 @@ Verificación del candidato Universal firmado en **arm64 y x86_64: 176/176 UI, 4
 ### Checklist que permanece abierta
 
 - [ ] Carpetas con contenido real, anidamiento, plegado y reordenamiento por arrastre (prioridad siguiente).
-- [ ] Diálogo completo de creación Audio/Instrumento/MIDI/Carpeta/Regla/Marcador/Video y front correspondiente.
+- [x] Diálogo global con iconos, nombre, cantidad y ajustes para los ocho tipos existentes: Audio/Instrumento/MIDI/Carpeta/FX/Grupo/Regla/Marcador (creacion01).
+- [ ] Añadir Video al diálogo cuando exista el módulo de imagen sincronizada; los tipos aplazados permanecen desactivados.
 - [ ] Partes MIDI básicas del video; editor MIDI avanzado conserva su investigación y etapa propias.
 - [ ] Video con imagen, miniaturas y visor sincronizado; extraer audio no cubre esta función.
 - [ ] Regla: editar desplazamiento temporal y moverla en la lista cuando exista reordenamiento.
 - [ ] Marcadores: ventana completa ⌘M, selección/edición múltiple, cortar/copiar/pegar/mover entre pistas, más comandos e importación/exportación de listas.
 - [ ] Base musical de marcadores con cambios de tempo; por ahora las posiciones son segundos absolutos.
 - [x] Diez inserciones de efectos por pista, independientes del instrumento: entregadas el 05-11 en las cuatro vistas, con desplazamiento, posiciones persistentes y pruebas en ambas arquitecturas.
-- [x] Entrega Universal marcadores01: app sustituida, firma/arquitecturas/SHA-256 comprobados y respaldo anterior conservado. Detalles en ETAPAS.
+- [x] Entrega Universal marcadores01: app sustituida, firma/arquitecturas/SHA-256 comprobados. El respaldo anterior fue retirado después, por orden de Fernando de conservar una sola app. Detalles en ETAPAS.
+
+
+## Añadir pista · creacion01 · 05-11-2026
+
+Se desarrolló el cuadro global de la captura de Fernando: filas de cuatro y seis tipos, Más pistas plegable con sus seis iconos, nombre, número y Mantener el diálogo abierto. Se consulta la [página oficial de Audio](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/tracks_about/tracks_about_add_track_dialog_audio_settings_r.html) para configuración y cantidad. Los ocho tipos existentes permiten lotes; los tipos aplazados siguen desactivados en sus posiciones de referencia.
+
+- Cantidad 1–100 por operación; Marcador respeta las diez pistas máximas del proyecto. Nombre base con sufijos 01, 02, 03, o nombres por defecto si se deja vacío.
+- Una sola entrada de deshacer/rehacer por lote. Cancelar, cerrar o rechazar una solicitud no crea pistas. La salida se valida por ID estable si un grupo se eliminó con el cuadro abierto.
+- Audio aplica entrada y mono/estéreo a cada pista; probado con dos tomas mono de la entrada elegida. Instrumento/FX utilizan plugins existentes del catálogo; dos instrumentos AU reales cargados en un lote. No se desarrollan nuevos plugins.
+- Regla aplica el formato a todas las pistas del lote. Mantener abierto permite cambiar de tipo y seguir creando; desactivado cierra al confirmar. +, T y menú Pista comparten el cuadro. Importar archivos conserva el selector nativo de macOS.
+- ES/EN preserva nombre y número escritos. El minifader de cabecera deja espacio para leer los nombres creados.
+
+Módulos: `src/ui/project/AddTrackDialog.*` (presentación), `src/app/TrackCreation.*` (validación y creación), coordinador MainComponent (historial/selección/host existente), `tests/AddTrackUiTests.*` (recorrido).
+
+Entregado en la única Universal, sin respaldos: **43/43 motor, 6/6 formatos y 198/198 interfaz en arm64 y x86_64**. El recorrido de teclado/menús se repitió con el Mac desbloqueado y pasó sobre la aplicación instalada. Las diez inserciones de la versión anterior siguen verificadas. [Cuadro observado](referencias/creacion01/add-track-audio.png), [lote con nombres](referencias/creacion01/add-track-named-batch.png) y [manifiesto de entrega](referencias/creacion01/delivery.json). Los campos de entrada de la captura son una fixture de prueba; el diálogo normal muestra las entradas reales del dispositivo seleccionado.

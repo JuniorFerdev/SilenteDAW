@@ -1,0 +1,41 @@
+{
+  "stage": "creacion01",
+  "delivered_at": "2026-11-05T18:51:24.221348-05:00",
+  "source_commit": "967848e2060e7dd989eabb17a328d01da393c5cf",
+  "application": "releases/macOS/Silente-Universal.app",
+  "architectures": [
+    "x86_64",
+    "arm64"
+  ],
+  "bundle_identifier": "audio.silente.studio",
+  "executable_sha256": "64acc3a1df3334bccb3eeee78c40e8f6f7344810b340821eb7fae661d2b9fc9f",
+  "signature": "ad hoc; codesign --verify --deep --strict passed",
+  "verification": {
+    "arm64": {
+      "engine_passed": 43,
+      "engine_total": 43,
+      "io_passed": 6,
+      "io_total": 6,
+      "ui_pass_lines": 198,
+      "ui_failures": [],
+      "new_add_track_checks": "passed including eight named batch types and two independent real AU instruments",
+      "verification_binary": "installed application; same SHA-256 as candidate"
+    },
+    "x86_64": {
+      "engine_passed": 43,
+      "engine_total": 43,
+      "io_passed": 6,
+      "io_total": 6,
+      "ui_pass_lines": 198,
+      "ui_failures": [],
+      "new_add_track_checks": "passed including eight named batch types and two independent real AU instruments",
+      "verification_binary": "installed application; same SHA-256 as candidate"
+    }
+  },
+  "development_ui_pass_lines": 198,
+  "catalogue_entries_per_language": 873,
+  "backups_created": false,
+  "physical_audio_or_Waves_retested": false,
+  "ui_verified_after_manual_unlock": true,
+  "completed_at": "2026-11-05T18:53:12.038382-05:00"
+}

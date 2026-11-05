@@ -1,0 +1,199 @@
+PASS: normal startup has zero tracks and stopped transport
+PASS: project window lower zone hides and shows from the toolbar
+PASS: dragging the zone borders resizes the Inspector and the lower zone
+PASS: zone borders return to their sizes
+PASS: Shift+H / Shift+G change the track height slider
+PASS: waveform zoom slider at the right of the event display
+PASS: project window right zone hides and shows from the toolbar
+PASS: arrangement test surface exists
+PASS: ruler click follows pointer without snap quantisation
+PASS: ruler drag updates the transport continuously
+PASS: ruler gesture continues when pointer moves below ruler
+PASS: mouse release ends ruler gesture
+PASS: ruler drag clamps before project start
+PASS: cycle locator gesture remains independent
+PASS: selector separates effects, instruments, search tokens and formats
+PASS: selector search and Return load the selected effect
+PASS: favourite star saves the plugin identity
+PASS: routing API accepts audio-to-group output and send to FX
+PASS: MixConsole shows audio, FX, instrument and group channels plus Stereo Out, not the folder
+PASS: MixConsole provides sixteen send slots per channel
+PASS: Scrolling to send 16 preserves the channel fader and reveals the last slot
+PASS: The visible last send displays its FX destination
+PASS: Send 16 level edits its own model slot
+PASS: Channel column scrolls to sends 13â16 within its own rack
+PASS: MixConsole mute edits the track with undo and dirty flag
+PASS: MixConsole fader sets channel gain in dB
+PASS: MixConsole typed volume accepts a decimal comma
+PASS: lower-zone MixConsole with folded racks keeps the fader inside the channel
+PASS: MixConsole channel width follows its edge drag; the others keep theirs
+PASS: MixConsole channel width stops at the minimum
+PASS: export and conversion windows build
+PASS: MixConsole search filters channels by name
+PASS: track list shows every track by default
+PASS: track type filter hides audio tracks
+PASS: find tracks skips types hidden by the filter
+PASS: find tracks matches words ignoring case, hidden tracks included
+PASS: picking a found track shows it again
+PASS: Shift-click in Visibility shows only that track
+PASS: snap grid 1/16 at 120 BPM
+PASS: snap grid bar
+PASS: adapt to zoom follows the horizontal zoom
+PASS: events are magnetic within 10 px only
+PASS: grid + cursor: cursor wins nearby, grid elsewhere
+PASS: snap off keeps the exact position
+PASS: ruler time formats
+PASS: Tool keys 1 through 9 match the installed Cubase catalog
+PASS: Main 0 is Drumstick; Num 0 remains Stop
+PASS: F9, F10 and Option-Shift-1 are listed with the real Cubase commands
+PASS: All 43 Tool commands are represented; unassigned commands cannot match an empty key
+PASS: Unimplemented tool commands stay unavailable without editing the project
+PASS: Ten basic modes plus Previous/Next Tool are reported as available
+PASS: Key Commands search exposes the complete audited Tool category
+PASS: Toolbox preference saves and loads disabled
+PASS: Toolbox preference saves and loads enabled
+PASS: Right-click and each keyboard modifier alternate toolbox and context menu
+PASS: Mac Ctrl-left-click is treated as a context-click gesture
+PASS: Toolbox lists the manual's thirteen tools; ten work and Comp/Time Warp/Line are explicitly disabled
+PASS: Toolbox indicates the active tool
+PASS: Toolbox dispatches the chosen tool ID
+PASS: Toolbox F10/F9 use the same traversal as the project
+PASS: Modified F10 is not captured as the default Next Tool command
+PASS: Right-click opens the toolbox even with an empty project
+PASS: F10 traverses the ten available project modes and wraps to Select
+PASS: F9 reverses the complete traversal, skips disabled modes and wraps
+PASS: Tool traversal preserves event/range drawing, cursor, transport and undo history
+PASS: Tool navigation recovers unknown modes without selecting unavailable tools
+PASS: F10 reaches Color after Play without inventing a direct Color shortcut
+PASS: F10 leaves the project tool unchanged while editing text (focus=1, handled=0, unchanged=1)
+PASS: MIDI editor and keyboard focus do not redirect F9/F10 to the project tool (piano focus=1, handled=0; keyboard focus=1, handled=0)
+PASS: Opening the toolbox preserves events, cursor position and undo history
+PASS: F10 in the real popup selects Range and closes the toolbox
+PASS: F9 in the popup wraps from Select to Color without touching events
+PASS: Choosing scissors from the real popup makes the next click split audio
+PASS: Split chosen from toolbox is undoable
+PASS: Colour tool on an empty area leaves the cursor and project unchanged
+PASS: Colour tool opens a palette at the clicked event
+PASS: Cancelling the colour palette does not create an edit
+PASS: Colour applies by event ID after reordering; track and other event colours stay intact
+PASS: Colour-tool edit is undoable
+PASS: Deleting the palette target cannot recolour a different event or create a false undo step
+PASS: Shift-right-click retains the event context menu
+PASS: Disabling the toolbox makes ordinary right-click open event actions
+PASS: With toolbox disabled, Shift-right-click opens it instead
+PASS: Settings lists six existing categories with an empty search
+PASS: Settings search ignores case and accents and combines words across category and control
+PASS: Search result edits the actual metronome count-in
+PASS: Audio frequency search opens the existing device selector
+PASS: Unknown setting gives an empty result without opening a fabricated page
+PASS: Settings scale writes to the isolated preferences directory
+PASS: Appearance selection applies the scale callback and persists 140 percent
+PASS: Invalid interface scale cannot overwrite the saved setting
+PASS: Stationary cursor updates real transport hooks and enables auto-scroll
+PASS: Global search indexes command names and filters the embedded key-command reference
+PASS: Settings translate and rebuild the search index without changing project data or metronome settings
+PASS: Editing preferences search edits the persisted toolbox switch
+PASS: Settings pages remain navigable at the minimum window size
+PASS: Metronome count-in and typed level survive leaving the settings workspace
+PASS: Settings is a non-modal window and leaves the project available
+PASS: Adding a track works while Settings remains open
+PASS: Integrated transport preference persists through the existing project coordinator
+PASS: Audio and Key Commands menu entries reuse the same settings window
+PASS: Settings window closes without closing the project
+PASS: Settings reopens after close with its panels available
+PASS: Cubase default keys map to their commands (C, /, *, P, Space, Cmd-Z, Shift-Del)
+PASS: P sets the locators to the selected event
+PASS: Num 1 goes to the left locator
+PASS: Cmd-C / Cmd-V paste the event at the cursor
+PASS: N locates the next event edge
+PASS: edit history records named steps (Enmudecer, Solo)
+PASS: undo walks back one history step
+PASS: redo re-applies the step
+PASS: / toggles cycle
+PASS: Glue, Zoom, Mute and Play tools on the toolbar with keys 4, 6, 7, 9
+PASS: X is Crossfade
+PASS: I and O are Punch In and Punch Out
+PASS: Transporte menu sets audio record mode (Reemplazar) and 32-bit float
+PASS: punch buttons on
+PASS: play with Punch In waits for the punch-in point
+PASS: punch out ends recording, playback continues
+PASS: punched take sits between the locators
+PASS: recording is an undo step named Grabar
+PASS: undo removes the recorded take
+PASS: red event grows from a fractional pixel start without reading before the waveform
+PASS: Audio > Fundidos applies the standard fade-in and fade-out
+PASS: Eliminar fundidos removes both fades
+PASS: dragging the fade-in handle sets the fade length
+PASS: dragging the volume handle up raises the event volume to +6 dB
+PASS: fade editor: curve buttons and length (fade-in + fade-out within the event)
+PASS: range tool: drag a range and Shift+Backspace deletes the time
+PASS: range edit undoes in one step
+PASS: Insert Silence moves the rest by the range length
+PASS: dragging the range moves its content (gap left behind, audio lands 2 s later)
+PASS: Option-drag copies the range content with its layers
+PASS: Option+Right trims the range start by the grid value
+PASS: Copy and Paste with a range place its content at the cursor
+PASS: Marker track exposes its dedicated Inspector, movable-column list and info line
+PASS: Marker selection replaces audio routing/inserts with marker controls
+PASS: 09:20â09:30: Insert adds a position marker at the exact project cursor
+PASS: 09:38â10:00: Description on the info line names the selected marker and updates the Inspector
+PASS: 10:10â10:20: add button creates the next numbered song section in the Inspector list
+PASS: 10:29: Description column can be moved and resized to expose section names
+PASS: 10:39: leftmost Inspector column locates a named section without creating an edit
+PASS: 10:39-10:50: track-header Locate menu lists descriptions and jumps to INTRO
+PASS: Locate resolves the section UUID and reaches ESTROFA
+PASS: Cycle marker saves both locators with independent cycle numbering
+PASS: Cycle recall sets left/right locators while preserving transport Cycle mode
+PASS: Double-click on the cycle's visible span recalls exactly its locator range
+PASS: Dragging a cycle moves both edges together and adds one undo step
+PASS: Undo restores cycle position and description/colour metadata
+PASS: Dragging the right cycle handle changes only its endpoint with snapping
+PASS: An invalid cycle endpoint is rejected without corrupting bounds or undo history
+PASS: Cycle endpoint can be edited in bars/beats on the info line
+PASS: Option-double-click zooms the cycle without inserting an extra point marker
+PASS: Command-drag creates a snapped cycle range on the marker lane
+PASS: Option-click adds a position marker at the clicked timeline position
+PASS: A zero-length cycle gesture leaves markers and undo history unchanged
+PASS: Shift-click Add Position immediately opens the Description editor
+PASS: Marker project saves through the normal project writer
+PASS: Delete removes the selected marker without deleting its track or audio
+PASS: Undo restores the removed marker with its original identity and description
+PASS: Saved marker sections reopen successfully
+PASS: Reload preserves point/cycle bounds, names, colours, IDs and the active marker track
+PASS: A stale marker edit cannot modify a replacement track or append a false undo step
+PASS: Insert targets the active marker track while another track is selected
+PASS: 11:00: an independent ruler track has timeline controls and no audio channel
+PASS: The ten-marker-track limit rejects an extra track without creating a false edit
+PASS: + and T open the icon-based Add Track dialog without creating a track or undo entry
+PASS: Dialog exposes Name, Count, Keep Open, input, mono/stereo and output settings
+PASS: All eight implemented track types are available; deferred types are visibly disabled
+PASS: Language switch translates the dialog while preserving the entered name and count
+PASS: A named batch creates three mono tracks on Input 3, numbered 01-03, in one undo step and keeps the dialog open
+PASS: Undo removes the complete three-track batch
+PASS: Redo restores the complete batch and names
+PASS: Audio, Instrument, MIDI, Folder, FX, Group, Ruler and Marker each create multiple named tracks
+PASS: Ruler batches apply the chosen independent time format to every track
+PASS: Batch track types, names and settings persist through saving and reopening
+PASS: With Keep Dialog Open disabled, successful creation closes the window
+PASS: Escape cancels without modifying tracks or undo history
+PASS: More tracks folds the six additional icons
+PASS: A deleted output bus rejects creation without a partial batch or false undo step
+PASS: Add Track creates two named tracks with independent real AU instruments
+PASS: Apple AU loads asynchronously through PluginManager
+PASS: slot bypass enabled
+PASS: slot bypass disabled
+PASS: AU processes an offline block without invalid samples
+PASS: effect insertion keeps serial chain order
+PASS: host selector dispatches the chosen plugin
+PASS: selector replacement changes only the chosen slot
+PASS: removing a slot preserves the other effect
+PASS: removing the final slot leaves an empty effect chain
+PASS: Ten real Apple AU effects load independently without cancelling earlier callbacks
+PASS: inspector-inserts: scroll reaches insertion slot ten
+PASS: channel-inserts: scroll reaches insertion slot ten
+PASS: MixConsole reveals insert ten while preserving fader height
+PASS: Channel Settings exposes all ten inserts with individual bypass buttons
+PASS: Slot ten's real options menu bypasses only its own processor
+PASS: Ten real AU processors render without invalid samples
+SKIP: optional installed VST3 fixture not supplied
+PASS: workflow checks completed

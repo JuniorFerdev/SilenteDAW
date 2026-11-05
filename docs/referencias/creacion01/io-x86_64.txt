@@ -1,0 +1,7 @@
+PASS WAV, AIFF and FLAC write and read back exactly
+PASS MP3 (LAME) and M4A/AAC encode and decode with level, length and pitch
+PASS MP3 refuses 96 kHz instead of writing a broken file
+PASS conversion 44.1 kHz WAV to 48 kHz FLAC keeps pitch and duration
+PASS audio extracted from a movie container and converted to WAV
+PASS export mix and separate channels; mute and solo restored
+6/6 io passed
