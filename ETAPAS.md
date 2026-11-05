@@ -11,6 +11,13 @@
 5. El usuario revisa el resultado antes de iniciar la etapa siguiente.
 6. Comunicaciones breves. Sin búsquedas amplias, lecturas completas, capturas repetidas ni pruebas generales si no aportan a la etapa activa.
 
+## Etapa activa · 05-11-2026 · pistas03 · Organización, creación y musicalización
+
+- Alcance acumulado confirmado por Fernando: **Audio, Instrumento, MIDI, Carpeta, Regla** (aclaró que «Guía» significa regla de compases/tiempo), **Marcador** (secciones coloreadas para navegar) y **Video para musicalización**. Muestreador/VCA/Tempo/Compás/Arreglos/Transposición/Acordes nuevos quedan para después. Conservar FX/grupo existentes sin ampliar sus funciones. También exige trabajar apariencia/front, reordenar pistas y actualizar la app al finalizar los cambios verificados.
+- Investigación terminada: transcripción automática completa y **125 capturas revisadas**, cada diez segundos desde 00:00 hasta 20:30 más 20:35. Originales, manifest y 21 hojas de contacto en `docs/referencias/tipos-pista/`; galería `index.html`. Se usaron controles públicos del reproductor, sin descargar el video ni afirmar un visionado audiovisual continuo. El tamaño temporal del navegador se restauró. Alcance, referencia por tiempo y aceptación: `docs/MANUAL_PISTAS_VIDEO.md`.
+- Faltantes reconocidos: Carpeta aún es un contenedor vacío sin jerarquía; importar video actualmente solo extrae audio. Deben convertirse en organización real y reproducción de imagen sincronizada respectivamente. Regla y Marcador aún no existen como tipos de pista. Creación Audio/Instrumento/MIDI todavía usa menú básico, sin el diálogo completo del video. No presentar estos puntos como resueltos por tener sus nombres/iconos.
+- Trabajo inmediato: modelo modular de jerarquía/reordenamiento y pruebas; conectar arrastre/plegado y persistencia. Después diálogo visual y tipos de tiempo/marcadores, flujo básico MIDI y visor/importación de video. **Fuentes en progreso; Universal conserva la entrega del 04-11.** Las fuentes de F9/F10 ya están verificadas y comprometidas en `4020432`; se incluirán en la próxima actualización.
+
 ## Tramo · 05-11-2026 · herramientas03 · Anterior/Siguiente herramienta
 
 - F9 y F10 ejecutan Anterior/Siguiente en la ventana de proyecto y en la caja emergente. Recorrido circular de los diez modos disponibles; se omiten Comp, Time Warp y Línea. La caja cierra al confirmar con esas teclas y los botones de la barra reflejan el modo elegido. Fuente oficial: categoría Herramientas de Cubase Pro 15; F9/F10 confirmadas en internet.
