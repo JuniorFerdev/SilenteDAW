@@ -8,4 +8,6 @@ juce::File preferencesDirectory();
 void usePreferencesDirectory(const juce::File&);
 float loadInterfaceScale();
 juce::Result saveInterfaceScale(float);
+bool showToolboxOnRightClick();
+juce::Result saveShowToolboxOnRightClick(bool);
 }

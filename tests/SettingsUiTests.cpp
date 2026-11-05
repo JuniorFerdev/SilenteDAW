@@ -39,7 +39,7 @@ void runSettingsUiChecks(MainComponent& view,AudioEngine& engine,const juce::Fil
     app::usePreferencesDirectory(isolated);
     {
         ui::SettingsWorkspace workspace(isolatedEngine,hooks);workspace.setSize(960,730);
-        expect(workspace.matchingCount()==5,"Settings lists five existing categories with an empty search");
+        expect(workspace.matchingCount()==6,"Settings lists six existing categories with an empty search");
         workspace.setSearch(String::fromUTF8("METRONOMO precuenta"));
         expect(workspace.matchingCount()==1&&workspace.currentPage()==Page::metronome,"Settings search ignores case and accents and combines words across category and control");
         if(auto* count=dynamic_cast<ComboBox*>(find(workspace,"metronome-count-in")))count->setSelectedId(3,sendNotificationSync);
@@ -84,7 +84,14 @@ void runSettingsUiChecks(MainComponent& view,AudioEngine& engine,const juce::Fil
         expect(workspace.matchingCount()>0&&workspace.currentPage()==Page::metronome&&isolatedEngine.click.countInBars.load()==2&&isolatedEngine.projectName=="Guardar","Settings translate and rebuild the search index without changing project data or metronome settings");
         i18n::setLanguage(originalLanguage,false);workspace.refreshLanguage();
         workspace.setSearch({});workspace.setSize(760,540);
-        for(auto p:{Page::audio,Page::appearance,Page::transport,Page::metronome,Page::keys})workspace.showPage(p);
+        workspace.setSearch("caja herramientas");
+        if(auto* toggle=dynamic_cast<ToggleButton*>(find(workspace,"settings-show-toolbox")))
+        {
+            toggle->setToggleState(false,dontSendNotification);toggle->onClick();expect(!app::showToolboxOnRightClick(),"Editing preferences search edits the persisted toolbox switch");
+        }
+        else expect(false,"Editing preferences page exists");
+        workspace.setSearch({});
+        for(auto p:{Page::audio,Page::appearance,Page::transport,Page::metronome,Page::editing,Page::keys})workspace.showPage(p);
         expect(workspace.currentPage()==Page::keys,"Settings pages remain navigable at the minimum window size");
     }
     audio::Metronome loaded;loaded.load(isolated.getChildFile("metronome.xml"));

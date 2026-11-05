@@ -84,7 +84,7 @@ Pendiente = no desarrollada aquí. Parcial = hay una base, falta cubrir el compo
 
 1. **Envíos 16 (actual):** señal por cada ranura, pre/post, límites, rechazo de bucles, guardado y compatibilidad con cuatro ranuras. Rack desplazable sin invadir el fader. Es una mejora de ruteo del host, no un plugin.
 2. **Ajustes y apariencia:** ajustes01 reúne cinco páginas existentes en ventana no modal con buscador (106 pruebas UI, idiomas 793). Próxima parte: analizar más de cerca y desarrollar los tres controles de color. Mantener el proyecto editable con la ventana abierta.
-3. **Ayuda rápida y herramientas contextuales:** inventario visual por contexto; distinguir paleta de herramientas, menú de acciones y transporte. No asignar significados a iconos sin comprobarlos.
+3. **Ayuda rápida y herramientas contextuales (parcial):** herramientas01 añade la caja al clic derecho del proyecto, preferencia y Color con Deshacer, según figura del manual. 127 comprobaciones UI e idiomas 815 aprobados en desarrollo Apple Silicon; Universal conserva la entrega anterior. Inventario en `MANUAL_HERRAMIENTAS_EDICION.md`. Pendientes Comp, Time Warp, Línea, variantes avanzadas, contexto MIDI y ayuda rápida ampliada; distinguir herramientas, acciones y transporte.
 4. **Editor MIDI:** investigación específica amplia pedida por Fer; piano roll actual reconocido como básico. Subetapas de selección/navegación, notas, controladores, cuantización y herramientas de versión 16.
 5. **Medios y tempo:** importación móvil, Pool/MediaBay, análisis de tempo y Follow Tempo con ensayos de audio.
 6. **Ruteo y estabilidad:** completar compensación por buses y de grabación, inserciones por arrastre, Control Room, dispositivos externos y procesamiento anticipado.

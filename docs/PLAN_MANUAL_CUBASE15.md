@@ -17,6 +17,7 @@ comportamiento descritos; los iconos y gráficos se dibujan en Silente (sin logo
 - 31-10-2026 · Etapa 1 (Ventana de proyecto): lectura y análisis hechos → `docs/MANUAL_01_VENTANA_PROYECTO.md`. Siguiente: sub-etapa 1A.
 - 01-11-2026 · Etapa 1 completa (1A–1D) + comandos de teclado de Cubase. Siguiente: Reproducción y transporte.
 - 01-11-2026 · Transporte y Grabación hechos; herramientas 4/6/7/9 y fundido cruzado X. Checklist viva en `docs/CHECKLIST_MANUAL_CUBASE15.md`. Siguiente: Fundidos (396–418).
+- 05-11-2026 · Por prioridad de Fernando, herramientas01: caja al clic derecho, preferencia y Color de evento, con inventario contrastado contra pp. 62–64, 67 y 1658. Ver `MANUAL_HERRAMIENTAS_EDICION.md`. Desarrollo verificado; no implica variantes completas, editor MIDI avanzado ni actualización de Universal. La checklist distingue esos pendientes del historial anterior.
 
 ## Orden propuesto (lo más usado primero)
 

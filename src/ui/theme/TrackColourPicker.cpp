@@ -28,10 +28,11 @@ const std::array<juce::uint32, columns * rows>& palette()
 class Picker final : public juce::Component
 {
 public:
-    Picker(juce::Colour initial, std::function<void(juce::Colour)> callback)
-        : selector(juce::ColourSelector::showColourAtTop | juce::ColourSelector::showSliders | juce::ColourSelector::showColourspace), apply(std::move(callback))
+    Picker(juce::Colour initial, std::function<void(juce::Colour)> callback, const juce::String& title)
+        : caption(title.isEmpty()?i18n::tr("Color de pista"):title), selector(juce::ColourSelector::showColourAtTop | juce::ColourSelector::showSliders | juce::ColourSelector::showColourspace), apply(std::move(callback))
     {
         setLookAndFeel(&look);
+        setComponentID("colour-picker");
         setSize(360, 448);
         selector.setName(i18n::tr("Color personalizado de pista")); selector.setCurrentColour(initial, juce::dontSendNotification);
         selector.setColour(juce::ColourSelector::backgroundColourId, panel); addAndMakeVisible(selector);
@@ -43,7 +44,7 @@ public:
     void paint(juce::Graphics& g) override
     {
         g.fillAll(panel); g.setColour(ink); g.setFont(juce::Font(juce::FontOptions(14, juce::Font::bold)));
-        g.drawText(i18n::tr("Color de pista"), 15, 8, 280, 26, juce::Justification::centredLeft);
+        g.drawText(caption, 15, 8, 280, 26, juce::Justification::centredLeft);
         for (int i = 0; i < static_cast<int>(palette().size()); ++i)
         {
             auto bounds = swatch(i); g.setColour(juce::Colour(palette()[static_cast<size_t>(i)])); g.fillRoundedRectangle(bounds.toFloat(), 2);
@@ -57,6 +58,7 @@ public:
     }
 private:
     SilenteLookAndFeel look;
+    juce::String caption;
     juce::ColourSelector selector;
     juce::TextButton confirm;
     std::function<void(juce::Colour)> apply;
@@ -69,8 +71,8 @@ private:
     }
 };
 }
-void showTrackColourPicker(juce::Rectangle<int> anchor, juce::Colour initial, std::function<void(juce::Colour)> apply)
+void showTrackColourPicker(juce::Rectangle<int> anchor, juce::Colour initial, std::function<void(juce::Colour)> apply, const juce::String& title)
 {
-    juce::CallOutBox::launchAsynchronously(std::make_unique<Picker>(initial, std::move(apply)), anchor, nullptr);
+    juce::CallOutBox::launchAsynchronously(std::make_unique<Picker>(initial, std::move(apply), title), anchor, nullptr);
 }
 }

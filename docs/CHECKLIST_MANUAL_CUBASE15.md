@@ -8,7 +8,9 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ Zonas: columna Canal, Inspector, zona inferior, zona derecha; mostrar/ocultar y diseño guardado.
 - ✅ Bordes de zonas arrastrables (Canal, Inspector, zona derecha, zona inferior).
 - ✅ Barra de herramientas: Hub, deshacer/rehacer, M/S globales, MixConsole, herramientas, color, ajustar, rejilla, zoom, exportar, zonas.
-- ✅ Herramientas 1 Selección · 3 Dividir · 4 Pegar · 5 Borrar · 6 Zoom · 7 Enmudecer · 8 Dibujar · 9 Reproducir.
+- 🟡 Modos básicos 1 Selección · 3 Dividir · 4 Pegar · 5 Borrar · 6 Zoom · 7 Enmudecer · 8 Dibujar · 9 Reproducir. Faltan selección múltiple y variantes avanzadas; Dibujar solo añade notas MIDI básicas. Inventario: `MANUAL_HERRAMIENTAS_EDICION.md`.
+- ✅ 05-11-2026 · Caja de herramientas al clic derecho del visor, preferencia buscable/persistente, modificadores para alternar con menú y herramienta Color de evento con Deshacer. Comprobado en desarrollo Apple Silicon; aún no incluido en Universal.
+- ⬜ Comp, Time Warp y Línea: desactivadas en la caja; dependen de carriles/ensamblaje, mapa de tempo y edición de controladores respectivamente.
 - ✅ Herramienta 2 Selección de rango: arrastrar (varias pistas), Mayús amplía, doble clic cubre el evento o el hueco; inicio/fin/duración en la línea de información.
 - ✅ Edición › Rango: Dividir (⇧X), Truncar, Suprimir intervalo de tiempo (⇧Retroceso), Insertar silencio (⇧⌘E), Ajustar fundidos al rango (A), Suprimir, Duplicar; menú contextual del rango. Audio y MIDI.
 - ✅ Rangos: arrastrar mueve el contenido (también a otras pistas), ⌥ arrastrar copia; ⌥←/⌥→ empuja el inicio, ⌥⇧←/⌥⇧→ el final; ⌘←/⌘→ desplaza el rango sin contenido; cortar/copiar/pegar rango (⌥V en su origen).
@@ -16,7 +18,7 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ Línea de estado y línea de información.
 - ✅ Lista de pistas estilo Cubase (M S nombre volumen / ● ◉ R W e / medidor), filtro y búsqueda.
 - ✅ Altura de pistas (deslizador y ⇧H/⇧G) y zoom de forma de onda.
-- ✅ Botón de color: paleta de pista directa; color de evento en el menú del evento.
+- ✅ Botón de color: paleta de pista directa; color de evento en el menú y mediante la herramienta Color (esta última en fuentes de desarrollo).
 - ✅ Regla con formatos, localizadores, ajustar a rejilla/eventos/cursor, historial de edición.
 - 🟡 Inspector: Enrutado, Inserciones, Ecualizadores; faltan Envíos, Controles rápidos, Notas.
 - ⬜ Diálogo de colores del proyecto, cruceta, línea de vista general, pestaña Control Room.
@@ -65,7 +67,7 @@ hardware real. Actualizar al cerrar cada tramo.
 
 ## Pedidos de Fer · 04-11-2026 · investigación y desarrollo pendientes
 - ⬜ **Editor MIDI completo:** el piano roll actual es básico y no equivale a la ventana avanzada de Cubase. Investigar el capítulo Editores MIDI (1170–1304), documentación vigente de Cubase 16 y videos completos; guardar referencias, capturas y una matriz de herramientas, selección, información de notas, velocidades/controladores, zoom, cuantización, navegación y ventanas. Incluir Rasgueo y Estirar selección de Cubase 16. Diseñar y probar por subetapas, sin declarar completo el editor por tener notas dibujadas.
-- ⬜ **Barra de herramientas contextual sobre las pistas:** estudiar la paleta de símbolos al hacer clic derecho en el visor de eventos. Inventariar selección, rango, dividir/cortar, pegar, dibujar, borrar, enmudecer, zoom, reproducción, fundido X, localizadores y punch según el contexto real y la configuración de Cubase. Distinguir herramientas de edición, comandos del menú y botones de transporte; confirmar cada icono con captura y referencia antes de asignarle una acción. Silente aún no reproduce este flujo completo.
+- 🟡 **Barra de herramientas contextual sobre las pistas:** inventario y figura del manual revisados; caja del proyecto y herramienta Color desarrolladas/verificadas en herramientas01. Diez modos disponibles; Comp, Time Warp y Línea pendientes. La X del icono es Enmudecer, el atajo X es Fundido cruzado; localizadores son comandos y Punch es transporte. Faltan contextos del editor MIDI y variantes avanzadas. Ver `MANUAL_HERRAMIENTAS_EDICION.md`; no equivale al flujo completo de Cubase.
 - ⬜ Antes de cada nuevo tramo, informar a Fer qué función se desarrollará, qué hará y cómo se verificará; mantener avances mientras se ejecuta.
 - Seguimiento de novedades sin plugins nuevos: `docs/CUBASE16_NOVEDADES_Y_PLAN.md`.
 

@@ -17,6 +17,7 @@
 #include "ui/project/SnapGrid.h"
 #include "ui/project/ZoneSplitter.h"
 #include "ui/project/FadeEditor.h"
+#include "ui/project/ProjectToolbox.h"
 #include "audio/FadeCurves.h"
 #include "audio/RangeEdit.h"
 #include "audio/EventEdit.h"
@@ -109,6 +110,9 @@ public:
         return snapGrid.snap(s,engine.tempo.load(),pixelsPerSecond,edges,engine.positionSeconds.load());
     }
     std::function<void()> rulerMenu;
+    std::function<void(int)> chooseTool;
+    std::function<void(const juce::String&)> contextAction;
+    std::function<void(const juce::String&,const juce::String&,juce::Rectangle<int>)> paintEventColour;
     std::vector<int> visibleTracks() const { return filter.visible(engine.tracks); }
     int visualRow(int i) const {auto v=visibleTracks();auto it=std::find(v.begin(),v.end(),i);return it==v.end()?-999:(int)std::distance(v.begin(),it)-firstTrack;}
     int trackAt(int y) const { auto v=visibleTracks();int n=(y-ruler)/lane+firstTrack;return y>=ruler&&n>=0&&n<(int)v.size()?v[(size_t)n]:-1; }
@@ -265,6 +269,15 @@ public:
             }
             repaint();return;
         }
+        if(e.mods.isPopupMenu()&&e.x>=header)
+        {
+            const bool showOnRightClick=app::showToolboxOnRightClick();
+            if(ui::opensProjectToolbox(showOnRightClick,e.mods))
+            {
+                juce::CallOutBox::launchAsynchronously(std::make_unique<ui::ProjectToolbox>(tool,[safe=juce::Component::SafePointer<Arrangement>(this)](int value){if(safe&&safe->chooseTool)safe->chooseTool(value);},showOnRightClick),localAreaToGlobal(juce::Rectangle<int>(e.x,e.y,1,1)),nullptr);
+                return;
+            }
+        }
         const juce::ScopedLock lock(engine.modelLock); if(i<0||i>=(int)engine.tracks.size())return;
         selectedTrack=i; selectedClip=-1; if(selectTrack)selectTrack(i); auto& t=*engine.tracks[(size_t)i];
         if(e.x<header)
@@ -302,6 +315,16 @@ public:
                 if(hit(fadeInHandle(dragOrigin,cr)))fadeDrag=1;else if(hit(fadeOutHandle(dragOrigin,cr)))fadeDrag=2;else if(hit(volumeHandle(cr)))fadeDrag=3;if(fadeDrag)resizing=false;}
             break; }
         if(e.mods.isPopupMenu())clipMenu();
+        else if(tool==13)
+        {
+            dragClip=-1;
+            if(selectedClip>=0)
+            {
+                const auto trackId=t.id,clipId=t.clips[(size_t)selectedClip].id;
+                const auto anchor=localAreaToGlobal(juce::Rectangle<int>(e.x,e.y,1,1));
+                juce::MessageManager::callAsync([safe=juce::Component::SafePointer<Arrangement>(this),trackId,clipId,anchor]{if(safe&&safe->paintEventColour)safe->paintEventColour(trackId,clipId,anchor);});
+            }
+        }
         else if(tool==3&&selectedClip>=0){engine.seek(snapped(xToSeconds((float)e.x)));splitSelected();dragClip=-1;}
         else if(tool==5&&selectedClip>=0){deleteSelected();dragClip=-1;}
         else if(tool==4&&selectedClip>=0){dragClip=-1;juce::MessageManager::callAsync([safe=juce::Component::SafePointer<Arrangement>(this)]{if(safe)safe->glueSelected();});} // after mouseDown releases the model lock
@@ -369,14 +392,16 @@ public:
         g.setColour(coral.withAlpha(.55f));g.fillRoundedRectangle(r,2);g.setColour(coral);g.drawRoundedRectangle(r.reduced(.5f),2,1.2f);
         text(g,i18n::tr("Grabando…"),r.withHeight(22).reduced(8,0).toNearestInt(),11,eventInk);
         const float* minMax=nullptr;int count=0,samplesPerPeak=1;
-        if(!engine.recordingOverview(t,minMax,count,samplesPerPeak)||!minMax)return;
+        if(!engine.recordingOverview(t,minMax,count,samplesPerPeak)||!minMax||count<=0||samplesPerPeak<=0)return;
         const auto w=r.withTrimmedTop(24).reduced(0,5);const float half=w.getHeight()*.5f,scale=w.getHeight()*.48f*waveZoom;
         const double peaksPerPixel=rate/samplesPerPeak/pixelsPerSecond;const int first=(int)(offset/samplesPerPeak);
         g.setColour(eventInk.withAlpha(.85f));
         const auto dirty=g.getClipBounds();
         for(int x=juce::jmax(header,(int)w.getX(),dirty.getX()-1);x<juce::jmin(getWidth(),(int)w.getRight(),dirty.getRight()+1);++x)
         {
-            const int i0=first+(int)((x-w.getX())*peaksPerPixel),i1=juce::jmax(i0+1,first+(int)((x+1-w.getX())*peaksPerPixel));if(i0>=count)break;
+            // The first pixel is rounded down from a fractional event position.
+            // It may precede the first peak; never index before the overview.
+            const int i0=juce::jmax(0,first+(int)((x-w.getX())*peaksPerPixel)),i1=juce::jmax(i0+1,first+(int)((x+1-w.getX())*peaksPerPixel));if(i0>=count)break;
             float lo=0,hi=0;for(int i=i0;i<juce::jmin(i1,count);++i){lo=juce::jmin(lo,minMax[2*i]);hi=juce::jmax(hi,minMax[2*i+1]);}
             g.drawVerticalLine(x,w.getCentreY()-juce::jmin(half,hi*scale),w.getCentreY()+juce::jmin(half,-lo*scale)+1);
         }
@@ -511,7 +536,10 @@ private:
     }
     void clipMenu() {juce::PopupMenu m;m.addItem(1,i18n::tr("Dividir en el cursor"),selectedClip>=0);m.addItem(2,i18n::tr("Duplicar"),selectedClip>=0);m.addItem(3,i18n::tr("Eliminar"),selectedClip>=0);
         m.addSeparator();m.addItem(4,i18n::tr("Pegar con el evento siguiente"),selectedClip>=0);m.addItem(5,i18n::tr("Fundido cruzado  X"),selectedClip>=0);m.addItem(6,i18n::tr("Enmudecer evento"),selectedClip>=0);m.addItem(7,i18n::tr("Color de evento…"),selectedClip>=0);
+        m.addSeparator();m.addItem(8,i18n::tr("Localizadores a la selección  P"),selectedClip>=0);m.addItem(9,i18n::tr("Fijar localizador izquierdo en el cursor"));m.addItem(10,i18n::tr("Fijar localizador derecho en el cursor"));
+        m.addSeparator();m.addItem(11,i18n::tr("Copiar  ⌘C"),selectedClip>=0);m.addItem(12,i18n::tr("Cortar  ⌘X"),selectedClip>=0);m.addItem(13,i18n::tr("Pegar  ⌘V"));
         m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this)](int r){if(!safe)return;if(r==1)safe->splitSelected();if(r==2)safe->duplicateSelected();if(r==3)safe->deleteSelected();if(r==4)safe->glueSelected();if(r==5)safe->crossfadeSelected();if(r==7&&safe->eventColour)safe->eventColour();
+            if(r>=8&&r<=13&&safe->contextAction){const char* ids[]{"locatorsToSelection","setLeft","setRight","copy","cut","paste"};safe->contextAction(ids[r-8]);}
             if(r==6&&safe->selectedTrack>=0&&safe->selectedTrack<(int)safe->engine.tracks.size()){auto& clips=safe->engine.tracks[(size_t)safe->selectedTrack]->clips;if(safe->selectedClip>=0&&safe->selectedClip<(int)clips.size()){if(safe->beforeEdit)safe->beforeEdit();clips[(size_t)safe->selectedClip].muted=!clips[(size_t)safe->selectedClip].muted;if(safe->changed)safe->changed();safe->repaint();}}});}
     void trackMenu(int i)
     {
@@ -994,6 +1022,9 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         instrument.onClick=[this]{plugins.showInstrument(selected,&instrument);};
         instrument.onOptions=[this]{plugins.showInstrumentSelector(selected,&instrument);};
         arrangement.selectTrack=[this](int i){select(i);};arrangement.beforeEdit=[this]{pushUndo(i18n::tr("Editar evento o pista"));};arrangement.changed=[this]{markDirty();};arrangement.openPiano=[this]{setPiano(true);};
+        arrangement.chooseTool=[this](int value){setTool(value);};
+        arrangement.contextAction=[this](const juce::String& id){owner.runCommand(id);};
+        arrangement.paintEventColour=[this](const juce::String& trackId,const juce::String& clipId,juce::Rectangle<int> anchor){editEventColour(trackId,clipId,anchor);};
         arrangement.trackFilterMenu=[this]
         {
             juce::PopupMenu menu;menu.addSectionHeader(i18n::tr("Ajustar filtro de tipo de pista"));
@@ -1041,6 +1072,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         selectTool.setToggleState(value==1,juce::dontSendNotification);cutTool.setToggleState(value==3,juce::dontSendNotification);
         eraseTool.setToggleState(value==5,juce::dontSendNotification);drawTool.setToggleState(value==8,juce::dontSendNotification);
         glueTool.setToggleState(value==4,juce::dontSendNotification);zoomTool.setToggleState(value==6,juce::dontSendNotification);muteTool.setToggleState(value==7,juce::dontSendNotification);playTool.setToggleState(value==9,juce::dontSendNotification);rangeTool.setToggleState(value==2,juce::dontSendNotification);
+        trackColour.setToggleState(value==13,juce::dontSendNotification);
     }
     void showVisibility(bool show)
     {
@@ -1049,6 +1081,21 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     }
     // «Seleccionar color para pistas o eventos seleccionados» (manual pp. 115–118): the selected
     // event when there is one, otherwise the selected track; plus the two reset options.
+    void editEventColour(const juce::String& trackId,const juce::String& clipId,juce::Rectangle<int> anchor)
+    {
+        auto track=engine.findTrack(trackId);if(!track)return;
+        const auto clip=std::find_if(track->clips.begin(),track->clips.end(),[&](const AudioClip& c){return c.id==clipId;});if(clip==track->clips.end())return;
+        const auto initial=clip->colour.isTransparent()?track->colour:clip->colour;
+        showTrackColourPicker(anchor,initial,[safe=juce::Component::SafePointer<MainComponent>(&owner),trackId,clipId](juce::Colour colour)
+        {
+            if(!safe)return;auto& self=*safe->ui;auto target=self.engine.findTrack(trackId);if(!target)return;
+            const auto event=std::find_if(target->clips.begin(),target->clips.end(),[&](const AudioClip& c){return c.id==clipId;});if(event==target->clips.end())return;
+            if(event->colour==colour)return;
+            self.pushUndo(i18n::tr("Color de evento"));
+            {const juce::ScopedLock lock(self.engine.modelLock);event->colour=colour;}
+            self.markDirty();self.refresh();
+        },i18n::tr("Color de evento"));
+    }
     void colourMenu()
     {
         if(auto* clip=selectedClipPtr())
@@ -1849,6 +1896,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         k["toolGlue"]=[this]{setTool(4);};k["toolZoom"]=[this]{setTool(6);};k["toolMute"]=[this]{setTool(7);};k["toolPlay"]=[this]{setTool(9);};
         k["crossfade"]=[this]{arrangement.crossfadeSelected();};
         k["toolSelect"]=[this]{setTool(1);};k["toolSplit"]=[this]{setTool(3);};k["toolErase"]=[this]{setTool(5);};k["toolDraw"]=[this]{setTool(8);};
+        k["toolColour"]=[this]{setTool(13);};
         k["mixConsole"]=[this]{showMixConsole();};k["mixConsoleLower"]=[this]{if(!showLower)toggleZone(showLower);setPiano(false);};
         k["audioConnections"]=[this]{owner.showAudioSettings();};k["vstInstruments"]=[this]{plugins.showInstrumentSelector(-1,nullptr);};
         k["addTrack"]=[this]{if(addTrackButton.onClick)addTrackButton.onClick();};

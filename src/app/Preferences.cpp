@@ -29,4 +29,21 @@ juce::Result saveInterfaceScale(float scale)
     juce::XmlElement xml("INTERFACE"); xml.setAttribute("scale", (double) scale);
     return xml.writeTo(folder.getChildFile("interface.xml")) ? juce::Result::ok() : juce::Result::fail(i18n::tr("No se pudo guardar el tamaño de la interfaz."));
 }
+bool showToolboxOnRightClick()
+{
+    if(auto xml=juce::XmlDocument::parse(preferencesDirectory().getChildFile("editing.xml")))
+        return xml->getBoolAttribute("showToolboxOnRightClick",true);
+    return true;
+}
+juce::Result saveShowToolboxOnRightClick(bool show)
+{
+    const auto file=preferencesDirectory().getChildFile("editing.xml");
+    const auto result=file.getParentDirectory().createDirectory();if(result.failed())return result;
+    auto xml=juce::XmlDocument::parse(file);if(!xml)xml=std::make_unique<juce::XmlElement>("EDITING");
+    xml->setAttribute("showToolboxOnRightClick",show);
+    juce::TemporaryFile temp(file);
+    if(!xml->writeTo(temp.getFile())||!temp.overwriteTargetFileWithTemporary())
+        return juce::Result::fail(i18n::tr("No se pudo guardar la preferencia de herramientas."));
+    return juce::Result::ok();
+}
 }

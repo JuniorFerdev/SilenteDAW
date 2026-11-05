@@ -224,7 +224,16 @@ public:
             const int index=args.indexOf("--check-workflow"),fixtureIndex=args.indexOf("--plugin-fixture");
             const auto output=juce::File(args.size()>index+1?args[index+1]:"/tmp/Silente-workflow");
             const auto fixture=fixtureIndex>=0&&args.size()>fixtureIndex+1?juce::File(args[fixtureIndex+1]):juce::File();
-            juce::Timer::callAfterDelay(300,[this,output,fixture]{runWorkflowChecks(window->content(),*engine,*plugins,output,fixture,[this](int code){setApplicationReturnValue(code);quit();});});
+            // Leave the one-shot timer before UI tests pump events for asynchronous popups.
+            // Otherwise that timer can fire again while its first callback is still running.
+            juce::Timer::callAfterDelay(300,[this,output,fixture]
+            {
+                juce::MessageManager::callAsync([this,output,fixture]
+                {
+                    output.createDirectory();output.getChildFile("workflow.txt").replaceWithText("RUNNING: workflow checks have not completed\n");
+                    runWorkflowChecks(window->content(),*engine,*plugins,output,fixture,[this](int code){setApplicationReturnValue(code);quit();});
+                });
+            });
         }
         if (screenshot)
         {

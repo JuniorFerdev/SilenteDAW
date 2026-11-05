@@ -1,5 +1,6 @@
 #include "WorkflowUiTests.h"
 #include "SettingsUiTests.h"
+#include "ToolboxUiTests.h"
 #include "../src/MainComponent.h"
 #include "../src/ui/plugins/PluginSelector.h"
 #include "../src/ui/mixconsole/MixConsole.h"
@@ -41,6 +42,7 @@ public:
         :view(v),engine(e),manager(p),output(dir),fixture(vst),complete(std::move(cb))
     {
         output.createDirectory();initialChecks();mixConsoleChecks();trackListChecks();snapChecks();
+        runToolboxUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runSettingsUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});keyCommandChecks();
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
@@ -58,7 +60,7 @@ private:
     File output,fixture;std::function<void(int)> complete;
     String failures,report;PluginDescription apple,vst,instrument;std::shared_ptr<Track> track;std::shared_ptr<PluginSlot> first;
     double deadline=0;int stage=0;
-    void expect(bool result,const String& name){if(!result)failures+=name+"\n";else report+="PASS: "+name+"\n";}
+    void expect(bool result,const String& name){std::cout<<(result?"PASS: ":"FAIL: ")<<name.toStdString()<<std::endl;if(!result)failures+=name+"\n";else report+="PASS: "+name+"\n";}
     void keyCommandChecks()
     {
         const auto id=[](const KeyPress& k){auto* c=app::findKeyCommand(k);return c?c->id:String();};
@@ -115,11 +117,13 @@ private:
         view.runCommand("stop");view.runCommand("punchIn");view.runCommand("punchOut");
         {   // Three seconds of a sung-like signal from bar 2: the growing red event with its waveform.
             engine.clear();engine.prepareForOffline(48000,128,true);auto voz=engine.addAudioTrack("Voz");voz->inputLeft=0;voz->inputRight=1;voz->armed=true;
-            engine.seek(1.0);const bool ok=engine.beginRecording(output.getChildFile("rec-preview"),{-1.0,false}).wasOk();
+            // At the default zoom this starts at x=325.975: painting the first
+            // whole pixel used to index peak -1 and crash before the allocation.
+            engine.seek(1.013);const bool ok=engine.beginRecording(output.getChildFile("rec-preview"),{-1.0,false}).wasOk();
             AudioBuffer<float> o(2,128),i(2,128);double t=0;
             for(int done=0;done<48000*3;done+=128){for(int k=0;k<128;++k){const float v=(float)(0.7*std::sin(t*2*3.14159*220)*std::abs(std::sin(t*3.0)));i.setSample(0,k,v);i.setSample(1,k,v);t+=1.0/48000;}o.clear();engine.renderOfflineBlock(o,128,i);}
             view.transportMenuItem(0);capture(view,output.getChildFile("recording-live.png"));
-            expect(ok&&engine.recording.load()&&std::abs(engine.recordLapStart.load()-1.0)<1e-3&&engine.recordCaptured.load()>=48000*3-128,"red event grows from where recording started");
+            expect(ok&&engine.recording.load()&&std::abs(engine.recordLapStart.load()-1.013)<1e-3&&engine.recordCaptured.load()>=48000*3-128,"red event grows from a fractional pixel start without reading before the waveform");
             engine.cancelRecording();engine.pause();
         }
         engine.clear();engine.prepareForOffline(48000,128);

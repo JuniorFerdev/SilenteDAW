@@ -25,7 +25,8 @@ struct SettingsHooks
 class SettingsWorkspace final : public juce::Component, private juce::ListBoxModel
 {
 public:
-    enum class Page { audio, appearance, transport, metronome, keys };
+    enum class Page { audio, appearance, transport, metronome, keys, editing };
+    static constexpr int pageCount = 6;
     SettingsWorkspace(AudioEngine&, SettingsHooks);
     ~SettingsWorkspace() override;
     void paint(juce::Graphics&) override;
@@ -49,7 +50,7 @@ private:
     juce::ListBox navigation;
     juce::Label heading, hint, empty;
     juce::Viewport viewport;
-    std::array<std::unique_ptr<juce::Component>, 5> pages;
+    std::array<std::unique_ptr<juce::Component>, pageCount> pages;
     std::vector<Entry> entries;
     std::vector<int> matches;
     Page selectedPage = Page::appearance;

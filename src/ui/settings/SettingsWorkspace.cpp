@@ -4,6 +4,7 @@
 #include "../metronome/MetronomePanel.h"
 #include "../theme/Drawing.h"
 #include "../../app/KeyCommands.h"
+#include "../../app/Preferences.h"
 #include "../../i18n/Translations.h"
 
 namespace silente::ui
@@ -19,6 +20,7 @@ juce::String title(SettingsWorkspace::Page p)
         case SettingsWorkspace::Page::transport: return i18n::tr("Transporte");
         case SettingsWorkspace::Page::metronome: return i18n::tr("Metrónomo");
         case SettingsWorkspace::Page::keys: return i18n::tr("Comandos de teclado");
+        case SettingsWorkspace::Page::editing: return i18n::tr("Opciones de edición");
     }
     return {};
 }
@@ -33,6 +35,34 @@ juce::Component* findControl(juce::Component& root, const juce::String& id)
     for (auto* child : root.getChildren()) if (auto* found = findControl(*child, id)) return found;
     return nullptr;
 }
+
+class EditingPanel final : public juce::Component
+{
+public:
+    EditingPanel()
+    {
+        addAndMakeVisible(toolbox);addAndMakeVisible(hint);addAndMakeVisible(status);
+        toolbox.setComponentID("settings-show-toolbox");
+        toolbox.setButtonText(i18n::tr("Mostrar caja de herramientas con clic derecho"));
+        toolbox.setToggleState(app::showToolboxOnRightClick(),juce::dontSendNotification);
+        hint.setText(i18n::tr("En la ventana de proyecto, una tecla modificadora alterna la caja de herramientas y el menú contextual."),juce::dontSendNotification);
+        hint.setColour(juce::Label::textColourId,theme::muted);
+        toolbox.onClick=[this]
+        {
+            const auto result=app::saveShowToolboxOnRightClick(toolbox.getToggleState());
+            status.setText(result.failed()?result.getErrorMessage():juce::String(),juce::dontSendNotification);
+            if(result.failed())toolbox.setToggleState(app::showToolboxOnRightClick(),juce::dontSendNotification);
+        };
+        setSize(620,200);
+    }
+    void resized() override
+    {
+        toolbox.setBounds(20,20,getWidth()-40,40);hint.setBounds(20,72,getWidth()-40,68);status.setBounds(20,150,getWidth()-40,40);
+    }
+private:
+    juce::ToggleButton toolbox;
+    juce::Label hint,status;
+};
 
 class AppearancePanel final : public juce::Component, private juce::Timer
 {
@@ -144,11 +174,12 @@ SettingsWorkspace::~SettingsWorkspace() { navigation.setModel(nullptr);viewport.
 void SettingsWorkspace::buildIndex()
 {
     entries.clear();
-    for(auto p:{Page::audio,Page::appearance,Page::transport,Page::metronome,Page::keys})entries.push_back({p,title(p),{},{},{}});
+    for(auto p:{Page::audio,Page::appearance,Page::transport,Page::metronome,Page::keys,Page::editing})entries.push_back({p,title(p),{},{},{}});
     const auto add=[this](Page p,const juce::String& label,const juce::String& keywords,const char* control){entries.push_back({p,label,title(p)+" "+keywords,control,{}});};
     add(Page::audio,i18n::tr("Dispositivos de audio y MIDI"),i18n::tr("Entrada salida frecuencia búfer latencia canales MIDI")+" buffer","audio-device-selector");
     add(Page::audio,i18n::tr("Guardar configuración"),{},"audio-save");
     add(Page::appearance,i18n::tr("Tamaño de la interfaz y de la letra"),i18n::tr("Escala resolución tamaño fuente texto"),"settings-scale");
+    add(Page::editing,i18n::tr("Mostrar caja de herramientas con clic derecho"),i18n::tr("Menú contextual herramientas ratón"),"settings-show-toolbox");
     add(Page::transport,i18n::tr("Modo de inicio"),{},"settings-start-mode");
     add(Page::transport,i18n::tr("Volver a la posición de inicio al parar"),{},"settings-return-start");
     add(Page::transport,i18n::tr("Activar pre-roll"),i18n::tr("Compases"),"settings-pre-roll");
@@ -171,7 +202,7 @@ void SettingsWorkspace::updateSearch()
     matches.clear();
     for(size_t n=0;n<entries.size();++n)
     {
-        if(query.isEmpty()){if(n<5)matches.push_back((int)n);continue;}
+        if(query.isEmpty()){if(n<pageCount)matches.push_back((int)n);continue;}
         const auto haystack=normalised(entries[n].title+" "+entries[n].keywords);
         bool match=true;for(const auto& word:words)if(!haystack.contains(word)){match=false;break;}
         if(match)matches.push_back((int)n);
@@ -214,6 +245,7 @@ juce::Component& SettingsWorkspace::page(Page p)
             case Page::transport: result=std::make_unique<TransportPanel>(hooks);break;
             case Page::metronome: result=std::make_unique<MetronomePanel>(engine);break;
             case Page::keys: result=std::make_unique<KeyCommandsPanel>(hooks.keyAvailable?hooks.keyAvailable:[](const juce::String&){return false;});break;
+            case Page::editing: result=std::make_unique<EditingPanel>();break;
         }
     }
     return *result;

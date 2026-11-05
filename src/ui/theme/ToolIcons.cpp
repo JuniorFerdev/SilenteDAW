@@ -97,6 +97,15 @@ void drawToolIcon(juce::Graphics& g, ToolIcon icon, juce::Rectangle<float> bound
         case ToolIcon::rangeTool: // a span between two edges
             g.drawLine(4.5f, 5.0f, 4.5f, 19.0f, 1.8f); g.drawLine(19.5f, 5.0f, 19.5f, 19.0f, 1.8f);
             g.fillRect(6.0f, 9.0f, 12.0f, 6.0f); break;
+        case ToolIcon::compTool:
+            g.drawRoundedRectangle(7,10,11,10,2,1.6f);g.drawLine(7,12,4,9,1.6f);
+            for(int n=0;n<4;++n)g.drawLine(8.0f+n*3.0f,10,8.0f+n*3.0f,4+(n==0||n==3?2.0f:0.0f),1.6f);
+            break;
+        case ToolIcon::timeWarpTool:
+            g.drawLine(4,4,4,20,1.6f);g.drawLine(12,4,12,20,1.6f);g.drawLine(20,4,20,20,1.6f);
+            p.addTriangle(5,9,10,12,5,15);p.addTriangle(19,9,14,12,19,15);g.fillPath(p);break;
+        case ToolIcon::lineTool:
+            g.drawLine(4,19,20,5,2.0f);g.fillEllipse(2.5f,17.5f,3,3);g.fillEllipse(18.5f,3.5f,3,3);break;
         case ToolIcon::layout:
             g.drawRoundedRectangle(2.5f, 4.5f, 19.0f, 15.0f, 1.5f, 1.5f);
             g.drawLine(2.5f, 9.0f, 21.5f, 9.0f, 1.2f); g.drawLine(9.0f, 9.0f, 9.0f, 19.5f, 1.2f); break;
