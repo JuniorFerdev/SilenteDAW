@@ -12,7 +12,8 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ 05-11-2026 · Caja de herramientas al clic derecho del visor, preferencia buscable/persistente, modificadores para alternar con menú y herramienta Color de evento con Deshacer. Comprobado en desarrollo Apple Silicon; aún no incluido en Universal.
 - ⬜ Comp, Time Warp y Línea: desactivadas en la caja; dependen de carriles/ensamblaje, mapa de tempo y edición de controladores respectivamente.
 - ✅ 05-11-2026 · Inventario de **43 comandos de Herramientas** cotejado con Cubase 15.0.30 instalado y 13 asignaciones del manual; tabla de consulta completa para esa categoría, con «Sin asignación» explícito. Diez acciones básicas disponibles; no acredita implementación de los otros 33 comandos.
-- ⬜ F9/F10 (anterior/siguiente), 0 Baqueta y ⌥⇧1 Combinar Seleccionar/Rango: teclas consultadas y registradas; acciones pendientes. Num 0 sigue siendo Detener.
+- ✅ 05-11-2026 · F9/F10 (anterior/siguiente): recorrido de diez modos disponibles de proyecto, con vuelta al inicio, omitiendo pendientes y operativo también en la caja emergente. Foco de texto/MIDI respetado; 145 comprobaciones UI. Orden actual de Silente documentado; sin afirmar validación del orden interno de Cubase.
+- ⬜ 0 Baqueta y ⌥⇧1 Combinar Seleccionar/Rango: teclas consultadas y registradas; acciones pendientes. Num 0 sigue siendo Detener.
 - 🟡 Reproducir (9) usa la mezcla general: falta escucha aislada y Scrub. Color abre paleta al clic: faltan color activo, ⌥tomar color y ⌘selector, según el flujo de Cubase. Variantes/modificadores completos en `MANUAL_HERRAMIENTAS_EDICION.md`.
 - ✅ Herramienta 2 Selección de rango: arrastrar (varias pistas), Mayús amplía, doble clic cubre el evento o el hueco; inicio/fin/duración en la línea de información.
 - ✅ Edición › Rango: Dividir (⇧X), Truncar, Suprimir intervalo de tiempo (⇧Retroceso), Insertar silencio (⇧⌘E), Ajustar fundidos al rango (A), Suprimir, Duplicar; menú contextual del rango. Audio y MIDI.

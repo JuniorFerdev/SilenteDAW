@@ -1,6 +1,8 @@
 #include "ProjectToolbox.h"
 #include "../../i18n/Translations.h"
+#include "../../app/KeyCommands.h"
 #include "../theme/Drawing.h"
+#include <algorithm>
 
 namespace silente::ui
 {
@@ -23,6 +25,18 @@ std::vector<ProjectToolDefinition> projectToolDefinitions()
         {13,I::palette,i18n::tr("Color"),{},{}}
     };
 }
+int adjacentProjectTool(int active,int direction)
+{
+    if(direction==0)return active;
+    std::vector<int> tools;
+    for(const auto& tool:projectToolDefinitions())if(tool.available())tools.push_back(tool.id);
+    if(tools.empty())return active;
+    std::sort(tools.begin(),tools.end());
+    const auto found=std::find(tools.begin(),tools.end(),active);
+    if(found==tools.end())return direction>0?tools.front():tools.back();
+    const int size=(int)tools.size(),index=(int)std::distance(tools.begin(),found);
+    return tools[(size_t)((index+(direction>0?1:-1)+size)%size)];
+}
 bool opensProjectToolbox(bool showByDefault,juce::ModifierKeys mods)
 {
     // Ctrl-click on macOS is itself a context-click gesture. Ctrl + an actual right click,
@@ -31,7 +45,7 @@ bool opensProjectToolbox(bool showByDefault,juce::ModifierKeys mods)
     if(!mods.isRightButtonDown())flags&=~juce::ModifierKeys::ctrlModifier;
     return showByDefault!=(flags!=0);
 }
-ProjectToolbox::ProjectToolbox(int active,std::function<void(int)> choose,bool showOnRightClick):chosen(std::move(choose))
+ProjectToolbox::ProjectToolbox(int active,std::function<void(int)> choose,bool showOnRightClick):chosen(std::move(choose)),activeTool(active)
 {
     contextHint=showOnRightClick?i18n::tr("Tecla modificadora + clic derecho: menú contextual"):i18n::tr("Clic derecho: menú contextual");
     setLookAndFeel(&look);setComponentID("project-toolbox");
@@ -42,15 +56,25 @@ ProjectToolbox::ProjectToolbox(int active,std::function<void(int)> choose,bool s
         button->setComponentID("project-toolbox-tool-"+juce::String(tool.id));
         button->setTooltip(tool.name+(tool.shortcut.isNotEmpty()?" · "+tool.shortcut:juce::String())+(tool.available()?juce::String():"\n"+tool.unavailableReason));
         button->setEnabled(tool.available());button->setToggleState(tool.id==active,juce::dontSendNotification);
-        if(tool.available())button->onClick=[this,id=tool.id]
-        {
-            auto callback=chosen;
-            if(auto* popup=findParentComponentOfClass<juce::CallOutBox>())popup->dismiss();
-            if(callback)callback(id);
-        };
+        if(tool.available())button->onClick=[this,id=tool.id]{chooseAndDismiss(id);};
         addAndMakeVisible(*button);buttons.push_back(std::move(button));
     }
     setSize(16+30*(int)buttons.size(),66);
+}
+void ProjectToolbox::chooseAndDismiss(int id)
+{
+    activeTool=id;
+    for(auto& button:buttons)button->setToggleState(button->getComponentID()=="project-toolbox-tool-"+juce::String(id),juce::dontSendNotification);
+    auto callback=chosen;
+    if(auto* popup=findParentComponentOfClass<juce::CallOutBox>())popup->dismiss();
+    if(callback)callback(id);
+}
+bool ProjectToolbox::keyPressed(const juce::KeyPress& key)
+{
+    const auto* command=app::findKeyCommand(key);if(!command)return false;
+    const int direction=command->id=="toolNext"?1:command->id=="toolPrevious"?-1:0;
+    if(direction==0)return false;
+    chooseAndDismiss(adjacentProjectTool(activeTool,direction));return true;
 }
 void ProjectToolbox::resized()
 {

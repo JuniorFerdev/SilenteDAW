@@ -550,7 +550,7 @@ private:
 class PianoRoll final : public juce::Component
 {
 public:
-    explicit PianoRoll(AudioEngine& e):engine(e){setWantsKeyboardFocus(true);}
+    explicit PianoRoll(AudioEngine& e):engine(e){setComponentID("piano-roll");setWantsKeyboardFocus(true);}
     AudioEngine& engine;int track=0,selected=-1,topPitch=79;double pixelsPerBeat=64,scrollBeats=0;bool snap=true;
     std::function<void()> beforeEdit,changed;
     void paint(juce::Graphics& g)override
@@ -844,6 +844,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         configure(glueTool,ToolIcon::glue,4,i18n::tr("Pegar: une el evento con el siguiente · 4"));configure(zoomTool,ToolIcon::zoomTool,6,i18n::tr("Zoom: clic acerca, ⌥clic aleja · 6"));
         configure(muteTool,ToolIcon::muteTool,7,i18n::tr("Enmudecer eventos · 7"));configure(playTool,ToolIcon::playTool,9,i18n::tr("Reproducir desde el clic mientras se mantiene · 9"));
         configure(rangeTool,ToolIcon::rangeTool,2,i18n::tr("Selección de rango · 2"));rangeTool.setComponentID("tool-range");glueTool.setComponentID("tool-glue");zoomTool.setComponentID("tool-zoom");muteTool.setComponentID("tool-mute");playTool.setComponentID("tool-play");setTool(1);
+        selectTool.setComponentID("tool-select");cutTool.setComponentID("tool-split");eraseTool.setComponentID("tool-erase");drawTool.setComponentID("tool-draw");trackColour.setComponentID("tool-colour");keyboard.setComponentID("midi-keyboard");
         for(auto [button,icon]:std::initializer_list<std::pair<juce::TextButton*,ToolIcon>>{{&rewind,ToolIcon::rewind},{&stop,ToolIcon::stop},{&play,ToolIcon::play},{&record,ToolIcon::record},{&loop,ToolIcon::cycle},{&click,ToolIcon::click},{&undoButton,ToolIcon::undo},{&redoButton,ToolIcon::redo},{&trackColour,ToolIcon::palette}})setButtonIcon(*button,icon);
         trackColour.setTooltip(i18n::tr("Seleccionar color para pistas o eventos seleccionados"));trackColour.onClick=[this]{if(currentTrack())editTrackColour(selected,trackColour.getScreenBounds());else error(i18n::tr("Selecciona una pista para elegir su color."));};
         channelButton.setTooltip(i18n::tr("Editar configuración de canal"));channelButton.onClick=[this]{if(currentTrack())openChannelSettings(selected);};
@@ -1897,6 +1898,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         k["crossfade"]=[this]{arrangement.crossfadeSelected();};
         k["toolSelect"]=[this]{setTool(1);};k["toolSplit"]=[this]{setTool(3);};k["toolErase"]=[this]{setTool(5);};k["toolDraw"]=[this]{setTool(8);};
         k["toolColour"]=[this]{setTool(13);};
+        k["toolNext"]=[this]{setTool(ui::adjacentProjectTool(arrangement.tool,1));};
+        k["toolPrevious"]=[this]{setTool(ui::adjacentProjectTool(arrangement.tool,-1));};
         k["mixConsole"]=[this]{showMixConsole();};k["mixConsoleLower"]=[this]{if(!showLower)toggleZone(showLower);setPiano(false);};
         k["audioConnections"]=[this]{owner.showAudioSettings();};k["vstInstruments"]=[this]{plugins.showInstrumentSelector(-1,nullptr);};
         k["addTrack"]=[this]{if(addTrackButton.onClick)addTrackButton.onClick();};
@@ -2009,7 +2012,12 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
     if(dynamic_cast<juce::TextEditor*>(juce::Component::getCurrentlyFocusedComponent())!=nullptr)return false;
     if(key.getKeyCode()==juce::KeyPress::escapeKey){ui->engine.panic();return true;}
     if(const auto* command=app::findKeyCommand(key))
+    {
+        // The MIDI editor has its own pending tool system. Its focus must not
+        // silently redirect Previous/Next Tool to the project's event display.
+        if((command->id=="toolNext"||command->id=="toolPrevious")&&(ui->piano.hasKeyboardFocus(true)||ui->keyboard.hasKeyboardFocus(true)))return false;
         if(auto action=ui->keyActions.find(command->id);action!=ui->keyActions.end()){action->second();return true;}
+    }
     return false;
 }
 }

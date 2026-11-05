@@ -12,6 +12,7 @@ Proyecto independiente de TopoVía y de los documentos académicos de carpetas v
 - Conservar todo el código fuente en este proyecto. No depender del historial de un chat para entender decisiones o compilar.
 - No leer build/, .venv/, third_party/ ni manuales completos de forma rutinaria. Buscar y leer solo archivos pertinentes.
 - Al entregar: cambio concreto, verificación observada, limitaciones y próximo paso pendiente en pocas líneas. Actualizar el estado existente; no duplicarlo.
+- Pedido de Fernando (05-11-2026): actualizar también la aplicación con los cambios verificados al cerrar el desarrollo solicitado; distinguir fuentes en curso de la app entregada. Mantener módulos/secciones organizados para Visual Studio Code.
 
 ## Arquitectura y verificación
 
@@ -22,4 +23,5 @@ Proyecto independiente de TopoVía y de los documentos académicos de carpetas v
 - Refactorizar por extracciones pequeñas, conservar comportamiento y compilar después de cada extracción. No reescribir todo a la vez.
 - `./scripts/build.sh` compila. Que compile o abra no prueba audio, grabación, MIDI ni compatibilidad de plugins. Las pruebas deben producir evidencia antes de declararse aprobadas.
 - Mantener la distribución y hábitos de Cubase como referencia UX, con identidad Silente y recursos propios. No tocar activaciones o instalaciones de software ajeno.
+- Referencias de Cubase: consultar el manual y fuentes oficiales de internet. Fernando indicó el 05-11-2026 que su instalación no tiene licencia; no intentar abrir Cubase para validar funciones.
 - Interfaz bilingüe español/inglés: textos nuevos mediante i18n::tr y ambos catálogos en resources/locales/. No traducir nombres o datos del usuario. Comprobar con ./scripts/check_locales.sh.
