@@ -2167,6 +2167,7 @@ void MainComponent::audioMenuItem(int id){ui->audioMenuItem(id);}
 juce::PopupMenu MainComponent::rangeMenu(){return ui->rangeMenu();}
 void MainComponent::rangeMenuItem(int id){ui->rangeMenuItem(id);}
 juce::StringArray MainComponent::editHistory()const{juce::StringArray names;for(const auto& s:ui->undoStack)names.add(s.action);return names;}
+float MainComponent::projectXForTime(double seconds)const{return ui->arrangement.secondsToX(seconds);}
 bool MainComponent::runCommand(const juce::String& id){if(auto a=ui->keyActions.find(id);a!=ui->keyActions.end()){a->second();return true;}return false;}
 void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}
 void MainComponent::showTapTempo(){ui->showTapTempo();}

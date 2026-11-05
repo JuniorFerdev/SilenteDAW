@@ -134,6 +134,7 @@ private:
     }
     void fadeChecks()
     {   // Fundidos (manual pp. 396–418): Audio › Fundidos on the selected event and the event handles.
+        const auto x=[this](double oldPixel){return view.projectXForTime((oldPixel-250.0)/75.0);};
         auto track=engine.addAudioTrack("Fundidos");AudioClip clip;clip.sourceRate=48000;clip.durationSeconds=4.0;clip.fadeIn=clip.fadeOut=0.0;
         clip.audio=std::make_shared<AudioBuffer<float>>(1,48000*4);clip.audio->clear();track->clips.push_back(clip);
         view.runCommand("trackTop");view.runCommand("eventRight");
@@ -142,9 +143,9 @@ private:
         view.audioMenuItem(205);expect(track->clips[0].fadeIn==0.0&&track->clips[0].fadeOut==0.0,"Eliminar fundidos removes both fades");
         if(auto* arrangement=find(view,"arrangement"))
         {   // Event at 0 s on the first track: x = 250 + seconds × 75, rows 60 px under a 30 px ruler.
-            arrangement->mouseDown(mouse(*arrangement,255,64));arrangement->mouseDrag(mouse(*arrangement,330,64,true));arrangement->mouseUp(mouse(*arrangement,330,64,true));
+            arrangement->mouseDown(mouse(*arrangement,x(255),64));arrangement->mouseDrag(mouse(*arrangement,x(330),64,true));arrangement->mouseUp(mouse(*arrangement,x(330),64,true));
             expect(std::abs(track->clips[0].fadeIn-1.0)<0.02,"dragging the fade-in handle sets the fade length");
-            arrangement->mouseDown(mouse(*arrangement,258,76));arrangement->mouseDrag(mouse(*arrangement,258,26,true));arrangement->mouseUp(mouse(*arrangement,258,26,true));
+            arrangement->mouseDown(mouse(*arrangement,x(258),76));arrangement->mouseDrag(mouse(*arrangement,x(258),26,true));arrangement->mouseUp(mouse(*arrangement,x(258),26,true));
             expect(std::abs(track->clips[0].gain-Decibels::decibelsToGain(6.0f))<1e-4f,"dragging the volume handle up raises the event volume to +6 dB");
         }
         else expect(false,"arrangement exists for the fade handles");
@@ -164,13 +165,14 @@ private:
     }
     void rangeChecks()
     {   // Selección de rango (2): drag 1 s → 2 s on the first track, then Suprimir intervalo de tiempo.
+        const auto x=[this](double oldPixel){return view.projectXForTime((oldPixel-250.0)/75.0);};
         auto track=engine.addAudioTrack("Rango");AudioClip clip;clip.sourceRate=48000;clip.durationSeconds=4.0;
         clip.audio=std::make_shared<AudioBuffer<float>>(1,48000*4);clip.audio->clear();track->clips.push_back(clip);
         view.runCommand("toolRange");auto* rangeButton=dynamic_cast<TextButton*>(find(view,"tool-range"));
         auto* arrangement=find(view,"arrangement");
         if(arrangement&&rangeButton)
         {
-            arrangement->mouseDown(mouse(*arrangement,325,64));arrangement->mouseDrag(mouse(*arrangement,400,64,true));arrangement->mouseUp(mouse(*arrangement,400,64,true));
+            arrangement->mouseDown(mouse(*arrangement,x(325),64));arrangement->mouseDrag(mouse(*arrangement,x(400),64,true));arrangement->mouseUp(mouse(*arrangement,x(400),64,true));
             capture(view,output.getChildFile("range.png"));
             view.runCommand("deleteTime");
             expect(rangeButton->getToggleState()&&track->clips.size()==2&&std::abs(track->clips[1].startSeconds-1.0)<1e-6&&std::abs(track->clips[1].offsetSeconds-2.0)<1e-6,"range tool: drag a range and Shift+Backspace deletes the time");
@@ -178,12 +180,12 @@ private:
             view.runCommand("insertSilence");expect(track->clips.size()==2&&std::abs(track->clips[1].startSeconds-2.0)<1e-6,"Insert Silence moves the rest by the range length");
             // Move the range content: range 1–2 s, drag from 1.5 s to 3.5 s (x = 250 + s × 75).
             {const ScopedLock lock(engine.modelLock);track->clips.clear();track->clips.push_back(clip);}
-            arrangement->mouseDown(mouse(*arrangement,700,64));arrangement->mouseUp(mouse(*arrangement,700,64)); // click outside: new empty range
-            arrangement->mouseDown(mouse(*arrangement,325,64));arrangement->mouseDrag(mouse(*arrangement,400,64,true));arrangement->mouseUp(mouse(*arrangement,400,64,true));
-            arrangement->mouseDown(mouse(*arrangement,362.5f,64));arrangement->mouseDrag(mouse(*arrangement,512.5f,64,true));arrangement->mouseUp(mouse(*arrangement,512.5f,64,true));
+            arrangement->mouseDown(mouse(*arrangement,x(700),64));arrangement->mouseUp(mouse(*arrangement,x(700),64)); // click outside: new empty range
+            arrangement->mouseDown(mouse(*arrangement,x(325),64));arrangement->mouseDrag(mouse(*arrangement,x(400),64,true));arrangement->mouseUp(mouse(*arrangement,x(400),64,true));
+            arrangement->mouseDown(mouse(*arrangement,x(362.5f),64));arrangement->mouseDrag(mouse(*arrangement,x(512.5f),64,true));arrangement->mouseUp(mouse(*arrangement,x(512.5f),64,true));
             expect(track->clips.size()==3&&std::abs(track->clips[2].startSeconds-3.0)<1e-6&&std::abs(track->clips[2].offsetSeconds-1.0)<1e-6&&std::abs(track->clips[1].startSeconds-2.0)<1e-6,"dragging the range moves its content (gap left behind, audio lands 2 s later)");
             // ⌥ drag copies: the range is now 3–4 s; copy it to 5–6 s.
-            arrangement->mouseDown(mouse(*arrangement,512.5f,64,false,ModifierKeys::altModifier));arrangement->mouseDrag(mouse(*arrangement,662.5f,64,true,ModifierKeys::altModifier));arrangement->mouseUp(mouse(*arrangement,662.5f,64,true,ModifierKeys::altModifier));
+            arrangement->mouseDown(mouse(*arrangement,x(512.5f),64,false,ModifierKeys::altModifier));arrangement->mouseDrag(mouse(*arrangement,x(662.5f),64,true,ModifierKeys::altModifier));arrangement->mouseUp(mouse(*arrangement,x(662.5f),64,true,ModifierKeys::altModifier));
             // Under 3–4 s there are two layers (the original event and the moved audio on top): both are copied, top stays on top.
             expect(track->clips.size()==5&&std::abs(track->clips[4].startSeconds-5.0)<1e-6&&std::abs(track->clips[4].offsetSeconds-1.0)<1e-6&&std::abs(track->clips[3].offsetSeconds-3.0)<1e-6,"Option-drag copies the range content with its layers");
             // ⌥→ moves the range start by the grid; Suprimir then keeps the first grid step of the copy.

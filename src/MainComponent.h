@@ -44,6 +44,7 @@ public:
     void rangeMenuItem(int id);
     bool runCommand(const juce::String& keyCommandId);
     juce::StringArray editHistory() const; // names of the undoable edits, oldest first
+    float projectXForTime(double seconds) const; // Event-display geometry at the current horizontal zoom.
     void showMetronomeSettings();
     void showTapTempo();
     bool metronomeOn() const;

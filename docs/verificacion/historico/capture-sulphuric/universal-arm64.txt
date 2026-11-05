@@ -1,4 +1,0 @@
-position 14.9707
-callbacks 2807
-underruns 0
-dropped 0.0 %

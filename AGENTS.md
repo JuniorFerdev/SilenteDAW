@@ -23,5 +23,6 @@ Proyecto independiente de TopoVía y de los documentos académicos de carpetas v
 - Refactorizar por extracciones pequeñas, conservar comportamiento y compilar después de cada extracción. No reescribir todo a la vez.
 - `./scripts/build.sh` compila. Que compile o abra no prueba audio, grabación, MIDI ni compatibilidad de plugins. Las pruebas deben producir evidencia antes de declararse aprobadas.
 - Mantener la distribución y hábitos de Cubase como referencia UX, con identidad Silente y recursos propios. No tocar activaciones o instalaciones de software ajeno.
+- Al terminar la entrega: `python3 scripts/clean_generated_apps.py --apply` retira las apps temporales y actualiza Launch Services; no crea respaldos. Para volver a desarrollar después, reconfigurar primero con `scripts/build.sh` (el empaquetado temporal fue retirado).
 - Referencias de Cubase: consultar el manual y fuentes oficiales de internet. Fernando indicó el 05-11-2026 que su instalación no tiene licencia; no intentar abrir Cubase para validar funciones.
 - Interfaz bilingüe español/inglés: textos nuevos mediante i18n::tr y ambos catálogos en resources/locales/. No traducir nombres o datos del usuario. Comprobar con ./scripts/check_locales.sh.
