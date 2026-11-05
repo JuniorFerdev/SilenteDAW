@@ -26,6 +26,17 @@ MouseEvent click(Component& c,float x,float y,int modifiers)
     return {Desktop::getInstance().getMainMouseSource(),{x,y},ModifierKeys(modifiers),1.0f,0,0,0,0,&c,&c,Time::getCurrentTime(),{x,y},Time::getCurrentTime(),1,false};
 }
 void drain(){MessageManager::getInstance()->runDispatchLoopUntil(30);}
+void focus(Component& component)
+{
+    Process::makeForegroundProcess();component.getTopLevelComponent()->toFront(true);
+    // macOS activates the process/peer asynchronously. Assert only after the real
+    // focused component is available; a synthetic key call does not grant focus.
+    for(int n=0;n<30;++n)
+    {
+        component.grabKeyboardFocus();MessageManager::getInstance()->runDispatchLoopUntil(50);
+        if(component.hasKeyboardFocus(true))return;
+    }
+}
 void capture(Component& c,const File& file)
 {
     if(auto out=file.createOutputStream()){out->setPosition(0);out->truncate();PNGImageFormat().writeImageToStream(c.createComponentSnapshot(c.getLocalBounds()),*out);}
@@ -64,7 +75,7 @@ void navigationChecks(MainComponent& view,AudioEngine& engine,Component& arrange
     view.runCommand("toolSelect");
     {
         TextEditor editor;view.addAndMakeVisible(editor);editor.setBounds(20,20,140,26);editor.setText("Editar nombre",false);
-        Process::makeForegroundProcess();view.getTopLevelComponent()->toFront(true);drain();editor.grabKeyboardFocus();drain();
+        focus(editor);
         const bool focused=editor.hasKeyboardFocus(false),handled=view.keyPressed(next),unchanged=active(0);
         expect(focused&&!handled&&unchanged&&editor.getText()=="Editar nombre","F10 leaves the project tool unchanged while editing text (focus="+String((int)focused)+", handled="+String((int)handled)+", unchanged="+String((int)unchanged)+")");
     }
@@ -74,8 +85,8 @@ void navigationChecks(MainComponent& view,AudioEngine& engine,Component& arrange
     auto* piano=find(view,"piano-roll");auto* keyboard=find(view,"midi-keyboard");
     if(piano&&keyboard)
     {
-        piano->grabKeyboardFocus();drain();const bool pianoFocused=piano->hasKeyboardFocus(true),pianoHandled=view.keyPressed(next),pianoIgnored=pianoFocused&&!pianoHandled&&active(0);
-        keyboard->grabKeyboardFocus();drain();const bool keyboardFocused=keyboard->hasKeyboardFocus(true),keyboardHandled=view.keyPressed(previous),keyboardIgnored=keyboardFocused&&!keyboardHandled&&active(0);
+        focus(*piano);const bool pianoFocused=piano->hasKeyboardFocus(true),pianoHandled=view.keyPressed(next),pianoIgnored=pianoFocused&&!pianoHandled&&active(0);
+        focus(*keyboard);const bool keyboardFocused=keyboard->hasKeyboardFocus(true),keyboardHandled=view.keyPressed(previous),keyboardIgnored=keyboardFocused&&!keyboardHandled&&active(0);
         expect(pianoIgnored&&keyboardIgnored,"MIDI editor and keyboard focus do not redirect F9/F10 to the project tool (piano focus="+String((int)pianoFocused)+", handled="+String((int)pianoHandled)+"; keyboard focus="+String((int)keyboardFocused)+", handled="+String((int)keyboardHandled)+")");
     }
     else expect(false,"MIDI focus surfaces exist for navigation checks");

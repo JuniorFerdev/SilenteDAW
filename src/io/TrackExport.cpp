@@ -31,6 +31,8 @@ juce::Result exportChannels(AudioEngine& engine, const ExportJob& job, const std
 {
     if (auto r = validate(job.settings); r.failed()) return r;
     if (! job.mix && job.trackIds.isEmpty()) return juce::Result::fail(i18n::tr("Selecciona al menos un canal para exportar."));
+    for(const auto& id:job.trackIds)if(auto track=engine.findTrack(id);track&&!track->hasAudioChannel())
+        return juce::Result::fail(i18n::tr("Selecciona un canal de audio para exportar."));
     const int jobs = (job.mix ? 1 : 0) + job.trackIds.size();
     int index = 0;
     const auto step = [&](double p) { return ! progress || progress(((double) index + p) / (double) jobs); };

@@ -302,7 +302,7 @@ private:
             menu.addSeparator(); menu.addItem(4,i18n::tr("Importar audio / MIDI / video…  ⌥⌘I")); menu.addItem(5,i18n::tr("Exportar mezcla de audio…"));
             menu.addSeparator(); menu.addItem(6,i18n::tr("Conversión de formatos…")); menu.addItem(7,i18n::tr("Extraer audio de video…"));
         }
-        if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo")); }
+        if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo"));menu.addSeparator();menu.addItem(16,i18n::tr("Añadir pista de regla"));menu.addItem(17,i18n::tr("Añadir pista de marcador")); }
         if (index == 3 && window) return window->content().audioMenu();
         if (index == 4 && window) return window->content().transportMenu();
         if (index == 5) { menu.addItem(20,i18n::tr("MixConsole  F3")); menu.addItem(27,i18n::tr("MixConsole en zona inferior  ⌥F3")); menu.addItem(21,i18n::tr("Instrumentos y efectos…")); menu.addItem(22,i18n::tr("Dispositivos de audio y MIDI…")); menu.addItem(23,i18n::tr("Apagar todas las notas")); menu.addSeparator(); menu.addItem(24,i18n::tr("Metrónomo  C"),true,window&&window->content().metronomeOn()); menu.addItem(25,i18n::tr("Ajustes del metrónomo…")); menu.addItem(26,i18n::tr("Calculadora de tempo (Tap)…")); }
@@ -349,6 +349,7 @@ private:
             case 6: c.showConversion(false); break; case 7: c.showConversion(true); break;
             case 10: c.addAudioTrack(); break; case 11: c.addMidiTrack(); break;
             case 12: c.addTrack(TrackKind::midi); break; case 13: c.addTrack(TrackKind::folder); break;
+            case 16: c.addTrack(TrackKind::ruler); break; case 17: c.addTrack(TrackKind::marker); break;
             case 14: c.addTrack(TrackKind::fx); break; case 15: c.addTrack(TrackKind::group); break;
             case 20: c.showMixConsole(); break; case 27: c.showMixer(); break; case 21: c.showPlugins(); break; case 22: c.showAudioSettings(); break;
             case 23: engine->panic(); break;

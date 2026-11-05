@@ -15,7 +15,7 @@ ExportDialog::ExportDialog(AudioEngine& e, int selected) : engine(e), selectedTr
         addAndMakeVisible(c);
     channels.push_back({ {}, i18n::tr("Stereo Out (mezcla)") });
     for (const auto& t : engine.tracks)
-        if (t->kind != TrackKind::folder) channels.push_back({ t->id, t->name });
+        if (t->hasAudioChannel()) channels.push_back({ t->id, t->name });
     checked.assign(channels.size(), false);
     checked[0] = true;
     folder = engine.projectFile.existsAsFile() ? engine.projectFile.getParentDirectory().getChildFile("Mixdown")

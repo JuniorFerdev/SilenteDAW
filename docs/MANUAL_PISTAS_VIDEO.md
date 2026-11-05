@@ -47,4 +47,36 @@ Las capturas se tomaron navegando por los controles públicos de YouTube, en pau
 5. **Video:** selector nativo y arrastre, evento con miniaturas, duración/posición, visor que siga Play/pausa/cursor/ciclo, audio extraído opcional y sin reproducción duplicada, guardar/cargar y archivo ausente manejado. Ensayar con video sintético de imagen real, no solo un contenedor de audio.
 6. **Entrega:** pruebas pertinentes de cada módulo, capturas de Silente, compilación y actualización de Universal con respaldo; comprobar arm64 y Rosetta. Mantener fuentes, UI, persistencia, pruebas y referencias organizadas en el workspace de VS Code.
 
-Estos puntos son aceptación pendiente, no funciones ya entregadas. Estado y resultados observados se registran en `ETAPAS.md`.
+Estos puntos representan la aceptación global; su avance se detalla abajo, sin dar por entregados los pendientes. Estado y resultados observados se registran en `ETAPAS.md`.
+
+
+## Marcadores: comprobación específica 09:00–11:00 · 05-11-2026
+
+Fernando dio prioridad explícita a este intervalo. Se volvieron a inspeccionar las hojas 0540/0600 y la captura 0640. Para las acciones adicionales se consultaron [Inspector de marcador](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/tracks_about/tracks_about_marker_track_inspector_r.html), [edición en la pista](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/markers/markers_editing_markers_on_the_marker_track_c.html) y [ciclos](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/markers/markers_cycle_markers_c.html). Cubase local no tiene licencia y no se abrió.
+
+| Referencia | Silente y prueba observada |
+|---|---|
+| 09:00 crear pista | Tipo Marcador en + y menú Pista, controles propios, sin canal de mezcla. |
+| 09:20 botón añadir / 09:28 Insert | Punto en cursor exacto, ID consecutivo libre, pista activa independiente de la seleccionada. |
+| 09:38 Descripción | Campo editable en la línea de información, nombre actualizado en evento/lista/menú. |
+| 10:10 insertar más secciones | INTRO y ESTROFA añadidos con posiciones distintas. |
+| 10:17 lista Inspector | ID, posición y descripción; columna izquierda navega sin editar. |
+| 10:29 mover Descripción | Cabeceras reordenables y redimensionables con desplazamiento horizontal. |
+| 10:39 Localizar | Menú real muestra nombres; selección con teclado salta a INTRO. Captura independiente del menú. |
+| 10:50–11:00 Regla | Pista independiente; formato propio y representación de tiempo sin canal de audio. |
+
+Además del video, se comprobaron ciclos CORO con color propio, recuperación exacta de localizadores sin modificar Ciclo del transporte, ⌥doble clic, arrastre y extremos, edición numérica con rechazo de límites invertidos, ⌘arrastre, ⌥clic, Mayús + añadir, cancelar ciclos de longitud cero, Suprimir, deshacer, guardar/reabrir y rechazo de referencias obsoletas. Límite de diez pistas sin crear pasos falsos de historial. Los marcadores y reglas no afectan las muestras renderizadas ni se ofrecen como canales de exportación o inserciones.
+
+Verificación de desarrollo: **176/176 UI, 41/41 motor, 6/6 formatos**, 844 traducciones por idioma y cambio ES→EN→ES. Capturas de Silente: `../build/workflow-check/marker-sections.png`, `marker-locate-menu.png`, `marker-ruler.png`. No equivale a una comparación de cada píxel ni a ejecutar Cubase sin licencia.
+
+### Checklist que permanece abierta
+
+- [ ] Carpetas con contenido real, anidamiento, plegado y reordenamiento por arrastre (prioridad siguiente).
+- [ ] Diálogo completo de creación Audio/Instrumento/MIDI/Carpeta/Regla/Marcador/Video y front correspondiente.
+- [ ] Partes MIDI básicas del video; editor MIDI avanzado conserva su investigación y etapa propias.
+- [ ] Video con imagen, miniaturas y visor sincronizado; extraer audio no cubre esta función.
+- [ ] Regla: editar desplazamiento temporal y moverla en la lista cuando exista reordenamiento.
+- [ ] Marcadores: ventana completa ⌘M, selección/edición múltiple, cortar/copiar/pegar/mover entre pistas, más comandos e importación/exportación de listas.
+- [ ] Base musical de marcadores con cambios de tempo; por ahora las posiciones son segundos absolutos.
+- [ ] Diez inserciones de plugins por pista, según pedido anterior (fuera de este tramo de marcadores).
+- [ ] Entrega Universal de este tramo: candidato en preparación; actualizar resultado en ETAPAS.

@@ -6,6 +6,7 @@
 #include <atomic>
 #include "audio/DeviceSettings.h"
 #include "audio/Metronome.h"
+#include "domain/TrackData.h"
 #include <functional>
 #include <memory>
 #include <vector>
@@ -44,9 +45,7 @@ struct PluginSlot
     juce::String error;
 };
 
-// Tipos de pista del botón «+», como en Cubase. Carpeta, FX y grupo no llevan eventos;
-// el ruteo de envíos/salidas hacia FX y grupo aún no existe (siguiente tramo).
-enum class TrackKind { audio, instrument, midi, folder, fx, group };
+enum class TrackKind { audio, instrument, midi, folder, fx, group, ruler, marker };
 juce::String trackKindId(TrackKind);
 TrackKind trackKindFromId(const juce::String&, bool legacyIsMidi);
 
@@ -68,6 +67,8 @@ struct Track
     TrackKind kind = TrackKind::audio;
     bool isMidi = false; // instrument or midi kind
     bool hasEvents() const noexcept { return kind==TrackKind::audio||isMidi; }
+    bool hasAudioChannel() const noexcept { return hasEvents()||isBus(); }
+    domain::TrackData data;
     int inputLeft=0,inputRight=1; // Physical device channels; equal indices select mono.
     int stripWidth=0; // MixConsole channel width in pixels (0 = default); message thread only
     std::atomic<float> gain { 0.8f }, pan { 0.0f }, peakL { 0.0f }, peakR { 0.0f };
@@ -130,6 +131,7 @@ public:
     std::atomic<juce::int64> recordLapOffset { 0 }, recordCaptured { 0 };
     juce::String projectName { i18n::tr("Sin título") }, lastWarning;
     juce::File projectFile;
+    juce::String activeMarkerTrack;
 
     juce::Result initialise();
     void shutdown();

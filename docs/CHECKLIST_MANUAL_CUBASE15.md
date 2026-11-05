@@ -31,7 +31,8 @@ hardware real. Actualizar al cerrar cada tramo.
 - ✅ Barra de transporte: localizadores, posición, ciclo/parar/reproducir/grabar, tiempo, tempo, Tap, metrónomo.
 - ✅ Menú Transporte: modos de inicio, volver al inicio, pre/post-roll, rangos de reproducción, desplazamiento auto., cursor fijo.
 - ✅ Metrónomo: sonidos, subdivisión, precuenta, tap tempo, tecla C.
-- ⬜ Marcadores (438–450), Teclado en pantalla como ventana flotante (344–346).
+- 🟡 Marcadores (438–450): flujo del video 09:00–11:00, puntos/Descripción/Inspector/Localizar, ciclos coloreados, mover/extremos/zoom, persistencia y deshacer verificados en desarrollo. Faltan ventana ⌘M, selección múltiple, copiar/pegar/mover entre pistas, atajos adicionales y base musical. Ver `MANUAL_PISTAS_VIDEO.md` y ETAPAS.
+- ⬜ Teclado en pantalla como ventana flotante (344–346).
 
 ## Grabación (347–369)
 - ✅ Habilitar grabación, grabar con precuenta, en pausa o en marcha (Num *).

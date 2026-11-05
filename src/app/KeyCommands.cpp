@@ -89,7 +89,8 @@ std::vector<KeyCommand> build()
     add("", "Siguiente", "Next", K::tabKey);
     add("", "Anterior", "Previous", K::tabKey, S);
     cat("Marcador", "Marker");
-    add("", "Añadir marcador de posición en pista activa", "Insert Marker", K::insertKey);
+    add("addCycleMarker", "Añadir marcador de ciclo en pista activa", "Insert Cycle Marker", 0);
+    add("addMarker", "Añadir marcador de posición en pista activa", "Insert Marker", K::insertKey);
     cat("Medios", "Media");
     add("", "Abrir MediaBay", "Open MediaBay", K::F5Key);
     cat("Navegar", "Navigate");

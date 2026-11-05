@@ -5,6 +5,9 @@
 #include "../src/audio/FadeCurves.h"
 #include "../src/audio/RangeEdit.h"
 #include "../src/AudioEngine.h"
+#include "../src/persistence/TrackDataJson.h"
+#include "../src/ui/project/TimelineTracks.h"
+#include <limits>
 #include <cmath>
 #include <functional>
 #include <iostream>
@@ -208,6 +211,50 @@ int runEngineTests(const juce::File& outputDir)
         data.setSample(0, 10, 0.25f);
         data.setSample(0, 250, 0.5f);
         impulses = writeWav(dir, "impulses.wav", rate, data);
+    });
+
+    suite.run("marker/ruler persistence, active track, stable identities and legacy defaults", [&]
+    {
+        AudioEngine engine;setup(engine);auto marker=engine.addTrack(TrackKind::marker,"Secciones");auto ruler=engine.addTrack(TrackKind::ruler,"Tiempo");
+        auto intro=domain::makeMarker(marker->data,1.25);intro.description="INTRO";marker->data.markers.push_back(intro);
+        auto verse=domain::makeMarker(marker->data,8);verse.description="ESTROFA";marker->data.markers.push_back(verse);
+        auto chorus=domain::makeMarker(marker->data,12,true,20);chorus.description="CORO";chorus.colour=juce::Colour(0xfff0bd48);marker->data.markers.push_back(chorus);
+        require(intro.number==1&&verse.number==2&&chorus.number==1,"Point and cycle numbering must be independent");
+        ruler->data.rulerFormat=2;ruler->data.rulerOffset=3600;
+        const auto file=dir.getChildFile("marker-ruler.silente");requireOk(engine.saveProject(file));
+        AudioEngine loaded;setup(loaded);requireOk(loaded.loadProject(file));
+        auto copy=loaded.findTrack(marker->id);require(copy&&copy->kind==TrackKind::marker&&!copy->hasAudioChannel(),"Marker changed track kind or gained an audio channel");
+        require(copy->data.markers==marker->data.markers,"Marker attributes did not round-trip");
+        require(loaded.activeMarkerTrack==marker->id,"Active marker track changed");
+        auto copiedRuler=loaded.findTrack(ruler->id);require(copiedRuler&&copiedRuler->kind==TrackKind::ruler&&copiedRuler->data.rulerFormat==2,"Independent ruler format changed");
+        near(copiedRuler->data.rulerOffset,3600,0,"Ruler offset");near(loaded.duration(),20,0,"Last cycle endpoint contributes to timeline duration");
+        require(persistence::readTrackData({}).markers.empty(),"Legacy project should start with no markers");
+        loaded.removeTrack(0);require(loaded.activeMarkerTrack.isEmpty(),"Removing the active marker track left a stale target");
+    });
+    suite.run("marker data rejects invalid bounds and repairs duplicate identities and numbers", [&]
+    {
+        domain::TrackData data;auto point=domain::makeMarker(data,1);data.markers.push_back(point);data.markers.push_back(point);
+        auto invalid=domain::makeMarker(data,2,true,1);data.markers.push_back(invalid);
+        require(!domain::validMarker(invalid),"Backwards cycles must be rejected");invalid.position=std::numeric_limits<double>::infinity();require(!domain::validMarker(invalid),"Infinite marker position accepted");
+        const auto repaired=persistence::readTrackData(persistence::writeTrackData(data));
+        require(repaired.markers.size()==2,"Invalid cycle wasn't removed");
+        require(repaired.markers[0].id!=repaired.markers[1].id&&repaired.markers[0].number!=repaired.markers[1].number,"Duplicate IDs/numbers weren't repaired");
+        require(!ui::parseTimelinePosition("3. 5. 1. 0",0,120,rate),"Invalid musical beat accepted");
+        for(int format=0;format<5;++format)
+        {
+            const auto text=ui::timelinePosition(12.5,format,120,rate);auto parsed=ui::parseTimelinePosition(text,format,120,rate);
+            require(parsed.has_value(),"Cannot parse displayed marker position: "+text);near(*parsed,12.5,1.0/30,"Timeline time-format round trip");
+        }
+    });
+    suite.run("marker/ruler tracks cannot route audio or silence the mix by solo", [&]
+    {
+        AudioEngine engine;setup(engine);auto audio=importFixture(engine,mono);audio->gain=1;audio->pan=-1;
+        engine.play();render(engine,128);engine.seek(0);const auto baseline=render(engine,128);engine.pause();engine.seek(0);
+        auto marker=engine.addTrack(TrackKind::marker);auto ruler=engine.addTrack(TrackKind::ruler);auto group=engine.addTrack(TrackKind::group);group->gain=1;
+        marker->solo=true;ruler->solo=true;marker->armed=true;ruler->monitor=true;
+        require(!engine.canRoute(*marker,*group,false)&&!engine.canRoute(*ruler,*group,false),"Non-audio timeline track can route into a group");
+        engine.play();const auto result=render(engine,128);for(int k=0;k<128;++k)for(int c=0;c<2;++c)near(result.getSample(c,k),baseline.getSample(c,k),0,"Markers changed an audio sample");
+        near(marker->peakL.load()+ruler->peakL.load(),0,0,"Non-audio tracks have no meter signal");
     });
 
     suite.run("mono import and hard-left gain", [&]

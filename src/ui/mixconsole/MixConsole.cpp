@@ -542,7 +542,7 @@ public:
         int y = top;
         for (const auto& t : owner.engine.tracks)
         {
-            if (t->kind == TrackKind::folder) continue;
+            if (!t->hasAudioChannel()) continue;
             const bool visible = owner.hidden.count(t->id) == 0;
             g.setColour(raised); g.fillRoundedRectangle(10.0f, y + 5.0f, 14.0f, 14.0f, 3.0f);
             if (visible) { g.setColour(accent); g.fillRoundedRectangle(13.0f, y + 8.0f, 8.0f, 8.0f, 2.0f); }
@@ -561,7 +561,7 @@ public:
         int n = 0;
         for (const auto& t : owner.engine.tracks)
         {
-            if (t->kind == TrackKind::folder) continue;
+            if (!t->hasAudioChannel()) continue;
             if (n++ != row) continue;
             const auto& id = t->id;
             if (e.x >= getWidth() - 56 && e.x < getWidth() - 32) { toggle(owner.pinnedLeft, id); owner.pinnedRight.erase(id); }
@@ -657,7 +657,7 @@ MixConsole::~MixConsole() { stopTimer(); setLookAndFeel(nullptr); }
 
 bool MixConsole::passesFilter(const Track& t) const
 {
-    if (t.kind == TrackKind::folder || hidden.count(t.id) || hiddenKinds.count((int) t.kind)) return false;
+    if (!t.hasAudioChannel() || hidden.count(t.id) || hiddenKinds.count((int) t.kind)) return false;
     const auto query = search.getText().trim();
     return query.isEmpty() || t.name.containsIgnoreCase(query);
 }

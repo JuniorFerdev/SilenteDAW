@@ -1,6 +1,7 @@
 #include "WorkflowUiTests.h"
 #include "SettingsUiTests.h"
 #include "ToolboxUiTests.h"
+#include "MarkerUiTests.h"
 #include "../src/MainComponent.h"
 #include "../src/ui/plugins/PluginSelector.h"
 #include "../src/ui/mixconsole/MixConsole.h"
@@ -44,6 +45,7 @@ public:
         output.createDirectory();initialChecks();mixConsoleChecks();trackListChecks();snapChecks();
         runToolboxUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runSettingsUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});keyCommandChecks();
+        runMarkerUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {

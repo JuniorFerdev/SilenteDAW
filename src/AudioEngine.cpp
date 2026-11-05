@@ -1,5 +1,6 @@
 #include "i18n/Translations.h"
 #include "AudioEngine.h"
+#include "persistence/TrackDataJson.h"
 #include "audio/BandlimitedInterpolator.h"
 #include "audio/RecordingModes.h"
 #include "audio/FadeCurves.h"
@@ -199,6 +200,7 @@ void AudioEngine::clear()
     stop();
     const juce::ScopedLock lock(modelLock);
     tracks.clear();
+    activeMarkerTrack.clear();
     projectName = i18n::tr("Sin título");
     projectFile = juce::File();
     lastWarning.clear();
@@ -212,11 +214,11 @@ void AudioEngine::clear()
 }
 juce::String trackKindId(TrackKind kind)
 {
-    switch(kind){case TrackKind::instrument:return "instrument";case TrackKind::midi:return "midi";case TrackKind::folder:return "folder";case TrackKind::fx:return "fx";case TrackKind::group:return "group";default:return "audio";}
+    switch(kind){case TrackKind::instrument:return "instrument";case TrackKind::midi:return "midi";case TrackKind::folder:return "folder";case TrackKind::fx:return "fx";case TrackKind::group:return "group";case TrackKind::ruler:return "ruler";case TrackKind::marker:return "marker";default:return "audio";}
 }
 TrackKind trackKindFromId(const juce::String& id, bool legacyIsMidi)
 {
-    for(auto kind:{TrackKind::audio,TrackKind::instrument,TrackKind::midi,TrackKind::folder,TrackKind::fx,TrackKind::group})if(id==trackKindId(kind))return kind;
+    for(auto kind:{TrackKind::audio,TrackKind::instrument,TrackKind::midi,TrackKind::folder,TrackKind::fx,TrackKind::group,TrackKind::ruler,TrackKind::marker})if(id==trackKindId(kind))return kind;
     return legacyIsMidi?TrackKind::instrument:TrackKind::audio;
 }
 std::shared_ptr<Track> AudioEngine::makeTrack(const juce::String& name, bool midi)
@@ -229,7 +231,7 @@ std::shared_ptr<Track> AudioEngine::makeTrack(const juce::String& name, TrackKin
     track->kind = kind;
     track->isMidi = kind == TrackKind::instrument || kind == TrackKind::midi;
     juce::String base;
-    switch(kind){case TrackKind::instrument:base=i18n::tr("Instrumento ");break;case TrackKind::midi:base=i18n::tr("MIDI ");break;case TrackKind::folder:base=i18n::tr("Carpeta ");break;case TrackKind::fx:base=i18n::tr("FX ");break;case TrackKind::group:base=i18n::tr("Grupo ");break;default:base=i18n::tr("Audio ");}
+    switch(kind){case TrackKind::instrument:base=i18n::tr("Instrumento ");break;case TrackKind::midi:base=i18n::tr("MIDI ");break;case TrackKind::folder:base=i18n::tr("Carpeta ");break;case TrackKind::fx:base=i18n::tr("FX ");break;case TrackKind::group:base=i18n::tr("Grupo ");break;case TrackKind::ruler:base=i18n::tr("Regla ");break;case TrackKind::marker:base=i18n::tr("Marcador ");break;default:base=i18n::tr("Audio ");}
     track->name = name.isNotEmpty() ? name : base + juce::String(tracks.size() + 1);
     static constexpr juce::uint32 colours[] { 0xffa994ff, 0xff65d6c5, 0xffffba72, 0xff6eabef, 0xffe391bf, 0xffbdd27a };
     track->colour = kind == TrackKind::folder ? juce::Colour(0xff8a93a3) : juce::Colour(colours[tracks.size() % std::size(colours)]);
@@ -247,7 +249,7 @@ std::shared_ptr<Track> AudioEngine::addMidiTrack(const juce::String& name)
 std::shared_ptr<Track> AudioEngine::addTrack(TrackKind kind, const juce::String& name)
 {
     const juce::ScopedLock lock(modelLock);
-    auto t = makeTrack(name, kind); if (t->isMidi) t->monitor = true; tracks.push_back(t); return t;
+    auto t = makeTrack(name, kind); if (t->isMidi) t->monitor = true; tracks.push_back(t);if(kind==TrackKind::marker)activeMarkerTrack=t->id;return t;
 }
 std::shared_ptr<Track> AudioEngine::findTrack(const juce::String& id) const
 {
@@ -256,7 +258,7 @@ std::shared_ptr<Track> AudioEngine::findTrack(const juce::String& id) const
 }
 bool AudioEngine::canRoute(const Track& source, const Track& target, bool asSend) const
 {
-    if (&source == &target || source.kind == TrackKind::folder) return false;
+    if (&source == &target || !source.hasAudioChannel()) return false;
     if (target.kind != (asSend ? TrackKind::fx : TrackKind::group)) return false;
     // Refuse loops: nothing reachable from the target may lead back to the source.
     std::vector<const Track*> pending { &target }, seen;
@@ -299,7 +301,7 @@ void AudioEngine::removeTrack(int index)
 {
     if (recording.load()) return;
     const juce::ScopedLock lock(modelLock);
-    if (juce::isPositiveAndBelow(index, static_cast<int>(tracks.size()))) tracks.erase(tracks.begin() + index);
+    if (juce::isPositiveAndBelow(index, static_cast<int>(tracks.size()))) {tracks.erase(tracks.begin() + index);if(!findTrack(activeMarkerTrack)){activeMarkerTrack.clear();for(const auto& track:tracks)if(track->kind==TrackKind::marker){activeMarkerTrack=track->id;break;}}}
 }
 void AudioEngine::prepare(double rate, int maxBlockSize)
 {
@@ -466,7 +468,7 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
 {
     const double rate = sampleRate.load(), bpm = juce::jlimit(20.0, 400.0, tempo.load());
     const double end = start + samples / rate;
-    const bool hasSolo = std::any_of(tracks.begin(), tracks.end(), [](const auto& t) { return t->solo.load(); });
+    const bool hasSolo = std::any_of(tracks.begin(), tracks.end(), [](const auto& t) { return (t->hasAudioChannel()||t->kind==TrackKind::folder)&&t->solo.load(); });
     int maximumLatency = 0;
     for (const auto& track : tracks)
     {
@@ -492,7 +494,7 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
     {
         auto& t = *tracks[static_cast<size_t>(n)];
         auto& rt = *t.runtime;
-        const bool folder = t.kind == TrackKind::folder;
+        const bool folder = !t.hasAudioChannel();
         rt.outputIndex = folder ? -1 : resolve(rt.outputIndex, t.output, TrackKind::group, n);
         for (int k = 0; k < Track::sendCount; ++k)
             rt.sendIndex[static_cast<size_t>(k)] = folder || ! t.sends[static_cast<size_t>(k)].enabled.load() ? -1
@@ -530,7 +532,7 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         auto& rt = *track->runtime;
         rt.buffer.clear();
         rt.midi.clear();
-        if (track->kind == TrackKind::folder) { track->peakL = track->peakR = 0.0f; return; }
+        if (!track->hasAudioChannel()) { track->peakL = track->peakR = 0.0f; return; }
         if (track->isBus())
             for (int ch = 0; ch < 2; ++ch) rt.buffer.addFrom(ch, 0, rt.bus, ch, 0, samples);
         if (rt.resetNotes)
@@ -843,6 +845,7 @@ double AudioEngine::duration() const
     {
         for (const auto& clip : track->clips) result = juce::jmax(result, clip.startSeconds + clip.durationSeconds);
         for (const auto& note : track->notes) result = juce::jmax(result, (note.startBeats + note.lengthBeats) * 60.0 / juce::jlimit(20.0, 400.0, tempo.load()));
+        for(const auto& marker:track->data.markers)result=juce::jmax(result,marker.cycle?marker.end:marker.position);
     }
     return result;
 }
@@ -851,6 +854,7 @@ juce::Result AudioEngine::addPlugin(int index, std::unique_ptr<juce::AudioPlugin
     if (!processor) return juce::Result::fail(i18n::tr("El plugin no se ha creado."));
     const juce::ScopedLock lock(modelLock);
     if (!juce::isPositiveAndBelow(index, static_cast<int>(tracks.size()))) return juce::Result::fail(i18n::tr("La pista ya no existe."));
+    if (!tracks[(size_t)index]->hasAudioChannel()) return juce::Result::fail(i18n::tr("Esta pista no admite inserciones de audio."));
     processor->enableAllBuses();
     auto layout = processor->getBusesLayout();
     if (!layout.outputBuses.isEmpty()) layout.outputBuses.set(0, juce::AudioChannelSet::stereo());
@@ -910,7 +914,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
 {
     auto root = object();
     set(root, "format", "Silente"); set(root, "version", 1); set(root, "name", projectName);
-    set(root, "tempo", tempo.load()); set(root, "masterGain", masterGain.load());
+    set(root, "tempo", tempo.load()); set(root, "masterGain", masterGain.load());set(root,"activeMarkerTrack",activeMarkerTrack);
     set(root, "punchIn", punchIn.load()); set(root, "punchOut", punchOut.load());
     set(root, "audioRecordMode", audioRecordMode.load()); set(root, "recordBitDepth", recordBitDepth.load());
     set(root, "looping", looping.load()); set(root, "loopStart", loopStart.load()); set(root, "loopEnd", loopEnd.load());
@@ -922,6 +926,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
         auto t = object();
         set(t, "id", track->id); set(t, "name", track->name); set(t, "colour", track->colour.toString()); set(t, "stripWidth", track->stripWidth);
         set(t, "kind", trackKindId(track->kind)); set(t, "isMidi", track->isMidi); set(t, "gain", track->gain.load()); set(t, "pan", track->pan.load());
+        set(t,"trackData",persistence::writeTrackData(track->data));
         set(t, "mute", track->mute.load()); set(t, "solo", track->solo.load());
         set(t,"inputLeft",track->inputLeft);set(t,"inputRight",track->inputRight);
         set(t, "output", track->output);
@@ -1021,6 +1026,7 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
         track->stripWidth = juce::jlimit(0, 240, static_cast<int>(t.getProperty("stripWidth", 0)));
         track->kind = trackKindFromId(t.getProperty("kind", {}).toString(), static_cast<bool>(t["isMidi"]));
         track->isMidi = track->kind == TrackKind::instrument || track->kind == TrackKind::midi;
+        track->data=persistence::readTrackData(t.getProperty("trackData",{}));
         track->output = t.getProperty("output", {}).toString();
         if (auto* sends = t["sends"].getArray())
             for (int k = 0; k < juce::jmin(Track::sendCount, sends->size()); ++k)
@@ -1084,6 +1090,9 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
     stop();
     const juce::ScopedLock lock(modelLock);
     tracks = std::move(loaded);
+    activeMarkerTrack=json.getProperty("activeMarkerTrack",{}).toString();
+    if(auto active=findTrack(activeMarkerTrack);!active||active->kind!=TrackKind::marker)
+    {activeMarkerTrack.clear();for(const auto& track:tracks)if(track->kind==TrackKind::marker){activeMarkerTrack=track->id;break;}}
     punchIn = static_cast<bool>(json["punchIn"]); punchOut = static_cast<bool>(json["punchOut"]);
     audioRecordMode = juce::jlimit(0, 2, static_cast<int>(number(json, "audioRecordMode", 1.0)));
     { const int bits = static_cast<int>(number(json, "recordBitDepth", 24.0)); recordBitDepth = bits == 16 || bits == 32 ? bits : 24; }

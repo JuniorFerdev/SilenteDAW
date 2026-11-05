@@ -58,7 +58,7 @@ void ChannelTab::setTrack(int i)
 {
     index = juce::isPositiveAndBelow(i, (int) engine.tracks.size()) ? i : -1;
     track = index >= 0 ? engine.tracks[(size_t) index] : nullptr;
-    if (track && track->kind == TrackKind::folder) { track = nullptr; index = -1; }
+    if (track && !track->hasAudioChannel()) { track = nullptr; index = -1; }
     refresh();
 }
 
