@@ -347,10 +347,10 @@ private:
             case 1: c.newProject(); break; case 2: c.openProject(); break; case 3: c.saveProject(); break;
             case 4: c.importFiles(); break; case 5: c.exportAudio(); break;
             case 6: c.showConversion(false); break; case 7: c.showConversion(true); break;
-            case 10: c.addAudioTrack(); break; case 11: c.addMidiTrack(); break;
-            case 12: c.addTrack(TrackKind::midi); break; case 13: c.addTrack(TrackKind::folder); break;
-            case 16: c.addTrack(TrackKind::ruler); break; case 17: c.addTrack(TrackKind::marker); break;
-            case 14: c.addTrack(TrackKind::fx); break; case 15: c.addTrack(TrackKind::group); break;
+            case 10: c.showAddTrack(TrackKind::audio); break; case 11: c.showAddTrack(TrackKind::instrument); break;
+            case 12: c.showAddTrack(TrackKind::midi); break; case 13: c.showAddTrack(TrackKind::folder); break;
+            case 16: c.showAddTrack(TrackKind::ruler); break; case 17: c.showAddTrack(TrackKind::marker); break;
+            case 14: c.showAddTrack(TrackKind::fx); break; case 15: c.showAddTrack(TrackKind::group); break;
             case 20: c.showMixConsole(); break; case 27: c.showMixer(); break; case 21: c.showPlugins(); break; case 22: c.showAudioSettings(); break;
             case 23: engine->panic(); break;
             case 28: c.showSettings(); break;

@@ -7,6 +7,7 @@
 #include "../src/AudioEngine.h"
 #include "../src/persistence/TrackDataJson.h"
 #include "../src/plugins/PluginSelection.h"
+#include "../src/app/TrackCreation.h"
 #include "../src/ui/project/TimelineTracks.h"
 #include <limits>
 #include <cmath>
@@ -287,6 +288,28 @@ int runEngineTests(const juce::File& outputDir)
         requireOk(engine.addPlugin(1,std::move(instrument),instrumentDescription));
         for(int n=0;n<10;++n){auto effect=std::make_unique<DelayTestPlugin>(0);requireOk(engine.addPlugin(1,std::move(effect),description,-1,n));}
         require(midi->plugins.size()==11&&instrumentSlotIndex(*midi)==0&&effectSlotIndex(*midi,9)==10,"Instrument consumed one of the ten effect slots");
+    });
+
+    suite.run("track creation batches validate atomically, name tracks and apply recording inputs", [&]
+    {
+        AudioEngine engine;setup(engine);app::TrackCreation request;request.name="Voz";request.count=3;request.inputLeft=request.inputRight=2;
+        std::vector<std::shared_ptr<Track>> created;requireOk(app::createTracks(engine,request,created));
+        require(created.size()==3&&created[0]->name=="Voz 01"&&created[2]->name=="Voz 03"&&created[2]->inputLeft==2&&created[2]->inputRight==2,"Batch names/input configuration changed");
+        const auto size=engine.tracks.size();request.count=101;require(app::createTracks(engine,request,created).failed()&&engine.tracks.size()==size,"Invalid count created part of a batch");
+        request.count=0;require(app::createTracks(engine,request,created).failed(),"Zero-track request accepted");request.count=2;request.output="deleted-group";
+        require(app::createTracks(engine,request,created).failed()&&engine.tracks.size()==size,"Missing routing target created a partial batch");request.output.clear();
+        request.kind=TrackKind::marker;request.count=11;require(app::createTracks(engine,request,created).failed()&&engine.tracks.size()==size,"Marker limit created a partial batch");
+        engine.clear();request.kind=TrackKind::folder;request.count=100;request.name.clear();requireOk(app::createTracks(engine,request,created));require(created.size()==100&&engine.tracks.size()==100&&created[0]->name.isNotEmpty(),"Count 100 or default names failed");
+        engine.clear();engine.prepareForOffline(rate,block,true);request.kind=TrackKind::audio;request.count=2;request.name="Take";
+        requireOk(app::createTracks(engine,request,created));for(auto& track:created)track->armed=true;
+        requireOk(engine.beginRecording(dir.getChildFile("batch-input-recording"),{-1.0,false}));
+        juce::AudioBuffer<float> input(3,block),out(2,block);input.clear();juce::FloatVectorOperations::fill(input.getWritePointer(2),.25f,block);
+        for(int n=0;n<20;++n){out.clear();engine.renderOfflineBlock(out,block,input);}engine.endRecording();engine.pause();
+        for(const auto& track:created)
+        {
+            require(track->clips.size()==1&&track->clips.front().audio&&track->clips.front().audio->getNumChannels()==1,"Mono batch produced a stereo take");
+            near(track->clips.front().audio->getSample(0,128),.25,.00001,"Recording uses the selected input for each created track");
+        }
     });
 
     suite.run("mono import and hard-left gain", [&]

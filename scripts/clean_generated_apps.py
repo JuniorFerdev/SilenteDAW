@@ -30,5 +30,10 @@ for app in sorted(candidates, key=lambda path: len(path.parts), reverse=True):
         if registry.exists():
             subprocess.run([str(registry), '-u', str(app)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         shutil.rmtree(app)
+if apply:
+    for name in ('build','build-universal','build-intel'):
+        generated = root / name / 'Silente_artefacts/JuceLibraryCode/Silente'
+        if generated.exists():
+            shutil.rmtree(generated)
 if apply and registry.exists():
     subprocess.run([str(registry), '-f', str(keep)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

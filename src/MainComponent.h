@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "PluginManager.h"
 #include <juce_gui_extra/juce_gui_extra.h>
+#include <optional>
 
 namespace silente
 {
@@ -51,6 +52,7 @@ public:
     void addAudioTrack();
     void addMidiTrack();
     void addTrack(TrackKind);
+    void showAddTrack(std::optional<TrackKind> initial={});
     void showPlugins();
     void refreshLanguage();
     void requestClose(std::function<void()> onReady);

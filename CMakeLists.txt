@@ -35,7 +35,8 @@ target_sources(Silente PRIVATE src/Main.cpp src/AudioEngine.cpp src/MainComponen
     src/app/Preferences.cpp src/ui/settings/SettingsWorkspace.cpp tests/SettingsUiTests.cpp
     src/ui/project/ProjectToolbox.cpp tests/ToolboxUiTests.cpp
     src/domain/TrackData.cpp src/persistence/TrackDataJson.cpp
-    src/ui/project/TimelineTracks.cpp src/ui/project/MarkerInspector.cpp tests/MarkerUiTests.cpp src/ui/plugins/InsertRack.cpp)
+    src/ui/project/TimelineTracks.cpp src/ui/project/MarkerInspector.cpp tests/MarkerUiTests.cpp src/ui/plugins/InsertRack.cpp
+    src/app/TrackCreation.cpp src/ui/project/AddTrackDialog.cpp tests/AddTrackUiTests.cpp)
 target_compile_definitions(Silente PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:Silente,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}"

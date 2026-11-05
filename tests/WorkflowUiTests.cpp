@@ -2,9 +2,11 @@
 #include "SettingsUiTests.h"
 #include "ToolboxUiTests.h"
 #include "MarkerUiTests.h"
+#include "AddTrackUiTests.h"
 #include "../src/MainComponent.h"
 #include "../src/ui/plugins/PluginSelector.h"
 #include "../src/ui/plugins/InsertRack.h"
+#include "../src/ui/project/AddTrackDialog.h"
 #include "../src/ui/mixconsole/MixConsole.h"
 #include "../src/ui/io/ConversionPanel.h"
 #include "../src/ui/io/ExportDialog.h"
@@ -47,6 +49,7 @@ public:
         runToolboxUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runSettingsUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});keyCommandChecks();
         runMarkerUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
+        runAddTrackUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {
@@ -56,7 +59,20 @@ public:
             if(!found.isEmpty())instrument=*found[0];
         }
         if(apple.name.isEmpty()){failures+="Apple AULowpass was not found\n";finish();return;}
-        manager.insertPlugin(0,apple);deadline=Time::getMillisecondCounterHiRes()+15000;startTimer(50);
+        if(!instrument.name.isEmpty())
+        {
+            view.showAddTrack(TrackKind::instrument);
+            for(int n=0;n<Desktop::getInstance().getNumComponents();++n)if(auto* panel=dynamic_cast<ui::AddTrackDialog*>(find(*Desktop::getInstance().getComponent(n),"add-track-dialog")))
+            {
+                juce::Array<PluginDescription> catalog;catalog.add(instrument);panel->updateOptions({}, {},catalog,0);
+                dynamic_cast<TextEditor*>(find(*panel,"add-name"))->setText("Pianos",false);dynamic_cast<Slider*>(find(*panel,"add-count"))->setValue(2,dontSendNotification);
+                dynamic_cast<ComboBox*>(find(*panel,"add-output"))->setSelectedId(1,sendNotificationSync);
+                dynamic_cast<ComboBox*>(find(*panel,"add-plugin"))->setSelectedId(2,sendNotificationSync);panel->submit();break;
+            }
+            stage=7;
+        }
+        else manager.insertPlugin(0,apple);
+        deadline=Time::getMillisecondCounterHiRes()+20000;startTimer(50);
     }
 private:
     MainComponent& view;AudioEngine& engine;PluginManager& manager;
@@ -382,6 +398,12 @@ private:
     {
         if(stage==5&&Time::getMillisecondCounterHiRes()<deadline)return;
         if(stage!=5&&Time::getMillisecondCounterHiRes()>deadline){failures+="Timed out at plugin stage "+String(stage)+" | "+manager.status()+"\n";finish();return;}
+        if(stage==7)
+        {
+            if(engine.tracks.size()<3||engine.tracks[1]->plugins.empty()||engine.tracks[2]->plugins.empty())return;
+            expect(engine.tracks[1]->name=="Pianos 01"&&engine.tracks[2]->name=="Pianos 02"&&instrumentSlotIndex(*engine.tracks[1])==0&&instrumentSlotIndex(*engine.tracks[2])==0&&engine.tracks[1]->plugins[0]->processor&&engine.tracks[2]->plugins[0]->processor,"Add Track creates two named tracks with independent real AU instruments");
+            manager.closeEditors();engine.removeTrack(2);engine.removeTrack(1);view.runCommand("trackTop");manager.insertPlugin(0,apple);stage=0;deadline=Time::getMillisecondCounterHiRes()+15000;return;
+        }
         if(stage==0)
         {
             if(track->plugins.empty())return;
