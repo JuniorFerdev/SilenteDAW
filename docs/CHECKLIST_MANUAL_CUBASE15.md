@@ -11,6 +11,9 @@ hardware real. Actualizar al cerrar cada tramo.
 - 🟡 Modos básicos 1 Selección · 3 Dividir · 4 Pegar · 5 Borrar · 6 Zoom · 7 Enmudecer · 8 Dibujar · 9 Reproducir. Faltan selección múltiple y variantes avanzadas; Dibujar solo añade notas MIDI básicas. Inventario: `MANUAL_HERRAMIENTAS_EDICION.md`.
 - ✅ 05-11-2026 · Caja de herramientas al clic derecho del visor, preferencia buscable/persistente, modificadores para alternar con menú y herramienta Color de evento con Deshacer. Comprobado en desarrollo Apple Silicon; aún no incluido en Universal.
 - ⬜ Comp, Time Warp y Línea: desactivadas en la caja; dependen de carriles/ensamblaje, mapa de tempo y edición de controladores respectivamente.
+- ✅ 05-11-2026 · Inventario de **43 comandos de Herramientas** cotejado con Cubase 15.0.30 instalado y 13 asignaciones del manual; tabla de consulta completa para esa categoría, con «Sin asignación» explícito. Diez acciones básicas disponibles; no acredita implementación de los otros 33 comandos.
+- ⬜ F9/F10 (anterior/siguiente), 0 Baqueta y ⌥⇧1 Combinar Seleccionar/Rango: teclas consultadas y registradas; acciones pendientes. Num 0 sigue siendo Detener.
+- 🟡 Reproducir (9) usa la mezcla general: falta escucha aislada y Scrub. Color abre paleta al clic: faltan color activo, ⌥tomar color y ⌘selector, según el flujo de Cubase. Variantes/modificadores completos en `MANUAL_HERRAMIENTAS_EDICION.md`.
 - ✅ Herramienta 2 Selección de rango: arrastrar (varias pistas), Mayús amplía, doble clic cubre el evento o el hueco; inicio/fin/duración en la línea de información.
 - ✅ Edición › Rango: Dividir (⇧X), Truncar, Suprimir intervalo de tiempo (⇧Retroceso), Insertar silencio (⇧⌘E), Ajustar fundidos al rango (A), Suprimir, Duplicar; menú contextual del rango. Audio y MIDI.
 - ✅ Rangos: arrastrar mueve el contenido (también a otras pistas), ⌥ arrastrar copia; ⌥←/⌥→ empuja el inicio, ⌥⇧←/⌥⇧→ el final; ⌘←/⌘→ desplaza el rango sin contenido; cortar/copiar/pegar rango (⌥V en su origen).
@@ -58,7 +61,7 @@ hardware real. Actualizar al cerrar cada tramo.
 - ⬜ Exportar por rango de localizadores, cola de exportación.
 
 ## Comandos de teclado (1607–1628)
-- ✅ Tabla de ~130 comandos por defecto con ventana de consulta; los marcados ✓ funcionan.
+- 🟡 Referencia de comandos con ventana de consulta; los marcados ✓ tienen una acción en Silente, con las limitaciones funcionales de la checklist. Categoría Herramientas: 43/43 comandos cotejados contra Cubase 15.0.30 instalado; las demás categorías no son un inventario completo.
 - ⬜ Editar y guardar asignaciones propias.
 
 ## Ajustes (referencia Cubase 16)

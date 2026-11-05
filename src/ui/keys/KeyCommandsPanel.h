@@ -5,8 +5,9 @@
 
 namespace silente::ui
 {
-// «Comandos de teclado» (Edición menu, manual p. 1607): every default Cubase command by category,
-// its key, and whether Silente already runs it. The search field filters by name or key.
+// «Comandos de teclado» (Edición menu, manual p. 1607): reference of Cubase commands,
+// their assigned/unassigned keys, and whether Silente runs them. The Tool category
+// is complete against the installed 15.0.30 catalog; the other categories are partial.
 class KeyCommandsPanel final : public juce::Component
 {
 public:

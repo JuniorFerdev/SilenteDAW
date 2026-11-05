@@ -1,0 +1,225 @@
+{
+  "product": "Cubase Pro",
+  "installed_version": "15.0.30.287",
+  "checked": "2026-11-05",
+  "source": "~/Library/Preferences/Cubase 15/Key Commands.xml (read-only, category Tool only)",
+  "source_sha256": "db894008524912fbe6cb34139c782f0038779feb821988fe42cc8b2e8cdc1bb4",
+  "default_keys_reference": "https://www.steinberg.help/r/cubase-pro/15.0/es/cubase_nuendo/topics/key_commands/key_commands_tool_category_c.html",
+  "commands": [
+    {
+      "cubase_name": "Next Tool",
+      "silente_id": "toolNext",
+      "key": "F10"
+    },
+    {
+      "cubase_name": "Previous Tool",
+      "silente_id": "toolPrevious",
+      "key": "F9"
+    },
+    {
+      "cubase_name": "Select Tool",
+      "silente_id": "toolSelect",
+      "key": "1"
+    },
+    {
+      "cubase_name": "Object Selection Tool: Normal Sizing",
+      "silente_id": "toolSelectNormal",
+      "key": null
+    },
+    {
+      "cubase_name": "Object Selection Tool: Sizing Moves Content",
+      "silente_id": "toolSelectMoveContents",
+      "key": null
+    },
+    {
+      "cubase_name": "Object Selection Tool: Sizing Applies Time Stretch",
+      "silente_id": "toolSelectTimeStretch",
+      "key": null
+    },
+    {
+      "cubase_name": "Range Tool",
+      "silente_id": "toolRange",
+      "key": "2"
+    },
+    {
+      "cubase_name": "Split Tool",
+      "silente_id": "toolSplit",
+      "key": "3"
+    },
+    {
+      "cubase_name": "Glue Tool",
+      "silente_id": "toolGlue",
+      "key": "4"
+    },
+    {
+      "cubase_name": "Delete Tool",
+      "silente_id": "toolErase",
+      "key": "5"
+    },
+    {
+      "cubase_name": "Zoom Tool",
+      "silente_id": "toolZoom",
+      "key": "6"
+    },
+    {
+      "cubase_name": "Mute Tool",
+      "silente_id": "toolMute",
+      "key": "7"
+    },
+    {
+      "cubase_name": "Draw Tool",
+      "silente_id": "toolDraw",
+      "key": "8"
+    },
+    {
+      "cubase_name": "Play Tool",
+      "silente_id": "toolPlay",
+      "key": "9"
+    },
+    {
+      "cubase_name": "Drumstick Tool",
+      "silente_id": "toolDrumstick",
+      "key": "0"
+    },
+    {
+      "cubase_name": "Scrub Tool",
+      "silente_id": "toolScrub",
+      "key": null
+    },
+    {
+      "cubase_name": "Trim Tool",
+      "silente_id": "toolTrim",
+      "key": null
+    },
+    {
+      "cubase_name": "Color Tool",
+      "silente_id": "toolColour",
+      "key": null
+    },
+    {
+      "cubase_name": "Hitpoint Tool",
+      "silente_id": "toolHitpoint",
+      "key": null
+    },
+    {
+      "cubase_name": "Curve Tool",
+      "silente_id": "toolCurve",
+      "key": null
+    },
+    {
+      "cubase_name": "Curve Tool: Line",
+      "silente_id": "toolCurveLine",
+      "key": null
+    },
+    {
+      "cubase_name": "Curve Tool: Parabola",
+      "silente_id": "toolCurveParabola",
+      "key": null
+    },
+    {
+      "cubase_name": "Curve Tool: Sine",
+      "silente_id": "toolCurveSine",
+      "key": null
+    },
+    {
+      "cubase_name": "Curve Tool: Triangle",
+      "silente_id": "toolCurveTriangle",
+      "key": null
+    },
+    {
+      "cubase_name": "Curve Tool: Square",
+      "silente_id": "toolCurveSquare",
+      "key": null
+    },
+    {
+      "cubase_name": "Curve Tool: Paint",
+      "silente_id": "toolCurvePaint",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 1",
+      "silente_id": "toolSlot1",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 2",
+      "silente_id": "toolSlot2",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 3",
+      "silente_id": "toolSlot3",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 4",
+      "silente_id": "toolSlot4",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 5",
+      "silente_id": "toolSlot5",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 6",
+      "silente_id": "toolSlot6",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 7",
+      "silente_id": "toolSlot7",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 8",
+      "silente_id": "toolSlot8",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 9",
+      "silente_id": "toolSlot9",
+      "key": null
+    },
+    {
+      "cubase_name": "Tool 10",
+      "silente_id": "toolSlot10",
+      "key": null
+    },
+    {
+      "cubase_name": "Popup Tools",
+      "silente_id": "toolPopup",
+      "key": null
+    },
+    {
+      "cubase_name": "Free Warp Tool",
+      "silente_id": "toolFreeWarp",
+      "key": null
+    },
+    {
+      "cubase_name": "Audio Tempo Definition Tool",
+      "silente_id": "toolAudioTempoDefinition",
+      "key": null
+    },
+    {
+      "cubase_name": "Comp Tool",
+      "silente_id": "toolComp",
+      "key": null
+    },
+    {
+      "cubase_name": "TimeWarp Tool",
+      "silente_id": "toolTimeWarp",
+      "key": null
+    },
+    {
+      "cubase_name": "Edit Pitch/Warp Tool",
+      "silente_id": "toolPitchWarp",
+      "key": null
+    },
+    {
+      "cubase_name": "Combine Selection Tools On/Off",
+      "silente_id": "combineSelectionTools",
+      "key": "Option+Shift+1"
+    }
+  ]
+}

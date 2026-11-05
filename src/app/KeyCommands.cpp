@@ -116,7 +116,14 @@ std::vector<KeyCommand> build()
     cat("Cuantizar", "Quantize");
     add("", "Cuantizar", "Quantize", 'Q');
     cat("Herramientas", "Tools");
+    // Complete Tool category from Cubase 15.0.30's command catalog. A zero key
+    // means unassigned, not the '0' key. A listed ID does not imply an action.
+    add("toolNext", "Herramienta siguiente", "Next Tool", K::F10Key);
+    add("toolPrevious", "Herramienta anterior", "Previous Tool", K::F9Key);
     add("toolSelect", "Herramienta de selección", "Object Selection Tool", '1');
+    add("toolSelectNormal", "Seleccionar: redimensionado normal", "Object Selection Tool: Normal Sizing", 0);
+    add("toolSelectMoveContents", "Seleccionar: redimensionar moviendo contenido", "Object Selection Tool: Sizing Moves Content", 0);
+    add("toolSelectTimeStretch", "Seleccionar: redimensionar con corrección de tiempo", "Object Selection Tool: Sizing Applies Time Stretch", 0);
     add("toolRange", "Herramienta de selección de rango", "Range Selection Tool", '2');
     add("toolSplit", "Herramienta dividir", "Split Tool", '3');
     add("toolGlue", "Herramienta pegar", "Glue Tool", '4');
@@ -125,6 +132,35 @@ std::vector<KeyCommand> build()
     add("toolMute", "Herramienta enmudecer", "Mute Tool", '7');
     add("toolDraw", "Herramienta dibujar", "Draw Tool", '8');
     add("toolPlay", "Herramienta reproducir", "Play Tool", '9');
+    add("toolDrumstick", "Herramienta baqueta", "Drumstick Tool", '0');
+    add("toolScrub", "Herramienta arrastrar", "Scrub Tool", 0);
+    add("toolTrim", "Herramienta recortar", "Trim Tool", 0);
+    add("toolColour", "Herramienta color", "Color Tool", 0);
+    add("toolHitpoint", "Herramienta hitpoints", "Hitpoint Tool", 0);
+    add("toolCurve", "Herramienta curva", "Curve Tool", 0);
+    add("toolCurveLine", "Curva: línea", "Curve Tool: Line", 0);
+    add("toolCurveParabola", "Curva: parábola", "Curve Tool: Parabola", 0);
+    add("toolCurveSine", "Curva: seno", "Curve Tool: Sine", 0);
+    add("toolCurveTriangle", "Curva: triángulo", "Curve Tool: Triangle", 0);
+    add("toolCurveSquare", "Curva: cuadrado", "Curve Tool: Square", 0);
+    add("toolCurvePaint", "Curva: pintar", "Curve Tool: Paint", 0);
+    add("toolSlot1", "Herramienta 1", "Tool 1", 0);
+    add("toolSlot2", "Herramienta 2", "Tool 2", 0);
+    add("toolSlot3", "Herramienta 3", "Tool 3", 0);
+    add("toolSlot4", "Herramienta 4", "Tool 4", 0);
+    add("toolSlot5", "Herramienta 5", "Tool 5", 0);
+    add("toolSlot6", "Herramienta 6", "Tool 6", 0);
+    add("toolSlot7", "Herramienta 7", "Tool 7", 0);
+    add("toolSlot8", "Herramienta 8", "Tool 8", 0);
+    add("toolSlot9", "Herramienta 9", "Tool 9", 0);
+    add("toolSlot10", "Herramienta 10", "Tool 10", 0);
+    add("toolPopup", "Caja de herramientas emergente", "Popup Tools", 0);
+    add("toolFreeWarp", "Herramienta Free Warp", "Free Warp Tool", 0);
+    add("toolAudioTempoDefinition", "Herramienta de definición de tempo de audio", "Audio Tempo Definition Tool", 0);
+    add("toolComp", "Herramienta Comp", "Comp Tool", 0);
+    add("toolTimeWarp", "Herramienta Time Warp", "TimeWarp Tool", 0);
+    add("toolPitchWarp", "Herramienta de edición de tono/Warp", "Edit Pitch/Warp Tool", 0);
+    add("combineSelectionTools", "Combinar herramientas de selección act./desact.", "Combine Selection Tools On/Off", '1', A | S);
     cat("Transporte", "Transport");
     add("metronome", "Activar metrónomo", "Metronome On", 'C');
     add("punchIn", "Activar punch in", "Activate Punch In", 'I');
@@ -193,12 +229,13 @@ const KeyCommand* findKeyCommand(const juce::KeyPress& press)
     else if (code == '+') { code = K::numberPadAdd; mods &= ~S; }
     else if (code == '-' && mods == 0) code = K::numberPadSubtract;
     for (const auto& c : keyCommands())
-        if (c.keyCode == code && c.modifiers == mods) return &c;
+        if (c.keyCode != 0 && c.keyCode == code && c.modifiers == mods) return &c;
     return nullptr;
 }
 
 juce::String describeKey(const KeyCommand& c)
 {
+    if(c.keyCode==0)return i18n::tr("Sin asignación");
     juce::String text;
     if (c.modifiers & C) text << juce::String::fromUTF8("⌘");
     if (c.modifiers & A) text << juce::String::fromUTF8("⌥");

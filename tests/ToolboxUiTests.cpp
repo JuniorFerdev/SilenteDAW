@@ -1,6 +1,8 @@
 #include "ToolboxUiTests.h"
 #include "../src/MainComponent.h"
 #include "../src/app/Preferences.h"
+#include "../src/app/KeyCommands.h"
+#include "../src/ui/keys/KeyCommandsPanel.h"
 #include "../src/ui/project/ProjectToolbox.h"
 
 namespace silente
@@ -37,6 +39,31 @@ void closePopup(Component* c)
 void runToolboxUiChecks(MainComponent& view,AudioEngine& engine,const juce::File& output,const std::function<void(bool,const juce::String&)>& expect)
 {
     using namespace juce;
+    {
+        bool numericKeys=true;const char* ids[]{"toolSelect","toolRange","toolSplit","toolGlue","toolErase","toolZoom","toolMute","toolDraw","toolPlay"};
+        for(int n=1;n<=9;++n){const auto* command=app::findKeyCommand(KeyPress('0'+n));numericKeys&=command&&command->id==ids[n-1];}
+        expect(numericKeys,"Tool keys 1 through 9 match the installed Cubase catalog");
+        const auto* drum=app::findKeyCommand(KeyPress('0'));const auto* stop=app::findKeyCommand(KeyPress(KeyPress::numberPad0));
+        expect(drum&&drum->id=="toolDrumstick"&&stop&&stop->id=="stop","Main 0 is Drumstick; Num 0 remains Stop");
+        const auto* previous=app::findKeyCommand(KeyPress(KeyPress::F9Key));const auto* next=app::findKeyCommand(KeyPress(KeyPress::F10Key));
+        const auto* combine=app::findKeyCommand(KeyPress('1',ModifierKeys(ModifierKeys::altModifier|ModifierKeys::shiftModifier),0));
+        expect(previous&&previous->id=="toolPrevious"&&next&&next->id=="toolNext"&&combine&&combine->id=="combineSelectionTools","F9, F10 and Option-Shift-1 are listed with the real Cubase commands");
+        int count=0,unassigned=0;bool colour=false;
+        for(const auto& command:app::keyCommands())if(command.categoryEn=="Tools")
+        {
+            ++count;if(command.keyCode==0)++unassigned;
+            if(command.id=="toolColour")colour=command.keyCode==0&&app::describeKey(command).isNotEmpty();
+        }
+        expect(count==43&&unassigned==30&&colour&&app::findKeyCommand(KeyPress())==nullptr,"All 43 Tool commands are represented; unassigned commands cannot match an empty key");
+        const auto history=view.editHistory().size();const auto tracks=engine.tracks.size();
+        expect(!view.runCommand("toolNext")&&!view.runCommand("toolPrevious")&&!view.runCommand("toolDrumstick")&&!view.runCommand("combineSelectionTools")&&view.editHistory().size()==history&&engine.tracks.size()==tracks,"Unimplemented tool commands stay unavailable without editing the project");
+        StringArray availableCommands;
+        for(const auto& command:app::keyCommands())if(command.categoryEn=="Tools"&&view.runCommand(command.id))availableCommands.add(command.id);
+        expect(availableCommands.size()==10,"Only the ten implemented basic tool modes are reported as available");view.runCommand("toolSelect");
+        ui::KeyCommandsPanel panel([&](const String& id){return availableCommands.contains(id);});panel.setFilter("Herramientas");
+        expect(panel.matchingCount()==43,"Key Commands search exposes the complete audited Tool category");
+        capture(panel,output.getChildFile("tool-command-reference.png"));
+    }
     const bool oldPreference=app::showToolboxOnRightClick();
     expect(app::saveShowToolboxOnRightClick(false).wasOk()&&!app::showToolboxOnRightClick(),"Toolbox preference saves and loads disabled");
     expect(app::saveShowToolboxOnRightClick(true).wasOk()&&app::showToolboxOnRightClick(),"Toolbox preference saves and loads enabled");
