@@ -35,7 +35,7 @@ Las capturas se tomaron navegando por los controles públicos de YouTube, en pau
 - [Reordenar pistas](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/track_handling/track_handling_moving_tracks_in_the_track_list_t.html): arrastrar por nombre/área libre, línea verde de destino, consola en el mismo orden y Deshacer.
 - [Organización en carpetas](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/track_handling/track_handling_organizing_tracks_in_folder_tracks_c.html): cualquier tipo y carpetas anidadas, meter/sacar por arrastre, plegado y reproducción de pistas ocultas. Evitar ciclos de anidamiento. Una carpeta organizativa no cambia por sí sola el ruteo del audio.
 - [Regla](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/tracks_about/tracks_about_ruler_tracks_c.html?contentId=tPErEToIno0NJZue30o5xg): varias reglas independientes de la principal. [Controles](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/tracks_about/tracks_about_ruler_track_controls_r.html): formato y desplazamiento temporal.
-- [Marcadores](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/markers/markers_c.html) y [marcadores de ciclo](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/markers/markers_cycle_markers_c.html): puntos y secciones con inicio/fin; doble clic recupera localizadores. El uso solicitado de secciones pintadas se resolverá con ciclos nombrados y coloreados.
+- [Marcadores](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/markers/markers_c.html) y [marcadores de ciclo](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/markers/markers_cycle_markers_c.html): puntos y secciones con inicio/fin; doble clic recupera localizadores. El uso solicitado de secciones pintadas se implementó con ciclos nombrados y coloreados en marcadores01.
 - [Importar video](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/video/video_video_files_importing_t.html): evento en pista de video y extracción opcional de audio a una pista separada. [Inspector de video](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/tracks_about/tracks_about_video_track_inspector_r.html): visor y miniaturas.
 
 ## Desarrollo y pruebas de aceptación
@@ -67,7 +67,7 @@ Fernando dio prioridad explícita a este intervalo. Se volvieron a inspeccionar 
 
 Además del video, se comprobaron ciclos CORO con color propio, recuperación exacta de localizadores sin modificar Ciclo del transporte, ⌥doble clic, arrastre y extremos, edición numérica con rechazo de límites invertidos, ⌘arrastre, ⌥clic, Mayús + añadir, cancelar ciclos de longitud cero, Suprimir, deshacer, guardar/reabrir y rechazo de referencias obsoletas. Límite de diez pistas sin crear pasos falsos de historial. Los marcadores y reglas no afectan las muestras renderizadas ni se ofrecen como canales de exportación o inserciones.
 
-Verificación de desarrollo: **176/176 UI, 41/41 motor, 6/6 formatos**, 844 traducciones por idioma y cambio ES→EN→ES. Capturas de Silente: `../build/workflow-check/marker-sections.png`, `marker-locate-menu.png`, `marker-ruler.png`. No equivale a una comparación de cada píxel ni a ejecutar Cubase sin licencia.
+Verificación del candidato Universal firmado en **arm64 y x86_64: 176/176 UI, 41/41 motor, 6/6 formatos por arquitectura**, 844 traducciones por idioma y cambio ES→EN→ES. Capturas de Silente conservadas: [secciones](referencias/tipos-pista/silente-marker-sections.png), [Localizar](referencias/tipos-pista/silente-marker-locate-menu.png), [regla](referencias/tipos-pista/silente-marker-ruler.png). No equivale a una comparación de cada píxel ni a ejecutar Cubase sin licencia.
 
 ### Checklist que permanece abierta
 
@@ -79,4 +79,4 @@ Verificación de desarrollo: **176/176 UI, 41/41 motor, 6/6 formatos**, 844 trad
 - [ ] Marcadores: ventana completa ⌘M, selección/edición múltiple, cortar/copiar/pegar/mover entre pistas, más comandos e importación/exportación de listas.
 - [ ] Base musical de marcadores con cambios de tempo; por ahora las posiciones son segundos absolutos.
 - [ ] Diez inserciones de plugins por pista, según pedido anterior (fuera de este tramo de marcadores).
-- [ ] Entrega Universal de este tramo: candidato en preparación; actualizar resultado en ETAPAS.
+- [x] Entrega Universal marcadores01: app sustituida, firma/arquitecturas/SHA-256 comprobados y respaldo anterior conservado. Detalles en ETAPAS.
