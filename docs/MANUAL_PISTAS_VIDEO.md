@@ -78,5 +78,5 @@ Verificación del candidato Universal firmado en **arm64 y x86_64: 176/176 UI, 4
 - [ ] Regla: editar desplazamiento temporal y moverla en la lista cuando exista reordenamiento.
 - [ ] Marcadores: ventana completa ⌘M, selección/edición múltiple, cortar/copiar/pegar/mover entre pistas, más comandos e importación/exportación de listas.
 - [ ] Base musical de marcadores con cambios de tempo; por ahora las posiciones son segundos absolutos.
-- [ ] Diez inserciones de plugins por pista, según pedido anterior (fuera de este tramo de marcadores).
+- [x] Diez inserciones de efectos por pista, independientes del instrumento: entregadas el 05-11 en las cuatro vistas, con desplazamiento, posiciones persistentes y pruebas en ambas arquitecturas.
 - [x] Entrega Universal marcadores01: app sustituida, firma/arquitecturas/SHA-256 comprobados y respaldo anterior conservado. Detalles en ETAPAS.

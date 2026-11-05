@@ -53,7 +53,8 @@ hardware real. Actualizar al cerrar cada tramo.
 
 ## MixConsole (451–533)
 - ✅ 04-11-2026 · 16 envíos FX por canal (Cubase 16): rack desplazable y columna Canal hasta 13–16; señal por cada ranura, pre/post, persistencia y proyectos de cuatro ranuras probados. Entrega universal actualizada y probada en arm64 y x86_64.
-- ⬜ Pedido de Fer · 04-11-2026: hasta **10 plugins de inserción por pista**. Ampliar las ranuras en Canal, Inspector, configuración de canal y ambas MixConsole; conservar instrumento separado, orden de procesamiento, bypass, guardado/carga y Deshacer. Verificar señal a través de las diez inserciones y apertura de sus editores. Pendiente para un tramo posterior; no implementado aún.
+- ✅ Pedido de Fer · **10 efectos de inserción por pista**, entregado 05-11-2026: Canal, Inspector, configuración de canal y ambas MixConsole comparten el rack de diez ranuras con desplazamiento. Instrumento separado, orden/posiciones/huecos, bypass y guardado/carga; diez AU reales cargados y procesados, prueba numérica de señal y resultados arm64/Rosetta en ETAPAS.
+- ⬜ Deshacer/rehacer modificaciones de la cadena de plugins: sigue pendiente; la entrega de diez ranuras no lo incorpora.
 - ✅ Ventana F3 y MixConsole inferior, racks Enrutado/Inserciones/EQ/Envíos, grupos y FX, solo/mute, medidores con pico.
 - ✅ Ancho de canal arrastrando su borde (⌥: todos), guardado en el proyecto.
 - ⬜ Contraste completo con el capítulo (instantáneas, enlaces de canales, rack de cadena de canal, etc.).

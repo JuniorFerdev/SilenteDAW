@@ -1,0 +1,16 @@
+{
+  "sources": "0ab4f90b4da65d1f25cb5b842c8a13ea9608d4c3",
+  "app": "releases/macOS/Silente-Universal.app",
+  "sha256": "7ef86a8cd9de3cfeb858be5e47b6b15287e7c984c4834f7be392eeb9420c31e0",
+  "architectures": [
+    "arm64",
+    "x86_64"
+  ],
+  "testsPerArchitecture": {
+    "engine": 42,
+    "formats": 6,
+    "ui": 183
+  },
+  "translationsPerLanguage": 846,
+  "backups": false
+}
