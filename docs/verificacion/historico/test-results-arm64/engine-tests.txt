@@ -1,0 +1,39 @@
+PASS create owned synthetic WAV fixtures
+PASS mono import and hard-left gain
+PASS mono hard-right pan
+PASS stereo channel separation and polarity
+PASS group output, sends pre/post, solo through buses and loop refusal
+PASS mute, solo and sum of independent tracks
+PASS 44.1 kHz to 48 kHz preserves duration and pitch
+PASS clip start and source offset across buffer boundaries
+PASS seek, pause and stop do not advance stopped transport
+PASS loop boundary keeps constant audio continuous
+PASS MIDI synthesizer produces audio and stops without stuck notes
+PASS MIDI note within a block ends without hanging
+PASS metronome clicks on every beat with an accented downbeat
+PASS metronome eighth-note subdivision and five sounds
+PASS recording count-in holds the transport for one bar
+PASS metronome preview sounds while stopped
+PASS tap tempo median, missed beats, sloppy taps and pauses
+PASS 48 kHz clip on a 96 kHz device keeps treble and rejects images
+PASS empty start and six track kinds from the add button
+PASS play selection stops exactly at the end of the range
+PASS cut range trims, splits and removes overlapped events
+PASS overlapping audio events: only the top event is heard
+PASS glue rejoins split pieces and consolidates other events
+PASS crossfade overlaps touching events and both sound across it
+PASS muted event is silent and uncovers the event below
+PASS fade shapes, event volume and fade settings survive save/load
+PASS range editing: delete, delete time, insert silence, truncate, duplicate, fades
+PASS punch in/out records only between the locators
+PASS live recording view: lap start, captured length and waveform peaks
+PASS cycle recording makes one take per lap and the last lap is heard
+PASS recording in 32-bit float and MIDI at project positions
+PASS event colour overrides the track colour and survives save/load
+PASS audio and MIDI project roundtrip
+PASS malformed project preserves the current session
+PASS export writes a valid stereo WAV with expected signal
+PASS plugin latency compensation aligns dry and delayed impulses
+PASS export removes plugin compensation preroll
+
+37/37 passed. Fixtures: /Applications/ARCHIVO FER/UNIVERSIDAD/FUNDACIONES/Silente/build/test-results-arm64/engine-fixtures16

@@ -1,0 +1,3 @@
+device Bocinas de MacBook Air 96000 Hz buffer 512
+callbacks 2250 block 512-512 underruns 0 clipped 0
+offline export: ok

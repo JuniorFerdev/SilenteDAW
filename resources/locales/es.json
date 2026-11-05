@@ -842,5 +842,7 @@
   "Renombrar pista": "Renombrar pista",
   "El proyecto admite hasta diez pistas de marcador.": "El proyecto admite hasta diez pistas de marcador.",
   "Esta pista no admite inserciones de audio.": "Esta pista no admite inserciones de audio.",
-  "Selecciona un canal de audio para exportar.": "Selecciona un canal de audio para exportar."
+  "Selecciona un canal de audio para exportar.": "Selecciona un canal de audio para exportar.",
+  "La pista admite diez efectos de inserción.": "La pista admite diez efectos de inserción.",
+  "La ranura de inserción ya está ocupada.": "La ranura de inserción ya está ocupada."
 }

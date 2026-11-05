@@ -1,7 +1,7 @@
 #pragma once
 #include "../../AudioEngine.h"
 #include "../../PluginManager.h"
-#include "../plugins/PluginSlotButton.h"
+#include "../plugins/InsertRack.h"
 #include <array>
 #include <functional>
 
@@ -27,7 +27,7 @@ private:
     PluginManager& plugins;
     int index = -1;
     std::shared_ptr<Track> track;
-    std::array<ui::PluginSlotButton, 4> inserts;
+    ui::InsertRack inserts;
     juce::TextButton mute { "M" }, solo { "S" }, edit { "e" }, arm, monitor;
     juce::Slider fader;
     juce::ScrollBar sendScroll { true };

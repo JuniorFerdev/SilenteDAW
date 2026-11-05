@@ -14,7 +14,12 @@ inline int effectSlotIndex(const Track& track,int effectIndex)
 {
     int effect=0;
     for(int n=0;n<static_cast<int>(track.plugins.size());++n)
-        if(!track.plugins[static_cast<size_t>(n)]->description.isInstrument&&effect++==effectIndex)return n;
+        if(!track.plugins[static_cast<size_t>(n)]->description.isInstrument)
+        {
+            const auto position=track.plugins[(size_t)n]->insertPosition;
+            if((position>=0?position:effect)==effectIndex)return n;
+            ++effect;
+        }
     return -1;
 }
 inline int instrumentSlotIndex(const Track& track)

@@ -842,5 +842,7 @@
   "Renombrar pista": "Rename track",
   "El proyecto admite hasta diez pistas de marcador.": "The project supports up to ten marker tracks.",
   "Esta pista no admite inserciones de audio.": "This track does not support audio inserts.",
-  "Selecciona un canal de audio para exportar.": "Select an audio channel to export."
+  "Selecciona un canal de audio para exportar.": "Select an audio channel to export.",
+  "La pista admite diez efectos de inserción.": "The track supports ten insert effects.",
+  "La ranura de inserción ya está ocupada.": "This insert slot is already occupied."
 }

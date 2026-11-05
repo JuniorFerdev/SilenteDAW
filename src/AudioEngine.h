@@ -39,6 +39,7 @@ struct PluginSlot
 {
     std::unique_ptr<juce::AudioPluginInstance> processor;
     juce::PluginDescription description;
+    int insertPosition = -1; // Effect rack position; instruments are separate (-1).
     std::atomic<bool> bypassed { false };
     // The slot survives a missing plugin, so its saved state is not lost.
     juce::MemoryBlock savedState;
@@ -75,6 +76,7 @@ struct Track
     std::atomic<bool> mute { false }, solo { false }, armed { false }, monitor { false };
     std::atomic<float> lowGainDb { 0.0f }, midGainDb { 0.0f }, highGainDb { 0.0f };
     static constexpr int sendCount = 16;
+    static constexpr int insertCount = 10;
     juce::String output; // group track id; empty = Stereo Out
     std::array<TrackSend, sendCount> sends;
     bool isBus() const noexcept { return kind == TrackKind::fx || kind == TrackKind::group; }
@@ -163,7 +165,7 @@ public:
     void createDemo();
     void clear();
     double duration() const;
-    juce::Result addPlugin(int trackIndex, std::unique_ptr<juce::AudioPluginInstance>, const juce::PluginDescription&, int replaceSlot = -1);
+    juce::Result addPlugin(int trackIndex, std::unique_ptr<juce::AudioPluginInstance>, const juce::PluginDescription&, int replaceSlot = -1, int insertPosition = -1);
     void removePlugin(int trackIndex, int slotIndex);
     juce::Result beginRecording(const juce::File& directory, RecordOptions options = {});
     // «Regrabar»: drops the takes of the running recording (their files are deleted).

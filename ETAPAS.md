@@ -11,6 +11,14 @@
 5. El usuario revisa el resultado antes de iniciar la etapa siguiente.
 6. Comunicaciones breves. Sin búsquedas amplias, lecturas completas, capturas repetidas ni pruebas generales si no aportan a la etapa activa.
 
+
+## Trabajo activo · 05-11-2026 · inserciones10 / creación de pistas / disco
+
+- Orden vigente: una sola app `releases/macOS/Silente-Universal.app`; **no crear respaldos**. Fernando autorizó borrar variantes, copias anteriores y resultados regenerables para ahorrar disco. Retiradas SilenteReview, dos paquetes anteriores, el Intel independiente y todos los archivos de backups. Las fuentes y proyectos musicales originales se conservan. Depuración adicional de WAV/cachés/pruebas antiguas en curso; informes pequeños de comprobación conservados en `docs/verificacion/historico/`.
+- **Diez inserciones implementadas y verificadas en desarrollo:** módulo común `src/ui/plugins/InsertRack.*` para Inspector, Canal, MixConsole y Configuración de canal; desplazamiento dentro de cada rack sin reducir el fader. Posiciones 1–10 independientes del instrumento, huecos conservados, orden de procesamiento/persistencia, reemplazo y bypass por ranura. Las cargas directas independientes ya no cancelan los callbacks de las anteriores.
+- Motor **42/42**, formatos **6/6** y recorrido UI sin fallos, incluidas diez instancias reales de Apple AULowpass, acceso a la décima ranura en las cuatro vistas y bypass del menú real. Capturas duraderas en `docs/referencias/inserciones10/`. La Universal aún está sustituyéndose para este tramo.
+- Después se retoma el diálogo **Añadir pista** solicitado con captura: rejilla 4 + 6 tipos, sección Más pistas, ajustes por tipo, nombre/cantidad y Mantener diálogo abierto. El menú actual del botón + aún no coincide; no se considera resuelto por esta entrega de inserciones. Carpetas reales/reordenamiento, partes MIDI y video sincronizado siguen en la checklist.
+
 ## Etapa activa · 05-11-2026 · pistas03 · Organización, creación y musicalización
 
 - Alcance acumulado confirmado por Fernando: **Audio, Instrumento, MIDI, Carpeta, Regla** (aclaró que «Guía» significa regla de compases/tiempo), **Marcador** (secciones coloreadas para navegar) y **Video para musicalización**. Muestreador/VCA/Tempo/Compás/Arreglos/Transposición/Acordes nuevos quedan para después. Conservar FX/grupo existentes sin ampliar sus funciones. También exige trabajar apariencia/front, reordenar pistas y actualizar la app al finalizar los cambios verificados.

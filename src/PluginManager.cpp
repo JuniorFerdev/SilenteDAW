@@ -214,7 +214,7 @@ void PluginManager::openSelector(SelectionTarget target,Component* anchor)
 }
 void PluginManager::showEffectSelector(int trackIndex,int effectIndex,Component* anchor)
 {
-    SelectionTarget target;target.kind=PluginKind::effect;
+    SelectionTarget target;target.kind=PluginKind::effect;target.insertPosition=effectIndex;
     {const ScopedLock lock(engine.modelLock);
      if(!isPositiveAndBelow(trackIndex,static_cast<int>(engine.tracks.size())))return;
      target.track=engine.tracks[(size_t)trackIndex];
@@ -276,7 +276,7 @@ void PluginManager::showInstrument(int trackIndex,Component* anchor)
 }
 void PluginManager::insertPlugin(int trackIndex,const PluginDescription& description)
 {
-    SelectionTarget target;target.kind=description.isInstrument?PluginKind::instrument:PluginKind::effect;target.generation=++generation;
+    SelectionTarget target;target.kind=description.isInstrument?PluginKind::instrument:PluginKind::effect;target.generation=generation;target.cancellable=false;
     {const ScopedLock lock(engine.modelLock);if(!isPositiveAndBelow(trackIndex,static_cast<int>(engine.tracks.size())))return;
      target.track=engine.tracks[(size_t)trackIndex];
      if(description.isInstrument){const int slot=instrumentSlotIndex(*target.track);if(slot>=0)target.replacing=target.track->plugins[(size_t)slot];}}
@@ -284,7 +284,7 @@ void PluginManager::insertPlugin(int trackIndex,const PluginDescription& descrip
 }
 void PluginManager::loadSelection(SelectionTarget target,const PluginDescription& description)
 {
-    if(target.generation!=generation||description.isInstrument!=(target.kind==PluginKind::instrument))return;
+    if((target.cancellable&&target.generation!=generation)||description.isInstrument!=(target.kind==PluginKind::instrument))return;
     if(description.fileOrIdentifier=="silente:internal-synth")
     {
         int index=-1;
@@ -300,7 +300,7 @@ void PluginManager::loadSelection(SelectionTarget target,const PluginDescription
     engine.pluginFormats.createPluginInstanceAsync(description,engine.currentSampleRate(),engine.currentBlockSize(),
         [this,weak,target,description](std::unique_ptr<AudioPluginInstance> plugin,const String& error)
         {
-            if(!weak.lock()||target.generation!=generation)return;
+            if(!weak.lock()||(target.cancellable&&target.generation!=generation))return;
             if(!plugin){setStatus(i18n::tr("No se pudo cargar ")+description.name);
                 AlertWindow::showMessageBoxAsync(MessageBoxIconType::WarningIcon,i18n::tr("No se pudo cargar el plugin"),error+i18n::tr("\n\nComprueba su versión para Apple Silicon y su activación."));return;}
             int trackIndex=-1,replace=-1,added=-1;
@@ -311,13 +311,14 @@ void PluginManager::loadSelection(SelectionTarget target,const PluginDescription
             if(trackIndex<0)return;
             auto& slots=engine.tracks[(size_t)trackIndex]->plugins;
             if(target.replacing){for(int i=0;i<static_cast<int>(slots.size());++i)if(slots[(size_t)i]==target.replacing)replace=i;if(replace<0)return;}
-            result=engine.addPlugin(trackIndex,std::move(plugin),description,replace);
+            auto* created=plugin.get();
+            result=engine.addPlugin(trackIndex,std::move(plugin),description,replace,target.insertPosition);
             setStatus(result.wasOk()?description.name+i18n::tr(" añadido al canal."):result.getErrorMessage());
             if(result.failed())
             {
                 if(target.newInstrumentTrack)engine.removeTrack(trackIndex);
             }
-            else added=replace>=0?replace:description.isInstrument?0:static_cast<int>(slots.size())-1;
+            else for(int n=0;n<(int)slots.size();++n)if(slots[(size_t)n]->processor.get()==created){added=n;break;}
             }
             if(result.failed()){AlertWindow::showMessageBoxAsync(MessageBoxIconType::WarningIcon,i18n::tr("No se pudo cargar el plugin"),result.getErrorMessage());return;}
             if(target.replacing)closeEditorFor(target.replacing);

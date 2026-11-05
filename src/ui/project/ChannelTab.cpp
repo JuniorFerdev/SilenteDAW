@@ -7,7 +7,7 @@ namespace silente::ui
 {
 using namespace theme;
 
-ChannelTab::ChannelTab(AudioEngine& e, PluginManager& p) : engine(e), plugins(p)
+ChannelTab::ChannelTab(AudioEngine& e, PluginManager& p) : engine(e), plugins(p), inserts(e,p,"channel-inserts")
 {
     addAndMakeVisible(sendScroll);
     sendScroll.setComponentID("channel-send-scroll");
@@ -16,7 +16,7 @@ ChannelTab::ChannelTab(AudioEngine& e, PluginManager& p) : engine(e), plugins(p)
     sendScroll.setSingleStepSize(1);
     sendScroll.setTitle(i18n::tr("Desplazar envíos (1–16)"));
     sendScroll.addListener(this);
-    for (auto& b : inserts) addAndMakeVisible(b);
+    addAndMakeVisible(inserts);
     for (auto* c : std::initializer_list<juce::Component*> { &mute, &solo, &edit, &arm, &monitor, &fader, &volume }) addAndMakeVisible(c);
     arm.setButtonText(juce::String::fromUTF8("●")); monitor.setButtonText(juce::String::fromUTF8("◉"));
     arm.setClickingTogglesState(true); monitor.setClickingTogglesState(true);
@@ -47,11 +47,7 @@ ChannelTab::ChannelTab(AudioEngine& e, PluginManager& p) : engine(e), plugins(p)
     };
     mute.onClick = [this] { if (track) { if (beforeEdit) beforeEdit(); track->mute = mute.getToggleState(); if (changed) changed(); } };
     solo.onClick = [this] { if (track) { if (beforeEdit) beforeEdit(); track->solo = solo.getToggleState(); if (changed) changed(); } };
-    for (int slot = 0; slot < (int) inserts.size(); ++slot)
-    {
-        inserts[(size_t) slot].onClick = [this, slot] { if (index >= 0) plugins.showEffectEditor(index, slot, &inserts[(size_t) slot]); };
-        inserts[(size_t) slot].onOptions = [this, slot] { if (index >= 0) plugins.showEffectSlot(index, slot, &inserts[(size_t) slot]); };
-    }
+
 }
 
 void ChannelTab::setTrack(int i)
@@ -69,7 +65,7 @@ void ChannelTab::refresh()
     const bool has = track != nullptr;
     for (auto* c : std::initializer_list<juce::Component*> { &mute, &solo, &edit, &fader, &volume, &sendScroll }) c->setVisible(has);
     arm.setVisible(has && track->hasEvents()); monitor.setVisible(has && track->hasEvents());
-    for (auto& b : inserts) b.setVisible(has);
+    inserts.setVisible(has);inserts.setTrack(index);
     if (has)
     {
         syncing = true;
@@ -78,13 +74,7 @@ void ChannelTab::refresh()
         mute.setToggleState(track->mute.load(), juce::dontSendNotification);
         solo.setToggleState(track->solo.load(), juce::dontSendNotification);
         arm.setToggleState(track->armed.load(), juce::dontSendNotification); monitor.setToggleState(track->monitor.load(), juce::dontSendNotification);
-        for (int slot = 0; slot < (int) inserts.size(); ++slot)
-        {
-            const int n = effectSlotIndex(*track, slot);
-            inserts[(size_t) slot].setButtonText(n >= 0 ? track->plugins[(size_t) n]->description.name : juce::String());
-            inserts[(size_t) slot].setColour(juce::TextButton::buttonColourId, n >= 0 ? insertLoaded : bg.brighter(.06f));
-            inserts[(size_t) slot].setAlpha(n >= 0 && track->plugins[(size_t) n]->bypassed.load() ? .45f : 1.0f);
-        }
+
         syncing = false;
     }
     // Repaint the column only when what it shows changed; otherwise just the meters (24 Hz).
@@ -105,7 +95,7 @@ void ChannelTab::resized()
     nameArea = r.removeFromTop(22); r.removeFromTop(4);
     eqArea = r.removeFromTop(38); r.removeFromTop(6);
     insertsHeader = r.removeFromTop(18); r.removeFromTop(2);
-    for (auto& b : inserts) { b.setBounds(r.removeFromTop(19)); r.removeFromTop(2); }
+    inserts.setBounds(r.removeFromTop(84));
     r.removeFromTop(4);
     sendsHeader = r.removeFromTop(18); r.removeFromTop(2);
     sendsArea = r.removeFromTop(4 * 17); r.removeFromTop(8);

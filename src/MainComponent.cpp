@@ -6,6 +6,7 @@
 #include "ui/theme/ToolIcons.h"
 #include "ui/theme/TrackColourPicker.h"
 #include "ui/plugins/PluginSlotButton.h"
+#include "ui/plugins/InsertRack.h"
 #include "ui/audio/AudioSettingsPanel.h"
 #include "ui/settings/SettingsWorkspace.h"
 #include "app/Preferences.h"
@@ -780,18 +781,18 @@ private:AudioEngine& engine;PluginManager& plugins;int tab=0;float heldL=0,heldR
 class ChannelPanel final : public juce::Component
 {
 public:
-    ChannelPanel(AudioEngine& e,PluginManager& p,int i):engine(e),plugins(p),index(i)
+    ChannelPanel(AudioEngine& e,PluginManager& p,int i):engine(e),plugins(p),index(i),inserts(e,p,"settings-inserts",true)
     {
         for(auto* s:{&gain,&pan,&low,&mid,&high}){addAndMakeVisible(s);s->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);s->setTextBoxStyle(juce::Slider::TextBoxBelow,false,78,22);s->setDoubleClickReturnValue(true,0);}
         gain.setRange(-60,6,.1);pan.setRange(-100,100,1);for(auto* s:{&low,&mid,&high}){s->setRange(-18,18,.1);s->setTextValueSuffix(" dB");}gain.setTextValueSuffix(" dB");
-        for(int k=0;k<6;++k){auto& b=inserts[(size_t)k];addAndMakeVisible(b);b.onClick=[this,k]{plugins.showEffectEditor(index,k,&inserts[(size_t)k]);};b.onOptions=[this,k]{plugins.showEffectSlot(index,k,&inserts[(size_t)k]);};auto& bypass=bypasses[(size_t)k];addAndMakeVisible(bypass);bypass.setButtonText(juce::String::fromUTF8("Ø"));bypass.setTooltip(i18n::tr("Bypass del inserto"));bypass.setClickingTogglesState(true);bypass.onClick=[this,k]{auto t=get();if(t){const int slot=effectSlotIndex(*t,k);if(slot>=0)plugins.toggleBypass(index,slot);}};}
+        addAndMakeVisible(inserts);inserts.setTrack(index);
         gain.onValueChange=[this]{if(auto t=get())t->gain=juce::Decibels::decibelsToGain((float)gain.getValue(),-60.0f);if(changed)changed();};pan.onValueChange=[this]{if(auto t=get())t->pan=(float)pan.getValue()/100;if(changed)changed();};low.onValueChange=[this]{if(auto t=get())t->lowGainDb=(float)low.getValue();if(changed)changed();};mid.onValueChange=[this]{if(auto t=get())t->midGainDb=(float)mid.getValue();if(changed)changed();};high.onValueChange=[this]{if(auto t=get())t->highGainDb=(float)high.getValue();if(changed)changed();};refresh();
     }
     std::function<void()> changed;
-    void refresh(){auto t=get();if(!t)return;if(!gain.isMouseButtonDown())gain.setValue(juce::Decibels::gainToDecibels(t->gain.load(),-60.0f),juce::dontSendNotification);if(!pan.isMouseButtonDown())pan.setValue(t->pan*100,juce::dontSendNotification);if(!low.isMouseButtonDown())low.setValue(t->lowGainDb,juce::dontSendNotification);if(!mid.isMouseButtonDown())mid.setValue(t->midGainDb,juce::dontSendNotification);if(!high.isMouseButtonDown())high.setValue(t->highGainDb,juce::dontSendNotification);const juce::ScopedLock lock(engine.modelLock);for(int k=0;k<6;++k){const int slot=effectSlotIndex(*t,k);bool exists=slot>=0;inserts[(size_t)k].setButtonText(exists?t->plugins[(size_t)slot]->description.name:i18n::tr("+ Añadir inserto"));bypasses[(size_t)k].setEnabled(exists);bypasses[(size_t)k].setToggleState(exists&&t->plugins[(size_t)slot]->bypassed,juce::dontSendNotification);}repaint();}
-    void resized()override{gain.setBounds(22,110,90,122);pan.setBounds(122,110,90,122);low.setBounds(250,110,90,122);mid.setBounds(350,110,90,122);high.setBounds(450,110,90,122);for(int k=0;k<6;++k){inserts[(size_t)k].setBounds(580,62+k*36,getWidth()-634,29);bypasses[(size_t)k].setBounds(getWidth()-47,62+k*36,30,29);}}
+    void refresh(){auto t=get();if(!t)return;if(!gain.isMouseButtonDown())gain.setValue(juce::Decibels::gainToDecibels(t->gain.load(),-60.0f),juce::dontSendNotification);if(!pan.isMouseButtonDown())pan.setValue(t->pan*100,juce::dontSendNotification);if(!low.isMouseButtonDown())low.setValue(t->lowGainDb,juce::dontSendNotification);if(!mid.isMouseButtonDown())mid.setValue(t->midGainDb,juce::dontSendNotification);if(!high.isMouseButtonDown())high.setValue(t->highGainDb,juce::dontSendNotification);inserts.refresh();repaint();}
+    void resized()override{gain.setBounds(22,110,90,122);pan.setBounds(122,110,90,122);low.setBounds(250,110,90,122);mid.setBounds(350,110,90,122);high.setBounds(450,110,90,122);inserts.setBounds(580,62,getWidth()-592,juce::jmax(40,getHeight()-75));}
     void paint(juce::Graphics& g)override{g.fillAll(panel);auto t=get();text(g,t?t->name:i18n::tr("Canal eliminado"),{20,12,getWidth()-40,30},19);text(g,i18n::tr("Stereo In  →  Canal  →  Stereo Out"),{20,47,450,22},11,muted);text(g,i18n::tr("NIVEL"),{22,86,90,20},10,muted,juce::Justification::centred);text(g,i18n::tr("PAN"),{122,86,90,20},10,muted,juce::Justification::centred);text(g,i18n::tr("GRAVES"),{250,86,90,20},10,muted,juce::Justification::centred);text(g,i18n::tr("MEDIOS"),{350,86,90,20},10,muted,juce::Justification::centred);text(g,i18n::tr("AGUDOS"),{450,86,90,20},10,muted,juce::Justification::centred);text(g,i18n::tr("INSERTOS"),{580,31,180,24},10,muted);if(t){meter(g,{27,260,220,7},0);g.setColour(mint);g.fillRect(27,260,(int)(220*juce::jlimit(0.0f,1.0f,t->peakL.load())),7);}text(g,i18n::tr("EQ de tres bandas · insertos en serie · salida estéreo"),{22,292,520,25},11,muted);}
-private:AudioEngine& engine;PluginManager& plugins;int index;juce::Slider gain,pan,low,mid,high;std::array<ui::PluginSlotButton,6>inserts;std::array<juce::TextButton,6>bypasses;std::shared_ptr<Track>get(){const juce::ScopedLock lock(engine.modelLock);return index>=0&&index<(int)engine.tracks.size()?engine.tracks[(size_t)index]:nullptr;}
+private:AudioEngine& engine;PluginManager& plugins;int index;juce::Slider gain,pan,low,mid,high;ui::InsertRack inserts;std::shared_ptr<Track>get(){const juce::ScopedLock lock(engine.modelLock);return index>=0&&index<(int)engine.tracks.size()?engine.tracks[(size_t)index]:nullptr;}
 };
 
 }
@@ -818,7 +819,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
     juce::TextButton inspectorTab{i18n::tr("Inspector")},visibilityTab{i18n::tr("Visibilidad")},channelButton{"e"};
     juce::ScrollBar timelineScroll{false};
     juce::TextButton languageButton{juce::String::fromUTF8("Español")};
-    std::array<ui::PluginSlotButton,4> inserts;
+    ui::InsertRack inserts;
     ui::PluginSlotButton instrument;
     juce::TextButton inputRouting;
     juce::Slider tempo, gain, pan, low, mid, high, master;
@@ -920,7 +921,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
 
     Impl(MainComponent& o, AudioEngine& e, PluginManager& p)
         : owner(o), engine(e), plugins(p), arrangement(e), piano(e), mixer(e,p), visibility(arrangement),rightRack(e,p),
-          keyboard(e.keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard), tooltips(&o,700)
+          inserts(e,p,"inspector-inserts"), keyboard(e.keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard), tooltips(&o,700)
     {
         owner.setLookAndFeel(&look); owner.setOpaque(true); owner.setWantsKeyboardFocus(true);
         for(auto* c : std::initializer_list<juce::Component*> { &arrangement,&piano,&mixer,&play,&stop,&record,&rewind,&loop,&click,&importButton,&exportButton,&settings,&addTrackButton,&mixerTab,&pianoTab,&undoButton,&redoButton,&splitButton,&duplicateButton,&snapButton,&zoomOut,&zoomIn,&mute,&solo,&arm,&monitor,&scan,&browser,&demo,&tempo,&gain,&pan,&low,&mid,&high,&master,&projectTitle,&transportTime,&status,&keyboard }) owner.addAndMakeVisible(c);
@@ -945,7 +946,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         selectTool.setComponentID("tool-select");cutTool.setComponentID("tool-split");eraseTool.setComponentID("tool-erase");drawTool.setComponentID("tool-draw");trackColour.setComponentID("tool-colour");keyboard.setComponentID("midi-keyboard");
         for(auto [button,icon]:std::initializer_list<std::pair<juce::TextButton*,ToolIcon>>{{&rewind,ToolIcon::rewind},{&stop,ToolIcon::stop},{&play,ToolIcon::play},{&record,ToolIcon::record},{&loop,ToolIcon::cycle},{&click,ToolIcon::click},{&undoButton,ToolIcon::undo},{&redoButton,ToolIcon::redo},{&trackColour,ToolIcon::palette}})setButtonIcon(*button,icon);
         trackColour.setTooltip(i18n::tr("Seleccionar color para pistas o eventos seleccionados"));trackColour.onClick=[this]{if(selectedMarkerPtr()){timelineAction(currentTrack()->id,arrangement.selectedMarker,4);return;}if(currentTrack())editTrackColour(selected,trackColour.getScreenBounds());else error(i18n::tr("Selecciona una pista para elegir su color."));};
-        channelButton.setTooltip(i18n::tr("Editar configuración de canal"));channelButton.onClick=[this]{if(currentTrack())openChannelSettings(selected);};
+        channelButton.setComponentID("channel-settings-button");channelButton.setTooltip(i18n::tr("Editar configuración de canal"));channelButton.onClick=[this]{if(currentTrack())openChannelSettings(selected);};
         arrangement.editColour=[this](int i,juce::Rectangle<int> bounds){editTrackColour(i,bounds);};
         rightRack.select=[this](int i){select(i);};rightRack.addPlugin=[this]{plugins.showInstrumentSelector();};rightRack.importFiles=[this]{owner.importFiles();};rightRack.loadDemo=[this]{demo.triggerClick();};
         timelineScroll.addListener(this);
@@ -1014,7 +1015,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
             juce::PopupMenu menu;menu.addItem(1,juce::String::fromUTF8("Español"),true,i18n::language()==i18n::Language::spanish);menu.addItem(2,"English",true,i18n::language()==i18n::Language::english);
             menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&languageButton),[](int result){if(result==1)i18n::setLanguage(i18n::Language::spanish);if(result==2)i18n::setLanguage(i18n::Language::english);});
         };
-        for(auto& b:inserts)owner.addAndMakeVisible(b);
+        owner.addAndMakeVisible(inserts);
         for(auto* b : { &play,&loop,&click,&mixerTab,&pianoTab,&snapButton,&mute,&solo,&arm,&monitor }) b->setClickingTogglesState(true);
         record.setColour(juce::TextButton::textColourOffId,coral); play.setColour(juce::TextButton::textColourOffId,mint); play.setColour(juce::TextButton::textColourOnId,activeInk);
         // Cubase state colours: cycle purple, play green, mute yellow, solo red, record red, monitor orange.
@@ -1099,11 +1100,6 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         arm.onClick=[this]{pushUndo();if(auto t=currentTrack())t->armed=arm.getToggleState();markDirty();};monitor.onClick=[this]{pushUndo();if(auto t=currentTrack())t->monitor=monitor.getToggleState();markDirty();};
         scan.onClick=[this]{if(plugins.isScanning())plugins.stopScan();else plugins.scanPlugins();};browser.onClick=[this]{owner.showPlugins();};
         demo.onClick=[this]{confirmDiscard([this]{plugins.closeEditors();engine.createDemo();selected=0;arrangement.selectedClip=-1;arrangement.firstTrack=0;arrangement.scrollSeconds=0;undoStack.clear();redoStack.clear();dirty=true;notice=i18n::tr("Sesión de ejemplo: audio generado y notas MIDI editables.");refresh();});};
-        for(int i=0;i<(int)inserts.size();++i)
-        {
-            inserts[(size_t)i].onClick=[this,i]{plugins.showEffectEditor(selected,i,&inserts[(size_t)i]);};
-            inserts[(size_t)i].onOptions=[this,i]{plugins.showEffectSlot(selected,i,&inserts[(size_t)i]);};
-        }
         owner.addAndMakeVisible(inputRouting);inputRouting.setComponentID("input-routing");
         inputRouting.onClick=[this]
         {
@@ -1593,7 +1589,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         markerInfo.setVisible(showInfoLine&&selectedMarkerPtr()!=nullptr);for(auto* c:std::initializer_list<juce::Component*>{&gain,&pan,&low,&mid,&high,&mute,&solo,&arm,&monitor})c->setEnabled(t!=nullptr);
         if(t){const bool signal=t->hasAudioChannel();for(auto* c:std::initializer_list<juce::Component*>{&gain,&pan,&low,&mid,&high,&mute,&solo})c->setEnabled(signal);arm.setEnabled(t->hasEvents());monitor.setEnabled(t->hasEvents());}
         if(t){if(!gain.isMouseButtonDown())gain.setValue(juce::Decibels::gainToDecibels(t->gain.load(),-60.0f),juce::dontSendNotification);if(!pan.isMouseButtonDown())pan.setValue(t->pan*100,juce::dontSendNotification);if(!low.isMouseButtonDown())low.setValue(t->lowGainDb,juce::dontSendNotification);if(!mid.isMouseButtonDown())mid.setValue(t->midGainDb,juce::dontSendNotification);if(!high.isMouseButtonDown())high.setValue(t->highGainDb,juce::dontSendNotification);mute.setToggleState(t->mute,juce::dontSendNotification);solo.setToggleState(t->solo,juce::dontSendNotification);arm.setToggleState(t->armed,juce::dontSendNotification);monitor.setToggleState(t->monitor,juce::dontSendNotification);}
-        {for(int i=0;i<(int)inserts.size();++i){inserts[(size_t)i].setEnabled(t!=nullptr);const int slot=t?effectSlotIndex(*t,i):-1;if(slot>=0){auto& p=*t->plugins[(size_t)slot];inserts[(size_t)i].setButtonText(juce::String(i+1)+"  "+p.description.name);inserts[(size_t)i].setTooltip(p.error.isNotEmpty()?p.error:i18n::tr("Abrir editor del plugin"));}else{inserts[(size_t)i].setButtonText(i18n::tr("+  Añadir plugin"));inserts[(size_t)i].setTooltip(i18n::tr("VST3 / Audio Units: instrumentos y efectos"));}}}
+        inserts.setTrack(selected);
         inputRouting.setVisible(inspectorShown()&&sectionOpen[0]&&!inputRouting.getBounds().isEmpty()&&t&&t->kind==TrackKind::audio);inputRouting.setEnabled(t&&t->kind==TrackKind::audio&&!engine.recording);
         if(t)inputRouting.setButtonText(t->inputLeft==t->inputRight?i18n::tr("Mono ")+juce::String(t->inputLeft+1):i18n::tr("Estéreo ")+juce::String(t->inputLeft+1)+"–"+juce::String(t->inputRight+1));
         instrument.setVisible(inspectorShown()&&sectionOpen[0]&&!instrument.getBounds().isEmpty()&&t&&t->isMidi);instrument.setEnabled(t&&t->isMidi);
@@ -1738,8 +1734,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         if(sectionOpen[0]){place(midi?instrument:inputRouting,{dx+10,y,w-4,22});(midi?inputRouting:instrument).setBounds({});y+=26;insp.output={dx+10,y,w-4,20};y+=26;}
         else{instrument.setBounds({});inputRouting.setBounds({});}
         insp.sections[1]={dx+6,y,w+4,20};y+=24;
-        if(sectionOpen[1]){for(auto& b:inserts){place(b,{dx+10,y,w-4,22});y+=25;}y+=4;}
-        else for(auto& b:inserts)b.setBounds({});
+        if(sectionOpen[1]){place(inserts,{dx+10,y,w-4,100});y+=104;}
+        else inserts.setBounds({});
         insp.sections[2]={dx+6,y,w+4,20};y+=24;
         if(sectionOpen[2]){const int k=(w)/3;place(low,{dx+8,y,k,58});place(mid,{dx+8+k,y,k,58});place(high,{dx+8+2*k,y,k,58});insp.eqLabels={dx+8,y+58,3*k,14};y+=76;}
         else{low.setBounds({});mid.setBounds({});high.setBounds({});}
@@ -1753,7 +1749,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener
         markerInspector.setVisible(inspectorShown()&&currentTrack()&&currentTrack()->kind==TrackKind::marker);
         const auto fits=[this](juce::Component* c){return !c->getBounds().isEmpty()&&std::find(inspectorOverflow.begin(),inspectorOverflow.end(),c)==inspectorOverflow.end();};
         for(auto* c:std::initializer_list<juce::Component*>{&gain,&pan,&mute,&solo,&arm,&monitor,&channelButton,&low,&mid,&high})c->setVisible(shown&&fits(c));
-        for(auto& b:inserts)b.setVisible(shown&&fits(&b));
+        inserts.setVisible(shown&&fits(&inserts));
         if(!shown){instrument.setVisible(false);inputRouting.setVisible(false);}
         for(auto* c:std::initializer_list<juce::Component*>{&inspectorTab,&visibilityTab,&trackTabButton,&editorTabButton})c->setVisible(showLeft);
         visibility.setVisible(showLeft&&visibilityVisible);rightRack.setVisible(showRight);channelTab->setVisible(showChannel);

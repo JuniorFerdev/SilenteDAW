@@ -1,5 +1,6 @@
 #include "i18n/Translations.h"
 #include "AudioEngine.h"
+#include "plugins/PluginSelection.h"
 #include "persistence/TrackDataJson.h"
 #include "audio/BandlimitedInterpolator.h"
 #include "audio/RecordingModes.h"
@@ -849,12 +850,22 @@ double AudioEngine::duration() const
     }
     return result;
 }
-juce::Result AudioEngine::addPlugin(int index, std::unique_ptr<juce::AudioPluginInstance> processor, const juce::PluginDescription& description, int replaceSlot)
+juce::Result AudioEngine::addPlugin(int index, std::unique_ptr<juce::AudioPluginInstance> processor, const juce::PluginDescription& description, int replaceSlot, int insertPosition)
 {
     if (!processor) return juce::Result::fail(i18n::tr("El plugin no se ha creado."));
     const juce::ScopedLock lock(modelLock);
     if (!juce::isPositiveAndBelow(index, static_cast<int>(tracks.size()))) return juce::Result::fail(i18n::tr("La pista ya no existe."));
     if (!tracks[(size_t)index]->hasAudioChannel()) return juce::Result::fail(i18n::tr("Esta pista no admite inserciones de audio."));
+    auto& track=*tracks[(size_t)index];auto& existing=track.plugins;
+    if(replaceSlot>=(int)existing.size())return juce::Result::fail(i18n::tr("La ranura ya no existe."));
+    if(!description.isInstrument)
+    {
+        if(replaceSlot>=0)insertPosition=existing[(size_t)replaceSlot]->insertPosition;
+        else if(insertPosition<0){insertPosition=0;while(effectSlotIndex(track,insertPosition)>=0)++insertPosition;}
+        if(insertPosition<0||insertPosition>=Track::insertCount)return juce::Result::fail(i18n::tr("La pista admite diez efectos de inserción."));
+        const int occupied=effectSlotIndex(track,insertPosition);
+        if(occupied>=0&&occupied!=replaceSlot)return juce::Result::fail(i18n::tr("La ranura de inserción ya está ocupada."));
+    }
     processor->enableAllBuses();
     auto layout = processor->getBusesLayout();
     if (!layout.outputBuses.isEmpty()) layout.outputBuses.set(0, juce::AudioChannelSet::stereo());
@@ -876,7 +887,7 @@ juce::Result AudioEngine::addPlugin(int index, std::unique_ptr<juce::AudioPlugin
     if (chainLatency > static_cast<int>(sampleRate.load() * 2.0))
         return juce::Result::fail(i18n::tr("La cadena de plugins supera los dos segundos de compensación de latencia disponibles."));
     auto slot = std::make_shared<PluginSlot>();
-    slot->processor = std::move(processor); slot->description = description;
+    slot->processor = std::move(processor); slot->description = description;slot->insertPosition=description.isInstrument?-1:insertPosition;
     if(replaceSlot>=0)
     {
         if(slots[static_cast<size_t>(replaceSlot)]->processor)slots[static_cast<size_t>(replaceSlot)]->processor->setPlayHead(nullptr);
@@ -884,6 +895,7 @@ juce::Result AudioEngine::addPlugin(int index, std::unique_ptr<juce::AudioPlugin
     }
     else if(description.isInstrument)slots.insert(slots.begin(),slot);
     else slots.push_back(slot);
+    std::stable_sort(slots.begin(),slots.end(),[](const auto& a,const auto& b){return (a->description.isInstrument?-1:a->insertPosition)<(b->description.isInstrument?-1:b->insertPosition);});
     return juce::Result::ok();
 }
 void AudioEngine::removePlugin(int trackIndex, int slotIndex)
@@ -988,6 +1000,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
             auto p = object();
             if (auto xml = slot->description.createXml()) set(p, "description", xml->toString());
             if (slot->processor) slot->processor->getStateInformation(slot->savedState);
+            if(!slot->description.isInstrument)set(p,"insertPosition",slot->insertPosition);
             set(p, "state", slot->savedState.toBase64Encoding()); set(p, "bypassed", slot->bypassed.load()); plugins.add(p);
         }
         set(t, "clips", clips); set(t, "notes", notes); set(t, "plugins", plugins); trackArray.add(t);
@@ -1074,6 +1087,11 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
         {
             auto slot = std::make_shared<PluginSlot>();
             if (auto xml = juce::parseXML(p["description"].toString())) slot->description.loadFromXml(*xml);
+            if(!slot->description.isInstrument)
+            {
+                slot->insertPosition=(int)p.getProperty("insertPosition",-1);
+                if(slot->insertPosition<0||effectSlotIndex(*track,slot->insertPosition)>=0){slot->insertPosition=0;while(effectSlotIndex(*track,slot->insertPosition)>=0)++slot->insertPosition;}
+            }
             slot->savedState.fromBase64Encoding(p["state"].toString()); slot->bypassed = static_cast<bool>(p["bypassed"]);
             slot->processor = pluginFormats.createPluginInstance(slot->description, sampleRate.load(), blockSize.load(), slot->error);
             if (slot->processor)
@@ -1085,6 +1103,7 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
             if (!slot->processor) warnings.add(i18n::tr("Plugin ausente: ") + slot->description.name + juce::String::fromUTF8(" · ") + slot->error);
             track->plugins.push_back(slot);
         }
+        std::stable_sort(track->plugins.begin(),track->plugins.end(),[](const auto& a,const auto& b){return (a->description.isInstrument?-1:a->insertPosition)<(b->description.isInstrument?-1:b->insertPosition);});
         loaded.push_back(track);
     }
     stop();

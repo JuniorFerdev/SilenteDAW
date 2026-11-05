@@ -1,4 +1,5 @@
 #include "MixConsole.h"
+#include "../plugins/InsertRack.h"
 #include "../../i18n/Translations.h"
 #include "../../plugins/PluginSelection.h"
 #include "../plugins/PluginSlotButton.h"
@@ -12,7 +13,7 @@ using namespace theme;
 namespace
 {
 constexpr float minimumDb = -60.0f, maximumDb = 6.0f;
-constexpr int insertSlots = 4;
+constexpr int visibleInsertSlots = 4;
 // Meter scale: linear in dB from -60 to +6.
 float meterProportion(float db) { return juce::jlimit(0.0f, 1.0f, (db - minimumDb) / (maximumDb - minimumDb)); }
 float toDb(float gain) { return juce::Decibels::gainToDecibels(gain, -100.0f); }
@@ -60,14 +61,14 @@ class MixConsole::Strip final : public juce::Component
 {
 public:
     Strip(MixConsole& o, AudioEngine& e, PluginManager& p, MixConsoleHooks& h, int i)
-        : owner(o), engine(e), plugins(p), hooks(h), index(i)
+        : owner(o), engine(e), plugins(p), hooks(h), index(i), inserts(e,p,"mix-inserts-"+juce::String(i))
     {
         if (index >= 0) track = engine.tracks[(size_t) index];
         const auto id = juce::String(index);
         mute.setComponentID("mix-mute-" + id); fader.setComponentID("mix-fader-" + id); volume.setComponentID("mix-volume-" + id); pan.setComponentID("mix-pan-" + id);
         for (auto* c : std::initializer_list<juce::Component*> { &input, &output, &instrument, &low, &mid, &high, &pan, &mute, &solo, &arm, &monitor, &edit, &fader, &volume })
             addAndMakeVisible(c);
-        for (auto& b : inserts) addAndMakeVisible(b);
+        addAndMakeVisible(inserts);
         addAndMakeVisible(edge); edge.setComponentID("mix-width-" + id);
         edge.onStart = [this] { widthAtStart = getWidth(); };
         edge.onDrag = [this](int offset) { owner.setStripWidth(index, widthAtStart + offset, juce::ModifierKeys::currentModifiers.isAltDown()); };
@@ -159,16 +160,11 @@ public:
         output.setTooltip(i18n::tr("Salida del canal: Stereo Out o un canal de grupo"));
         instrument.onClick = [this] { plugins.showInstrument(index, &instrument); };
         instrument.onOptions = [this] { plugins.showInstrument(index, &instrument); };
-        for (int slot = 0; slot < insertSlots; ++slot)
-        {
-            inserts[(size_t) slot].onClick = [this, slot] { plugins.showEffectEditor(index, slot, &inserts[(size_t) slot]); };
-            inserts[(size_t) slot].onOptions = [this, slot] { plugins.showEffectSlot(index, slot, &inserts[(size_t) slot]); };
-        }
         if (! track)
         {
             for (auto* c : std::initializer_list<juce::Component*> { &input, &instrument, &low, &mid, &high, &pan, &mute, &solo, &arm, &monitor, &edit })
                 c->setVisible(false);
-            for (auto& b : inserts) b.setVisible(false);
+            inserts.setVisible(false);
             for (auto& b : sendTargets) b.setVisible(false);
             for (auto& l : sendLevels) l.setVisible(false);
             output.setButtonText(i18n::tr("Dispositivo"));
@@ -224,14 +220,7 @@ public:
             }
             const int instrumentSlot = instrumentSlotIndex(*track);
             instrument.setButtonText(instrumentSlot >= 0 ? track->plugins[(size_t) instrumentSlot]->description.name : i18n::tr("Sintetizador interno"));
-            for (int i = 0; i < insertSlots; ++i)
-            {
-                auto& b = inserts[(size_t) i];
-                const int slot = effectSlotIndex(*track, i);
-                b.setButtonText(slot >= 0 ? track->plugins[(size_t) slot]->description.name : juce::String());
-                b.setAlpha(slot >= 0 && track->plugins[(size_t) slot]->bypassed.load() ? .45f : 1.0f);
-                b.setTooltip(slot >= 0 ? i18n::tr("Abrir editor del plugin") : i18n::tr("Añadir efecto de inserción"));
-            }
+            inserts.setTrack(index);
         }
         syncing = false;
         repaint(meterArea.getUnion(peakArea).expanded(2));
@@ -273,9 +262,9 @@ public:
         {
             auto a = insertsArea.withTrimmedTop(2);
             if (instrument.isVisible()) { place(instrument, a.removeFromTop(22)); a.removeFromTop(3); }
-            for (auto& b : inserts) { place(b, a.removeFromTop(22)); a.removeFromTop(3); }
+            place(inserts,a);
         }
-        else { instrument.setBounds({}); for (auto& b : inserts) b.setBounds({}); }
+        else { instrument.setBounds({}); inserts.setBounds({}); }
         if (! eqArea.isEmpty())
         {
             auto a = eqArea.withTrimmedTop(2).removeFromTop(36);
@@ -412,7 +401,7 @@ private:
     ZoneSplitter edge { true };
     juce::TextButton input, output, mute, solo, arm, monitor, edit;
     ui::PluginSlotButton instrument;
-    std::array<ui::PluginSlotButton, insertSlots> inserts;
+    ui::InsertRack inserts;
     std::array<juce::TextButton, Track::sendCount> sendTargets;
     std::array<juce::Slider, Track::sendCount> sendLevels;
     juce::Component sendContent;
@@ -586,7 +575,7 @@ int MixConsole::rackHeight(Rack r)
     switch (r)
     {
         case routing: return 62;
-        case inserts: return 8 + 25 * (insertSlots + 1) + 4;
+        case inserts: return 8 + 25 * (visibleInsertSlots + 1) + 4;
         case equaliser: return 54;
         case sends: return 8 + 25 * 4 + 4; // Scroll all 16 slots; preserve room for the fader.
         case rackCount: break;

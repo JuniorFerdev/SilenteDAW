@@ -6,6 +6,7 @@
 #include "../src/audio/RangeEdit.h"
 #include "../src/AudioEngine.h"
 #include "../src/persistence/TrackDataJson.h"
+#include "../src/plugins/PluginSelection.h"
 #include "../src/ui/project/TimelineTracks.h"
 #include <limits>
 #include <cmath>
@@ -102,10 +103,10 @@ std::shared_ptr<Track> importFixture(AudioEngine& engine, const juce::File& file
 class DelayTestPlugin final : public juce::AudioPluginInstance
 {
 public:
-    explicit DelayTestPlugin(int delaySamples)
+    explicit DelayTestPlugin(int delaySamples,float multiply=1.0f,float add=0.0f)
         : AudioPluginInstance(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
                                                .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-          delay(delaySamples)
+          delay(delaySamples),factor(multiply),addition(add)
     { setLatencySamples(delay); }
     const juce::String getName() const override { return "Silente test delay"; }
     void fillInPluginDescription(juce::PluginDescription& d) const override
@@ -115,12 +116,13 @@ public:
     }
     bool isBusesLayoutSupported(const BusesLayout& l) const override
     { return l.getMainInputChannelSet() == juce::AudioChannelSet::stereo() && l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo(); }
-    void prepareToPlay(double, int) override { ring.setSize(2, delay); reset(); setLatencySamples(delay); }
+    void prepareToPlay(double, int) override { ring.setSize(2, juce::jmax(1,delay)); reset(); setLatencySamples(delay); }
     void releaseResources() override {}
     void reset() override { ring.clear(); cursor = 0; }
     using juce::AudioPluginInstance::processBlock;
     void processBlock(juce::AudioBuffer<float>& audio, juce::MidiBuffer&) override
     {
+        if(delay==0){for(int ch=0;ch<audio.getNumChannels();++ch)for(int i=0;i<audio.getNumSamples();++i)audio.setSample(ch,i,audio.getSample(ch,i)*factor+addition);return;}
         for (int i = 0; i < audio.getNumSamples(); ++i)
         {
             for (int ch = 0; ch < 2; ++ch)
@@ -145,7 +147,7 @@ public:
     void getStateInformation(juce::MemoryBlock& state) override { state.reset(); }
     void setStateInformation(const void*, int) override {}
 private:
-    int delay, cursor = 0;
+    int delay, cursor = 0;float factor=1.0f,addition=0.0f;
     juce::AudioBuffer<float> ring;
 };
 
@@ -255,6 +257,36 @@ int runEngineTests(const juce::File& outputDir)
         require(!engine.canRoute(*marker,*group,false)&&!engine.canRoute(*ruler,*group,false),"Non-audio timeline track can route into a group");
         engine.play();const auto result=render(engine,128);for(int k=0;k<128;++k)for(int c=0;c<2;++c)near(result.getSample(c,k),baseline.getSample(c,k),0,"Markers changed an audio sample");
         near(marker->peakL.load()+ruler->peakL.load(),0,0,"Non-audio tracks have no meter signal");
+    });
+
+    suite.run("ten numbered inserts process in rack order, bypass independently and survive sparse reload", [&]
+    {
+        AudioEngine engine;setup(engine);auto track=importFixture(engine,mono);track->pan=-1;
+        const int order[]{9,0,8,1,7,2,6,3,5,4};
+        for(int position:order)
+        {
+            auto plugin=std::make_unique<DelayTestPlugin>(0,.5f,(position+1)*.001f);auto description=plugin->getPluginDescription();description.name="Effect "+juce::String(position+1);
+            requireOk(engine.addPlugin(0,std::move(plugin),description,-1,position));
+        }
+        require(track->plugins.size()==10,"Ten processors were not retained");
+        for(int n=0;n<10;++n)require(effectSlotIndex(*track,n)==n&&track->plugins[(size_t)n]->insertPosition==n,"Processing order differs from numbered rack order");
+        const auto expected=[](int count){double value=.25;for(int n=0;n<count;++n)value=value*.5+(n+1)*.001;return value;};
+        engine.play();const auto full=render(engine,256);near(full.getSample(0,200),expected(10),.000001,"All ten effects process");
+        track->plugins[9]->bypassed=true;engine.seek(0);const auto bypassed=render(engine,256);near(bypassed.getSample(0,200),expected(9),.000001,"Bypass slot ten");
+        auto extra=std::make_unique<DelayTestPlugin>(0);const auto description=extra->getPluginDescription();
+        require(engine.addPlugin(0,std::move(extra),description).failed()&&track->plugins.size()==10,"An eleventh effect displaced an existing slot");
+        const auto last=track->plugins[9];engine.removePlugin(0,4);require(effectSlotIndex(*track,4)<0&&track->plugins[(size_t)effectSlotIndex(*track,9)]==last,"Removing slot five renumbered slot ten");
+        const auto file=dir.getChildFile("ten-inserts.silente");requireOk(engine.saveProject(file));
+        AudioEngine loaded;setup(loaded);requireOk(loaded.loadProject(file));const auto copy=loaded.tracks.front();
+        require(copy->plugins.size()==9&&effectSlotIndex(*copy,4)<0&&effectSlotIndex(*copy,9)>=0,"Sparse slot positions did not round-trip");
+        require(copy->plugins[(size_t)effectSlotIndex(*copy,9)]->bypassed.load(),"Tenth-slot bypass did not round-trip");
+        auto legacy=juce::JSON::parse(file);auto* root=legacy.getDynamicObject();auto tracks=root->getProperty("tracks");for(auto& item:*tracks.getArray())for(auto& plugin:*item.getDynamicObject()->getProperty("plugins").getArray())plugin.getDynamicObject()->removeProperty("insertPosition");
+        const auto legacyFile=dir.getChildFile("ten-inserts-legacy.silente");legacyFile.replaceWithText(juce::JSON::toString(legacy));requireOk(loaded.loadProject(legacyFile));
+        require(effectSlotIndex(*loaded.tracks.front(),8)>=0,"Legacy dense insert order was lost");
+        auto midi=engine.addMidiTrack();auto instrument=std::make_unique<DelayTestPlugin>(0);auto instrumentDescription=instrument->getPluginDescription();instrumentDescription.isInstrument=true;
+        requireOk(engine.addPlugin(1,std::move(instrument),instrumentDescription));
+        for(int n=0;n<10;++n){auto effect=std::make_unique<DelayTestPlugin>(0);requireOk(engine.addPlugin(1,std::move(effect),description,-1,n));}
+        require(midi->plugins.size()==11&&instrumentSlotIndex(*midi)==0&&effectSlotIndex(*midi,9)==10,"Instrument consumed one of the ten effect slots");
     });
 
     suite.run("mono import and hard-left gain", [&]

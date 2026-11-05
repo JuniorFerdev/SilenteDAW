@@ -42,6 +42,8 @@ private:
         std::shared_ptr<PluginSlot> replacing;
         PluginKind kind=PluginKind::effect;
         bool newInstrumentTrack=false;
+        int insertPosition=-1;
+        bool cancellable=true;
         unsigned generation=0;
     };
     void openSelector(SelectionTarget,juce::Component* anchor);

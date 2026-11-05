@@ -4,6 +4,7 @@
 #include "MarkerUiTests.h"
 #include "../src/MainComponent.h"
 #include "../src/ui/plugins/PluginSelector.h"
+#include "../src/ui/plugins/InsertRack.h"
 #include "../src/ui/mixconsole/MixConsole.h"
 #include "../src/ui/io/ConversionPanel.h"
 #include "../src/ui/io/ExportDialog.h"
@@ -401,9 +402,44 @@ private:
             expect(track->plugins.size()==2&&track->plugins[0]->description.name==apple.name,"selector replacement changes only the chosen slot");
             manager.removeSlot(0,0);expect(track->plugins.size()==1&&track->plugins[0]!=first,"removing a slot preserves the other effect");
             manager.removeSlot(0,0);expect(track->plugins.empty(),"removing the final slot leaves an empty effect chain");
+            for(int n=0;n<Track::insertCount;++n)manager.insertPlugin(0,apple);
+            stage=6;deadline=Time::getMillisecondCounterHiRes()+20000;
+        }
+        else if(stage==6)
+        {
+            if(track->plugins.size()<Track::insertCount)return;
+            stopTimer(); // Popup verification pumps messages after leaving the repeating timer.
+            manager.closeEditors();view.runCommand("trackTop");view.transportMenuItem(0);
+            expect(track->plugins.size()==10&&std::all_of(track->plugins.begin(),track->plugins.end(),[](const auto& plugin){return plugin->processor!=nullptr;}),"Ten real Apple AU effects load independently without cancelling earlier callbacks");
+            for(const String prefix:{String("inspector-inserts"),String("channel-inserts")})
+            {
+                auto* rack=dynamic_cast<ui::InsertRack*>(find(view,prefix));auto* last=find(view,prefix+"-slot-10");auto* scroll=dynamic_cast<Viewport*>(find(view,prefix+"-scroll"));
+                if(rack)rack->revealSlot(9);
+                expect(rack&&last&&scroll&&scroll->getViewArea().contains(last->getBounds()),prefix+": scroll reaches insertion slot ten");
+            }
+            ui::MixConsoleHooks hooks;hooks.selected=[]{return 0;};ui::MixConsole console(engine,manager,hooks);console.setSize(1200,820);
+            auto* rack=dynamic_cast<ui::InsertRack*>(find(console,"mix-inserts-0"));auto* fader=find(console,"mix-fader-0");const auto bounds=fader?fader->getBounds():Rectangle<int>();
+            if(rack)rack->revealSlot(9);auto* scroll=dynamic_cast<Viewport*>(find(console,"mix-inserts-0-scroll"));auto* last=find(console,"mix-inserts-0-slot-10");
+            expect(rack&&scroll&&last&&scroll->getViewArea().contains(last->getBounds())&&fader&&fader->getBounds()==bounds&&fader->getHeight()>100,"MixConsole reveals insert ten while preserving fader height");
+            capture(console,output.getChildFile("ten-inserts-mixconsole.png"));capture(view,output.getChildFile("ten-inserts-inspector.png"));
+            if(auto* edit=dynamic_cast<TextButton*>(find(view,"channel-settings-button")))edit->onClick();
+            bool settingsTen=false;
+            for(int n=0;n<Desktop::getInstance().getNumComponents();++n)
+            {
+                auto* window=Desktop::getInstance().getComponent(n);auto* settingsRack=dynamic_cast<ui::InsertRack*>(find(*window,"settings-inserts"));
+                if(settingsRack){settingsRack->revealSlot(9);auto* scroll=dynamic_cast<Viewport*>(find(*window,"settings-inserts-scroll"));auto* tenth=find(*window,"settings-inserts-slot-10");settingsTen=scroll&&tenth&&scroll->getViewArea().contains(tenth->getBounds());capture(*window,output.getChildFile("ten-inserts-settings.png"));window->setVisible(false);}
+            }
+            expect(settingsTen,"Channel Settings exposes all ten inserts with individual bypass buttons");
+            auto* finalSlot=dynamic_cast<ui::PluginSlotButton*>(find(view,"inspector-inserts-slot-10"));if(finalSlot)finalSlot->onOptions();
+            MessageManager::getInstance()->runDispatchLoopUntil(30);auto* popup=Component::getCurrentlyModalComponent();
+            if(popup){for(int n=0;n<3;++n)popup->keyPressed(KeyPress(KeyPress::downKey));popup->keyPressed(KeyPress(KeyPress::returnKey));}
+            MessageManager::getInstance()->runDispatchLoopUntil(30);
+            expect(track->plugins[9]->bypassed.load()&&!track->plugins[0]->bypassed.load(),"Slot ten's real options menu bypasses only its own processor");
+            AudioBuffer<float> block(2,128);block.clear();engine.play();engine.renderOfflineBlock(block,128);engine.stop();expect(std::isfinite(block.getMagnitude(0,128)),"Ten real AU processors render without invalid samples");
+            for(int n=(int)track->plugins.size()-1;n>=0;--n)manager.removeSlot(0,n);
             if(auto xml=XmlDocument::parse(fixture))if(auto* item=xml->getChildByName("PLUGIN"))vst.loadFromXml(*item);
             if(vst.name.isEmpty()){report+="SKIP: optional installed VST3 fixture not supplied\n";finish();return;}
-            manager.insertPlugin(0,vst);stage=2;deadline=Time::getMillisecondCounterHiRes()+20000;
+            manager.insertPlugin(0,vst);stage=2;deadline=Time::getMillisecondCounterHiRes()+20000;startTimer(50);
         }
         else if(stage==2)
         {

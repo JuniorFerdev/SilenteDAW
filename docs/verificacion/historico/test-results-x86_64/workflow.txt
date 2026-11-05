@@ -1,0 +1,84 @@
+PASS: normal startup has zero tracks and stopped transport
+PASS: project window lower zone hides and shows from the toolbar
+PASS: dragging the zone borders resizes the Inspector and the lower zone
+PASS: zone borders return to their sizes
+PASS: Shift+H / Shift+G change the track height slider
+PASS: waveform zoom slider at the right of the event display
+PASS: project window right zone hides and shows from the toolbar
+PASS: arrangement test surface exists
+PASS: ruler click follows pointer without snap quantisation
+PASS: ruler drag updates the transport continuously
+PASS: ruler gesture continues when pointer moves below ruler
+PASS: mouse release ends ruler gesture
+PASS: ruler drag clamps before project start
+PASS: cycle locator gesture remains independent
+PASS: selector separates effects, instruments, search tokens and formats
+PASS: selector search and Return load the selected effect
+PASS: favourite star saves the plugin identity
+PASS: routing API accepts audio-to-group output and send to FX
+PASS: MixConsole shows audio, FX, instrument and group channels plus Stereo Out, not the folder
+PASS: MixConsole shows four send slots per channel
+PASS: MixConsole mute edits the track with undo and dirty flag
+PASS: MixConsole fader sets channel gain in dB
+PASS: MixConsole typed volume accepts a decimal comma
+PASS: lower-zone MixConsole with folded racks keeps the fader inside the channel
+PASS: MixConsole channel width follows its edge drag; the others keep theirs
+PASS: MixConsole channel width stops at the minimum
+PASS: export and conversion windows build
+PASS: MixConsole search filters channels by name
+PASS: track list shows every track by default
+PASS: track type filter hides audio tracks
+PASS: find tracks skips types hidden by the filter
+PASS: find tracks matches words ignoring case, hidden tracks included
+PASS: picking a found track shows it again
+PASS: Shift-click in Visibility shows only that track
+PASS: snap grid 1/16 at 120 BPM
+PASS: snap grid bar
+PASS: adapt to zoom follows the horizontal zoom
+PASS: events are magnetic within 10 px only
+PASS: grid + cursor: cursor wins nearby, grid elsewhere
+PASS: snap off keeps the exact position
+PASS: ruler time formats
+PASS: Cubase default keys map to their commands (C, /, *, P, Space, Cmd-Z, Shift-Del)
+PASS: P sets the locators to the selected event
+PASS: Num 1 goes to the left locator
+PASS: Cmd-C / Cmd-V paste the event at the cursor
+PASS: N locates the next event edge
+PASS: edit history records named steps (Enmudecer, Solo)
+PASS: undo walks back one history step
+PASS: redo re-applies the step
+PASS: / toggles cycle
+PASS: Glue, Zoom, Mute and Play tools on the toolbar with keys 4, 6, 7, 9
+PASS: X is Crossfade
+PASS: I and O are Punch In and Punch Out
+PASS: Transporte menu sets audio record mode (Reemplazar) and 32-bit float
+PASS: punch buttons on
+PASS: play with Punch In waits for the punch-in point
+PASS: punch out ends recording, playback continues
+PASS: punched take sits between the locators
+PASS: recording is an undo step named Grabar
+PASS: undo removes the recorded take
+PASS: red event grows from where recording started
+PASS: Audio > Fundidos applies the standard fade-in and fade-out
+PASS: Eliminar fundidos removes both fades
+PASS: dragging the fade-in handle sets the fade length
+PASS: dragging the volume handle up raises the event volume to +6 dB
+PASS: fade editor: curve buttons and length (fade-in + fade-out within the event)
+PASS: range tool: drag a range and Shift+Backspace deletes the time
+PASS: range edit undoes in one step
+PASS: Insert Silence moves the rest by the range length
+PASS: dragging the range moves its content (gap left behind, audio lands 2 s later)
+PASS: Option-drag copies the range content with its layers
+PASS: Option+Right trims the range start by the grid value
+PASS: Copy and Paste with a range place its content at the cursor
+PASS: Apple AU loads asynchronously through PluginManager
+PASS: slot bypass enabled
+PASS: slot bypass disabled
+PASS: AU processes an offline block without invalid samples
+PASS: effect insertion keeps serial chain order
+PASS: host selector dispatches the chosen plugin
+PASS: selector replacement changes only the chosen slot
+PASS: removing a slot preserves the other effect
+PASS: removing the final slot leaves an empty effect chain
+SKIP: optional installed VST3 fixture not supplied
+PASS: workflow checks completed

@@ -76,8 +76,9 @@ void navigationChecks(MainComponent& view,AudioEngine& engine,Component& arrange
     {
         TextEditor editor;view.addAndMakeVisible(editor);editor.setBounds(20,20,140,26);editor.setText("Editar nombre",false);
         focus(editor);
+        const auto textBeforeKey=editor.getText();
         const bool focused=editor.hasKeyboardFocus(false),handled=view.keyPressed(next),unchanged=active(0);
-        expect(focused&&!handled&&unchanged&&editor.getText()=="Editar nombre","F10 leaves the project tool unchanged while editing text (focus="+String((int)focused)+", handled="+String((int)handled)+", unchanged="+String((int)unchanged)+")");
+        expect(focused&&!handled&&unchanged&&editor.getText()==textBeforeKey,"F10 leaves the project tool unchanged while editing text (focus="+String((int)focused)+", handled="+String((int)handled)+", unchanged="+String((int)unchanged)+")");
     }
     view.runCommand("toolSelect");
     // The editor's own tool navigation is a separate pending feature.
