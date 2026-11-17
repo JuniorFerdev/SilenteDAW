@@ -321,3 +321,7 @@ Tema extraído a `src/ui/theme/`; color de pistas con paleta/personalizado, icon
 6. Grabación, efectos y optimización: dividir en etapas independientes según las prioridades del usuario.
 
 El alcance pendiente es audio18 y diagnóstico Waves, actualmente en pausa por solicitud expresa. No reanudar hasta que el usuario lo indique.
+
+## refactor01 — Piano roll y modelo MIDI separados (16-11-2026)
+
+El piano roll pasó de MainComponent.cpp a `src/ui/midi/PianoRoll.{h,cpp}` (`silente::ui::PianoRoll`) y la nota a `src/domain/MidiNote.h` (`silente::domain::MidiNote`, con alias `silente::MidiNote` en AudioEngine.h). Extracción mecánica, sin cambio de comportamiento ni textos. Verificado: compila, motor 43/43, io 6/6, flujo 198 PASS / 0 FAIL / 1 SKIP (VST3 opcional), idiomas 873 PASS. Pendiente: no hay prueba automática de interacción del piano roll; la edición de notas aún no pasa por comandos de aplicación.

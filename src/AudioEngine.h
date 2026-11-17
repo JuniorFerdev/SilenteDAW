@@ -6,6 +6,7 @@
 #include <atomic>
 #include "audio/DeviceSettings.h"
 #include "audio/Metronome.h"
+#include "domain/MidiNote.h"
 #include "domain/TrackData.h"
 #include <functional>
 #include <memory>
@@ -28,12 +29,7 @@ struct AudioClip
     int fadeInShape = 0, fadeOutShape = 0; // audio::FadeShape (0 = linear)
 };
 
-struct MidiNote
-{
-    juce::String id { juce::Uuid().toString() };
-    int pitch = 60, velocity = 100;
-    double startBeats = 0.0, lengthBeats = 1.0;
-};
+using MidiNote = domain::MidiNote;
 
 struct PluginSlot
 {
