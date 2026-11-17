@@ -901,5 +901,15 @@
   "El cambio de tempo debe estar después del inicio del proyecto.": "The tempo change must come after the project start.",
   "El tempo debe estar entre 20 y 300 BPM.": "Tempo must be between 20 and 300 BPM.",
   "Tipo de compás no válido.": "Invalid time signature.",
-  "Selecciona un evento de la lista.": "Select an event in the list."
+  "Selecciona un evento de la lista.": "Select an event in the list.",
+  "Automatización": "Automation",
+  "Editar automatización": "Edit automation",
+  "Leer automatización: volumen, panorama y envíos siguen sus curvas": "Read automation: volume, pan and sends follow their curves",
+  "Escribir automatización: con el transporte parado, mover un control escribe un punto en el cursor": "Write automation: with the transport stopped, moving a control writes a point at the cursor",
+  "Parámetro automatizado": "Automated parameter",
+  "Volumen": "Volume",
+  "Panorama": "Pan",
+  "Envío ": "Send ",
+  "Selecciona una pista con canal de mezcla para ver su automatización": "Select a track with a mixer channel to see its automation",
+  "Sin puntos · clic para añadir": "No points · click to add"
 }

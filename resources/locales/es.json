@@ -901,5 +901,15 @@
   "El cambio de tempo debe estar después del inicio del proyecto.": "El cambio de tempo debe estar después del inicio del proyecto.",
   "El tempo debe estar entre 20 y 300 BPM.": "El tempo debe estar entre 20 y 300 BPM.",
   "Tipo de compás no válido.": "Tipo de compás no válido.",
-  "Selecciona un evento de la lista.": "Selecciona un evento de la lista."
+  "Selecciona un evento de la lista.": "Selecciona un evento de la lista.",
+  "Automatización": "Automatización",
+  "Editar automatización": "Editar automatización",
+  "Leer automatización: volumen, panorama y envíos siguen sus curvas": "Leer automatización: volumen, panorama y envíos siguen sus curvas",
+  "Escribir automatización: con el transporte parado, mover un control escribe un punto en el cursor": "Escribir automatización: con el transporte parado, mover un control escribe un punto en el cursor",
+  "Parámetro automatizado": "Parámetro automatizado",
+  "Volumen": "Volumen",
+  "Panorama": "Panorama",
+  "Envío ": "Envío ",
+  "Selecciona una pista con canal de mezcla para ver su automatización": "Selecciona una pista con canal de mezcla para ver su automatización",
+  "Sin puntos · clic para añadir": "Sin puntos · clic para añadir"
 }

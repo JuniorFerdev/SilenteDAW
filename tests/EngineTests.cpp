@@ -8,6 +8,7 @@
 #include "../src/domain/Quantize.h"
 #include "../src/domain/NoteEdit.h"
 #include "../src/domain/TempoMap.h"
+#include "../src/domain/Automation.h"
 #include "../src/persistence/TrackDataJson.h"
 #include "../src/plugins/PluginSelection.h"
 #include "../src/app/TrackCreation.h"
@@ -1223,6 +1224,152 @@ int runEngineTests(const juce::File& outputDir)
             require(busy.tempoMap.empty() && busy.tempo.load() == 60.0, "Import into a busy project changed its tempo");
             auto placed = busy.tracks.at(1)->notes; std::sort(placed.begin(), placed.end(), [](const MidiNote& x, const MidiNote& y) { return x.startBeats < y.startBeats; });
             for (size_t k = 0; k < placed.size(); ++k) near(placed[k].startBeats, s.secondsAt(a->notes[k].startBeats), 2e-5, "Busy note " + juce::String((int) k) + " at its time");
+        }
+    });
+
+    suite.run("automation curve: evaluation, insert, move and remove with exact values", [&]
+    {
+        using namespace domain;
+        AutomationCurve c;
+        near(evaluate(c, 3.0, 0.25), 0.25, 0, "Empty curve returns the fallback");
+        require(insertPoint(c, AutomationParameter::volume, { 4.0, 1.0 }) == 0, "First point index");
+        require(insertPoint(c, AutomationParameter::volume, { 0.0, 0.0 }) == 0, "Earlier point goes first");
+        require(insertPoint(c, AutomationParameter::volume, { 2.0, 0.75 }) == 1, "Middle point index");
+        near(evaluate(c, -1.0, 9.0), 0.0, 0, "Before the first point holds its value");
+        near(evaluate(c, 1.0, 9.0), 0.375, 0, "Linear between 0 and 2");
+        near(evaluate(c, 3.0, 9.0), 0.875, 0, "Linear between 2 and 4");
+        near(evaluate(c, 2.0, 9.0), 0.75, 0, "On a point");
+        near(evaluate(c, 100.0, 9.0), 1.0, 0, "After the last point holds its value");
+        require(insertPoint(c, AutomationParameter::volume, { 2.0, 0.5 }) == 1 && c.points.size() == 3, "Same beat replaces the value");
+        near(evaluate(c, 1.0, 9.0), 0.25, 0, "Replaced value");
+        require(insertPoint(c, AutomationParameter::volume, { 6.0, 9.0 }) == 3, "Append");
+        near(c.points[3].value, 4.0, 0, "Volume clamps to +12 dB (gain 4)");
+        require(movePoint(c, AutomationParameter::volume, 1, 5.0, 0.6), "Move");
+        near(c.points[1].beat, 4.0, 0, "A point cannot pass its right neighbour");
+        require(movePoint(c, AutomationParameter::volume, 1, -3.0, 0.6), "Move left");
+        near(c.points[1].beat, 0.0, 0, "Nor its left neighbour");
+        require(movePoint(c, AutomationParameter::volume, 1, 1.0, 0.5) && c.points[1] == AutomationPoint { 1.0, 0.5 }, "Free move");
+        require(! movePoint(c, AutomationParameter::volume, 7, 1.0, 0.5) && ! removePoint(c, -1), "Invalid indices are refused");
+        require(removePoint(c, 3) && c.points.size() == 3, "Remove");
+        AutomationCurve step; step.points = { { 0.0, 0.0 }, { 4.0, 0.0 }, { 4.0, 1.0 } };
+        near(evaluate(step, 3.999, 9.0), 0.0, 0, "Before a vertical step"); near(evaluate(step, 4.0, 9.0), 1.0, 0, "At a step the later point applies");
+        AutomationCurve pan; insertPoint(pan, AutomationParameter::pan, { 0.0, -5.0 }); near(pan.points[0].value, -1.0, 0, "Pan clamps to -1");
+        AutomationCurve send; insertPoint(send, AutomationParameter::send, { 0.0, 20.0 }); near(send.points[0].value, 6.0, 0, "Send clamps to +6 dB");
+        AutomationCurve messy; messy.points = { { 3.0, 0.5 }, { std::numeric_limits<double>::quiet_NaN(), 1.0 }, { -2.0, 7.0 } }; normalise(messy, AutomationParameter::volume);
+        require(messy.points == std::vector<AutomationPoint> { { 0.0, 4.0 }, { 3.0, 0.5 } }, "normalise sorts, clamps and drops non-finite points");
+        TrackAutomation t; require(t.empty() && ! t.reads({}), "Default automation is empty");
+        t.sends[5] = c; require(! t.empty() && t.curve({ AutomationParameter::send, 5 }) == c && ! t.reads({ AutomationParameter::send, 5 }), "Points without Read do not read");
+        t.read = true; require(t.reads({ AutomationParameter::send, 5 }) && ! t.reads({ AutomationParameter::volume }), "Read follows only curves with points");
+    });
+
+    suite.run("automation in the engine: volume ramp, pan, send, smoothing, identity and save/load", [&]
+    {
+        using namespace domain;
+        const auto dcClip = [](float value, double seconds)
+        {
+            AudioClip clip; clip.name = "DC"; clip.sourceRate = rate; clip.durationSeconds = seconds; clip.fadeIn = clip.fadeOut = 0.0;
+            clip.audio = std::make_shared<juce::AudioBuffer<float>>(2, (int) std::llround(seconds * rate));
+            for (int c = 0; c < 2; ++c) juce::FloatVectorOperations::fill(clip.audio->getWritePointer(c), value, clip.audio->getNumSamples());
+            return clip;
+        };
+        const float centre = std::cos(juce::MathConstants<float>::pi * 0.25f);
+        // Volume 0 -> 1 over beats 0-8 (4 s at 120 BPM): the gain at sample n is n / 192000.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Auto"); t->clips.push_back(dcClip(0.5f, 6.0)); t->gain = 0.8f;
+            t->automation.volume.points = { { 0.0, 0.0 }, { 8.0, 1.0 } }; t->automation.read = true;
+            engine.play(); const auto out = render(engine, (int) (rate * 5.0));
+            for (int n : { 0, 1, 77, 1000, 48000, 96123, 150001, 191999, 192000, 230000 })
+            {
+                const double expected = 0.5 * centre * juce::jmin(1.0, n / 192000.0);
+                near(out.getSample(0, n), expected, 2.0e-6, "Volume ramp L at sample " + juce::String(n));
+                near(out.getSample(1, n), expected, 2.0e-6, "Volume ramp R at sample " + juce::String(n));
+            }
+            // Beats follow the tempo: at 60 BPM the same curve is half way at 4 s.
+            AudioEngine slow; setup(slow); slow.tempo = 60.0;
+            auto s = slow.addAudioTrack("Lenta"); s->clips.push_back(dcClip(0.5f, 6.0)); s->automation = t->automation;
+            slow.play(); const auto o = render(slow, (int) (rate * 4.5));
+            near(o.getSample(0, (int) (4.0 * rate)), 0.5 * centre * 0.5, 2.0e-6, "Curve in beats at 60 BPM");
+            // Read off: the static fader applies.
+            AudioEngine off; setup(off); off.tempo = 120.0;
+            auto f = off.addAudioTrack("Off"); f->clips.push_back(dcClip(0.5f, 6.0)); f->gain = 0.8f; f->automation = t->automation; f->automation.read = false;
+            off.play(); const auto r = render(off, (int) (rate * 1.0));
+            near(r.getSample(0, 30000), 0.5 * 0.8 * centre, 1.0e-6, "Read off uses the fader");
+        }
+        // Pan -1 -> +1 over beats 0-8; exact at block edges (128 samples).
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Pan"); t->clips.push_back(dcClip(0.5f, 6.0)); t->gain = 1.0f;
+            t->automation.pan.points = { { 0.0, -1.0 }, { 8.0, 1.0 } }; t->automation.read = true;
+            engine.play(); const auto out = render(engine, (int) (rate * 4.5));
+            near(out.getSample(0, 0), 0.5, 1.0e-6, "Pan hard left: L"); near(out.getSample(1, 0), 0.0, 1.0e-6, "Pan hard left: R");
+            near(out.getSample(0, 96000), 0.5 * centre, 2.0e-6, "Pan centre at 2 s: L"); near(out.getSample(1, 96000), 0.5 * centre, 2.0e-6, "Pan centre at 2 s: R");
+            near(out.getSample(0, 200000), 0.0, 1.0e-6, "Pan hard right: L"); near(out.getSample(1, 200000), 0.5, 1.0e-6, "Pan hard right: R");
+        }
+        // Send -60 -> 0 dB (pre-fader) over beats 0-8 to an FX channel; the source fader is down.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Fuente"); t->clips.push_back(dcClip(0.5f, 6.0)); t->gain = 0.0f;
+            auto fx = engine.addTrack(TrackKind::fx, "FX"); fx->gain = 1.0f;
+            requireOk(engine.setSend(*t, 0, fx->id)); t->sends[0].preFader = true; t->sends[0].levelDb = -60.0f;
+            t->automation.sends[0].points = { { 0.0, -60.0 }, { 8.0, 0.0 } }; t->automation.read = true;
+            engine.play(); const auto out = render(engine, (int) (rate * 4.5));
+            near(out.getSample(0, 96000), 0.5 * std::pow(10.0, -30.0 / 20.0) * centre, 1.0e-6, "Send at -30 dB at 2 s");
+            near(out.getSample(0, 200000), 0.5 * centre, 2.0e-6, "Send at 0 dB after the curve");
+            near(out.getSample(0, 0), 0.0, 1.0e-9, "Send at -60 dB is off");
+        }
+        // A vertical step 0 -> 1 at beat 4 is smoothed over one block: no sample jumps.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Salto"); t->clips.push_back(dcClip(0.5f, 6.0));
+            t->automation.volume.points = { { 0.0, 0.0 }, { 4.0, 0.0 }, { 4.0, 1.0 } }; t->automation.read = true;
+            engine.play(); const auto out = render(engine, (int) (rate * 3.0));
+            double jump = 0.0;
+            for (int i = 1; i < out.getNumSamples(); ++i) jump = std::max(jump, (double) std::abs(out.getSample(0, i) - out.getSample(0, i - 1)));
+            require(jump < 0.5 * centre / 100.0 && std::abs(out.getSample(0, 100000) - 0.5f * centre) < 1.0e-6f,
+                    "Step not smoothed: largest sample jump " + juce::String(jump, 6));
+        }
+        // Identity: Read off with curves, or a flat curve at the fader value, renders bit-identical to no automation.
+        {
+            const auto build = [&](AudioEngine& engine, int variant)
+            {
+                setup(engine); engine.tempo = 97.0;
+                auto a = engine.addAudioTrack("A"); a->clips.push_back(dcClip(0.3f, 2.0)); a->gain = 0.8f; a->pan = 0.2f;
+                auto fx = engine.addTrack(TrackKind::fx, "FX"); fx->gain = 0.6f;
+                requireOk(engine.setSend(*a, 0, fx->id)); a->sends[0].levelDb = -6.0f;
+                if (variant == 1) { a->automation.volume.points = { { 0.0, 0.1 }, { 4.0, 2.0 } }; a->automation.sends[0].points = { { 1.0, -20.0 } }; }
+                if (variant == 2) { a->automation.read = true; a->automation.volume.points = { { 0.0, 0.8 } }; a->automation.pan.points = { { 3.0, 0.2 } }; a->automation.sends[0].points = { { 0.0, -6.0 } }; }
+                engine.play(); return render(engine, (int) (rate * 2.5));
+            };
+            AudioEngine e0, e1, e2; const auto plain = build(e0, 0), readOff = build(e1, 1), flat = build(e2, 2);
+            bool same1 = true, same2 = true;
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < plain.getNumSamples(); ++i)
+                {
+                    same1 = same1 && plain.getSample(c, i) == readOff.getSample(c, i);
+                    same2 = same2 && plain.getSample(c, i) == flat.getSample(c, i);
+                }
+            require(same1 && same2 && peak(plain) > 0.05, "Renders without active automation must be bit-identical");
+        }
+        // Project file: automation survives save/load; older projects and empty automation write nothing.
+        {
+            AudioEngine source; setup(source);
+            auto a = source.addAudioTrack("A"); auto fx = source.addTrack(TrackKind::fx, "FX"); requireOk(source.setSend(*a, 3, fx->id));
+            a->automation.read = true; a->automation.write = true;
+            a->automation.volume.points = { { 0.0, 0.25 }, { 2.5, 1.5 }, { 2.5, 0.5 } };
+            a->automation.pan.points = { { 1.0, -0.75 } };
+            a->automation.sends[3].points = { { 0.5, -12.5 }, { 9.0, 3.0 } };
+            const auto file = dir.getChildFile("automation.silente"); requireOk(source.saveProject(file));
+            AudioEngine restored; setup(restored); requireOk(restored.loadProject(file));
+            require(restored.tracks.size() == 2 && restored.tracks[0]->automation == a->automation && restored.tracks[1]->automation.empty(), "Automation changed after save/load");
+            auto json = juce::JSON::parse(file);
+            for (auto& t : *json["tracks"].getArray()) t.getDynamicObject()->removeProperty("automation");
+            const auto old = dir.getChildFile("automation-old.silente"); require(old.replaceWithText(juce::JSON::toString(json)), "Cannot write old project");
+            requireOk(restored.loadProject(old));
+            require(restored.tracks[0]->automation.empty(), "Old project must read without automation");
+            AudioEngine plain; setup(plain); plain.addAudioTrack("Plain");
+            const auto plainFile = dir.getChildFile("automation-plain.silente"); requireOk(plain.saveProject(plainFile));
+            require(! plainFile.loadFileAsString().contains("automation"), "A project without automation must not write it");
         }
     });
 

@@ -18,6 +18,8 @@
 #include "../src/app/KeyCommands.h"
 #include "../src/ui/midi/PianoRoll.h"
 #include "../src/ui/tempo/TempoMapPanel.h"
+#include "../src/ui/automation/AutomationLane.h"
+#include "../src/ui/mixconsole/MixConsole.h"
 #include <cmath>
 #include <iostream>
 
@@ -52,7 +54,7 @@ public:
         runSettingsUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});keyCommandChecks();
         runMarkerUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runAddTrackUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
-        pianoRollChecks();tempoMapChecks();
+        pianoRollChecks();tempoMapChecks();automationChecks();
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {
@@ -111,6 +113,73 @@ private:
         view.runCommand("redo");expect(engine.tempoMap.signatures.empty(),"tempo map: redo removes it again");
         if(auto* window=panel->findParentComponentOfClass<DocumentWindow>())window->setVisible(false);
         engine.clear();
+    }
+    // Automation (etapa 6): lane add/move/delete with one undo step per gesture, R/W modes,
+    // undo through the project history, and the MixConsole fader following the curve / writing.
+    void automationChecks()
+    {
+        engine.clear();engine.tempo=120;engine.positionSeconds=0;auto track=engine.addAudioTrack("Automation test");
+        auto* lane=dynamic_cast<ui::AutomationLane*>(find(view,"automation-lane"));
+        expect(lane!=nullptr,"Automation lane is reachable in the lower zone");if(!lane)return;
+        const auto savedBefore=lane->beforeEdit,savedChanged=lane->changed;const auto savedTimeline=lane->timeline;const auto savedBounds=lane->getBounds();
+        int undoSteps=0,changes=0;lane->beforeEdit=[&]{++undoSteps;};lane->changed=[&]{++changes;};
+        lane->timeline=[](double& pps,double& scroll){pps=100.0;scroll=0.0;};lane->header=250;lane->setBounds(0,0,900,208);
+        lane->setTrack(0);lane->setTarget({domain::AutomationParameter::pan});
+        const auto points=[&]{const ScopedLock lock(engine.modelLock);return engine.tracks[0]->automation.pan.points;};
+        // 100 px/s from x 250: beat 1 -> x 300, beat 2 -> x 350, beat 3 -> x 400 (120 BPM); pan +0.5 -> y 56, -0.5 -> y 152 (curve area 8..200).
+        lane->mouseDown(mouse(*lane,350.f,56.f));lane->mouseUp(mouse(*lane,350.f,56.f));
+        auto p=points();
+        expect(p.size()==1&&std::abs(p[0].beat-2.0)<1e-9&&std::abs(p[0].value-0.5)<1e-9&&undoSteps==1&&changes==1,"Automation lane: click adds a pan point (beat 2, +0.5) with one undo step");
+        lane->mouseDown(mouse(*lane,350.f,56.f));lane->mouseDrag(mouse(*lane,380.f,100.f,true));lane->mouseDrag(mouse(*lane,400.f,152.f,true));lane->mouseUp(mouse(*lane,400.f,152.f));
+        p=points();
+
+        expect(p.size()==1&&std::abs(p[0].beat-3.0)<1e-9&&std::abs(p[0].value+0.5)<1e-9&&undoSteps==2,"Automation lane: dragging a point moves it to beat 3, -0.5 with one undo step");
+        lane->mouseDown(mouse(*lane,300.f,104.f));lane->mouseUp(mouse(*lane,300.f,104.f));p=points();
+        const bool added=p.size()==2&&std::abs(p[0].beat-1.0)<1e-9&&std::abs(p[0].value)<1e-9;
+        lane->mouseDown(mouse(*lane,300.f,104.f,false,ModifierKeys::altModifier));p=points();
+        expect(added&&p.size()==1&&std::abs(p[0].beat-3.0)<1e-9&&undoSteps==4,"Automation lane: a second point is inserted in order and Option+click removes it");
+        lane->mouseDown(mouse(*lane,400.f,152.f));lane->mouseUp(mouse(*lane,400.f,152.f));const int beforeDelete=undoSteps;
+        lane->keyPressed(KeyPress(KeyPress::deleteKey));
+        expect(points().empty()&&undoSteps==beforeDelete+1&&lane->selected==-1,"Automation lane: selecting a point (no undo step) and Delete removes it with one undo step");
+        if(auto* w=dynamic_cast<TextButton*>(find(*lane,"automation-write"))){w->setToggleState(true,dontSendNotification);if(w->onClick)w->onClick();}
+        expect(track->automation.write&&track->automation.read&&undoSteps==beforeDelete+2,"Automation lane: W turns Write on and also Read, with one undo step");
+        if(auto* r=dynamic_cast<TextButton*>(find(*lane,"automation-read"))){r->setToggleState(false,dontSendNotification);if(r->onClick)r->onClick();}
+        expect(!track->automation.write&&!track->automation.read,"Automation lane: R off turns Write off too");
+        lane->beforeEdit=savedBefore;lane->changed=savedChanged;
+        // Real undo through the project history: add a point, then Undo removes it and Redo restores it.
+        lane->setTarget({domain::AutomationParameter::volume});
+        const float yHalf=lane->valueToY(0.5);
+        lane->mouseDown(mouse(*lane,400.f,yHalf));lane->mouseUp(mouse(*lane,400.f,yHalf));
+        const auto volume=[&]{const ScopedLock lock(engine.modelLock);return engine.tracks[0]->automation.volume.points;};
+        const bool drawn=volume().size()==1&&std::abs(volume()[0].beat-3.0)<1e-9&&std::abs(volume()[0].value-0.5)<1e-3;
+        view.runCommand("undo");const bool undone=volume().empty();view.runCommand("redo");
+        expect(drawn&&undone&&volume().size()==1,"Automation lane: Undo removes the drawn volume point and Redo restores it");
+        {const ScopedLock lock(engine.modelLock);track->automation.volume.points={{0.0,0.1},{2.0,1.0},{4.0,1.0},{6.0,0.3},{8.0,0.6}};track->automation.read=true;}
+        lane->setTarget({domain::AutomationParameter::volume});lane->repaint();capture(*lane,output.getChildFile("automation-lane.png"));
+        lane->timeline=savedTimeline;lane->setBounds(savedBounds);
+        // MixConsole: R/W buttons, fader following the curve at the cursor, W writing at the cursor when stopped.
+        {const ScopedLock lock(engine.modelLock);track->automation.volume.points={{0.0,0.25},{8.0,1.0}};track->automation.read=false;track->gain=0.8f;}
+        engine.positionSeconds=2.0; // beat 4 -> 0.625
+        int undos=0,dirty=0;ui::MixConsoleHooks hooks;hooks.beforeEdit=[&undos]{++undos;};hooks.changed=[&dirty]{++dirty;};hooks.selected=[]{return 0;};
+        {
+            ui::MixConsole console(engine,manager,hooks);console.setSize(1200,760);
+            auto* fader=dynamic_cast<Slider*>(find(console,"mix-fader-0"));auto* read=dynamic_cast<TextButton*>(find(console,"mix-read-0"));
+            expect(fader&&read&&find(console,"mix-write-0")&&std::abs(fader->getValue()-Decibels::gainToDecibels(0.8))<0.05,"MixConsole strip has R/W buttons; with Read off the fader shows the static gain");
+            if(read){read->setToggleState(true,dontSendNotification);if(read->onClick)read->onClick();}
+            expect(track->automation.read&&undos==1&&fader&&std::abs(fader->getValue()-Decibels::gainToDecibels(0.625))<0.05,"MixConsole: R turns Read on (one undo step) and the fader follows the curve at the cursor (0.625 at beat 4)");
+            capture(console,output.getChildFile("automation-console.png"));
+        }
+        {
+            {const ScopedLock lock(engine.modelLock);track->automation.write=true;track->automation.volume.points.clear();}
+            engine.positionSeconds=1.5;engine.playing=false; // beat 3
+            ui::MixConsole console(engine,manager,hooks);console.setSize(1200,760);
+            if(auto* fader=dynamic_cast<Slider*>(find(console,"mix-fader-0")))fader->setValue(-6.0,sendNotificationSync);
+            if(auto* panSlider=dynamic_cast<Slider*>(find(console,"mix-pan-0")))panSlider->setValue(-40.0,sendNotificationSync);
+            const auto v=track->automation.volume.points;const auto pn=track->automation.pan.points;
+            expect(v.size()==1&&std::abs(v[0].beat-3.0)<1e-9&&std::abs(v[0].value-Decibels::decibelsToGain(-6.0))<1e-4&&pn.size()==1&&std::abs(pn[0].value+0.4)<1e-6,
+                   "MixConsole: with W and the transport stopped, the fader and pan write a point at the cursor (beat 3)");
+        }
+        engine.positionSeconds=0;engine.clear();
     }
     void pianoRollChecks()
     {

@@ -5,6 +5,7 @@
 #include "../plugins/PluginSlotButton.h"
 #include "../theme/Drawing.h"
 #include "../project/ZoneSplitter.h"
+#include "../../app/AutomationCommands.h"
 
 namespace silente::ui
 {
@@ -66,7 +67,8 @@ public:
         if (index >= 0) track = engine.tracks[(size_t) index];
         const auto id = juce::String(index);
         mute.setComponentID("mix-mute-" + id); fader.setComponentID("mix-fader-" + id); volume.setComponentID("mix-volume-" + id); pan.setComponentID("mix-pan-" + id);
-        for (auto* c : std::initializer_list<juce::Component*> { &input, &output, &instrument, &low, &mid, &high, &pan, &mute, &solo, &arm, &monitor, &edit, &fader, &volume })
+        autoRead.setComponentID("mix-read-" + id); autoWrite.setComponentID("mix-write-" + id);
+        for (auto* c : std::initializer_list<juce::Component*> { &input, &output, &instrument, &low, &mid, &high, &pan, &mute, &solo, &arm, &monitor, &edit, &fader, &volume, &autoRead, &autoWrite })
             addAndMakeVisible(c);
         addAndMakeVisible(inserts);
         addAndMakeVisible(edge); edge.setComponentID("mix-width-" + id);
@@ -94,9 +96,22 @@ public:
             level.setScrollWheelEnabled(false); // Wheel navigation must not change a send level.
             level.setColour(juce::Slider::rotarySliderOutlineColourId, line);
             level.onDragStart = [this] { edited(); };
-            level.onValueChange = [this, k] { if (! syncing && track) { track->sends[(size_t) k].levelDb = (float) sendLevels[(size_t) k].getValue(); changed(); } };
+            level.onValueChange = [this, k]
+            {
+                if (syncing || ! track) return;
+                const float db = (float) sendLevels[(size_t) k].getValue();
+                track->sends[(size_t) k].levelDb = db;
+                app::writeAtCursor(engine, *track, { app::AutomationParameter::send, k }, db);
+                changed();
+            };
         }
-        for (auto* b : { &mute, &solo, &arm, &monitor }) b->setClickingTogglesState(true);
+        for (auto* b : { &mute, &solo, &arm, &monitor, &autoRead, &autoWrite }) b->setClickingTogglesState(true);
+        // Automation R/W (Cubase habit): green Read, red Write.
+        autoRead.setButtonText("R"); autoWrite.setButtonText("W");
+        autoRead.setColour(juce::TextButton::buttonOnColourId, automationRead.withAlpha(.8f));
+        autoWrite.setColour(juce::TextButton::buttonOnColourId, automationWrite.withAlpha(.8f));
+        autoRead.setTooltip(i18n::tr("Leer automatización: volumen, panorama y envíos siguen sus curvas"));
+        autoWrite.setTooltip(i18n::tr("Escribir automatización: con el transporte parado, mover un control escribe un punto en el cursor"));
         mute.setButtonText("M"); solo.setButtonText("S"); arm.setButtonText("R"); edit.setButtonText("e");
         monitor.setButtonText(juce::String::fromUTF8("◉"));
         mute.setColour(juce::TextButton::buttonOnColourId, muteColour);
@@ -137,7 +152,8 @@ public:
         {
             if (syncing) return;
             const float db = (float) fader.getValue(), gain = db <= minimumDb ? 0.0f : juce::Decibels::decibelsToGain(db);
-            if (track) track->gain = gain; else engine.masterGain = gain;
+            if (track) { track->gain = gain; app::writeAtCursor(engine, *track, { app::AutomationParameter::volume }, gain); }
+            else engine.masterGain = gain;
             changed();
         };
         volume.onTextChange = [this]
@@ -146,7 +162,15 @@ public:
             const auto text = volume.getText().replace(",", ".").retainCharacters("-0123456789.");
             fader.setValue(text.isEmpty() ? minimumDb : juce::jlimit((double) minimumDb, (double) maximumDb, text.getDoubleValue()), juce::sendNotificationSync);
         };
-        pan.onValueChange = [this] { if (! syncing && track) { track->pan = (float) pan.getValue() / 100.0f; changed(); } };
+        pan.onValueChange = [this]
+        {
+            if (syncing || ! track) return;
+            track->pan = (float) pan.getValue() / 100.0f;
+            app::writeAtCursor(engine, *track, { app::AutomationParameter::pan }, track->pan.load());
+            changed();
+        };
+        autoRead.onClick = [this] { if (track) { edited(); app::setReadMode(engine, *track, autoRead.getToggleState()); changed(); refresh(); } };
+        autoWrite.onClick = [this] { if (track) { edited(); app::setWriteMode(engine, *track, autoWrite.getToggleState()); changed(); refresh(); } };
         low.onValueChange = [this] { if (! syncing && track) { track->lowGainDb = (float) low.getValue(); changed(); } };
         mid.onValueChange = [this] { if (! syncing && track) { track->midGainDb = (float) mid.getValue(); changed(); } };
         high.onValueChange = [this] { if (! syncing && track) { track->highGainDb = (float) high.getValue(); changed(); } };
@@ -162,7 +186,7 @@ public:
         instrument.onOptions = [this] { plugins.showInstrument(index, &instrument); };
         if (! track)
         {
-            for (auto* c : std::initializer_list<juce::Component*> { &input, &instrument, &low, &mid, &high, &pan, &mute, &solo, &arm, &monitor, &edit })
+            for (auto* c : std::initializer_list<juce::Component*> { &input, &instrument, &low, &mid, &high, &pan, &mute, &solo, &arm, &monitor, &edit, &autoRead, &autoWrite })
                 c->setVisible(false);
             inserts.setVisible(false);
             for (auto& b : sendTargets) b.setVisible(false);
@@ -185,12 +209,15 @@ public:
         if (track) meters.update(track->peakL.load(), track->peakR.load());
         else meters.update(engine.masterPeakL.load(), engine.masterPeakR.load());
         syncing = true;
-        const float gain = track ? track->gain.load() : engine.masterGain.load();
+        // In Read mode the fader, pan and send knobs follow the curves at the project cursor.
+        const float gain = track ? (float) app::displayedValue(engine, *track, { app::AutomationParameter::volume }) : engine.masterGain.load();
         if (! fader.isMouseButtonDown()) fader.setValue(juce::jmax(minimumDb, toDb(gain)), juce::dontSendNotification);
         if (! volume.isBeingEdited()) volume.setText(dbText((float) fader.getValue()), juce::dontSendNotification);
         if (track)
         {
-            if (! pan.isMouseButtonDown()) pan.setValue(track->pan.load() * 100.0, juce::dontSendNotification);
+            if (! pan.isMouseButtonDown()) pan.setValue(app::displayedValue(engine, *track, { app::AutomationParameter::pan }) * 100.0, juce::dontSendNotification);
+            autoRead.setToggleState(track->automation.read, juce::dontSendNotification);
+            autoWrite.setToggleState(track->automation.write, juce::dontSendNotification);
             if (! low.isMouseButtonDown()) low.setValue(track->lowGainDb.load(), juce::dontSendNotification);
             if (! mid.isMouseButtonDown()) mid.setValue(track->midGainDb.load(), juce::dontSendNotification);
             if (! high.isMouseButtonDown()) high.setValue(track->highGainDb.load(), juce::dontSendNotification);
@@ -215,8 +242,9 @@ public:
                 b.setAlpha(fx && ! send.enabled.load() ? .45f : 1.0f);
                 b.setTooltip(juce::String(k + 1) + (fx ? " · " + fx->name + "\n" + i18n::tr("Envío: clic para destino, pre/post y activar") : " · " + i18n::tr("Añadir envío a un canal FX")));
                 sendLevels[(size_t) k].setEnabled(fx != nullptr);
-                if (! sendLevels[(size_t) k].isMouseButtonDown()) sendLevels[(size_t) k].setValue(send.levelDb.load(), juce::dontSendNotification);
-                sendLevels[(size_t) k].setTooltip(fx ? i18n::tr("Nivel de envío: ") + dbText(send.levelDb.load()) + " dB" : juce::String());
+                const float level = (float) app::displayedValue(engine, *track, { app::AutomationParameter::send, k });
+                if (! sendLevels[(size_t) k].isMouseButtonDown()) sendLevels[(size_t) k].setValue(level, juce::dontSendNotification);
+                sendLevels[(size_t) k].setTooltip(fx ? i18n::tr("Nivel de envío: ") + dbText(level) + " dB" : juce::String());
             }
             const int instrumentSlot = instrumentSlotIndex(*track);
             instrument.setButtonText(instrumentSlot >= 0 ? track->plugins[(size_t) instrumentSlot]->description.name : i18n::tr("Sintetizador interno"));
@@ -291,6 +319,11 @@ public:
             row = f.removeFromTop(22);
             arm.setBounds(row.removeFromLeft(b)); row.removeFromLeft(3); monitor.setBounds(row.removeFromLeft(b));
         }
+        // Automation R/W row under the channel buttons.
+        f.removeFromTop(3);
+        row = f.removeFromTop(20);
+        const int half = (row.getWidth() - 3) / 2;
+        autoRead.setBounds(row.removeFromLeft(half)); row.removeFromLeft(3); autoWrite.setBounds(row);
         f.removeFromTop(6);
         auto readouts = f.removeFromBottom(22);
         volume.setBounds(readouts.removeFromLeft(readouts.getWidth() / 2).reduced(1, 0));
@@ -399,7 +432,7 @@ private:
     int index, widthAtStart = 0;
     std::shared_ptr<Track> track;
     ZoneSplitter edge { true };
-    juce::TextButton input, output, mute, solo, arm, monitor, edit;
+    juce::TextButton input, output, mute, solo, arm, monitor, edit, autoRead, autoWrite;
     ui::PluginSlotButton instrument;
     ui::InsertRack inserts;
     std::array<juce::TextButton, Track::sendCount> sendTargets;

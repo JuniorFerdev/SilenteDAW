@@ -4,9 +4,11 @@
 #include "plugins/PluginSelection.h"
 #include "persistence/TrackDataJson.h"
 #include "persistence/TempoMapJson.h"
+#include "persistence/AutomationJson.h"
 #include "audio/BandlimitedInterpolator.h"
 #include "audio/RecordingModes.h"
 #include "audio/FadeCurves.h"
+#include "audio/AutomationRamp.h"
 #include <array>
 #include <cmath>
 #include <limits>
@@ -85,9 +87,14 @@ struct Track::Runtime
     bool destinationSoloed = false;
     // Per block: index of the clip heard at each sample (later clips cover earlier ones).
     std::vector<int> owner;
+    // Automation: fader, pan and send values applied at the end of the last segment (NaN until
+    // the first segment after prepareTrack). See audio::automationRamp.
+    float lastGain = std::numeric_limits<float>::quiet_NaN(), lastPan = std::numeric_limits<float>::quiet_NaN();
+    std::array<float, Track::sendCount> lastSendDb;
     Runtime()
     {
         sendIndex.fill(-1);
+        lastSendDb.fill(std::numeric_limits<float>::quiet_NaN());
         for (int i = 0; i < 16; ++i) synth.addVoice(new ToneVoice());
         synth.addSound(new ToneSound());
         midi.ensureSize(65536);
@@ -343,6 +350,8 @@ void AudioEngine::prepareTrack(Track& track)
     rt.synth.allNotesOff(0, false);
     rt.resetNotes = true;
     rt.lowState[0] = rt.lowState[1] = rt.highState[0] = rt.highState[1] = 0.0f;
+    rt.lastGain = rt.lastPan = std::numeric_limits<float>::quiet_NaN();
+    rt.lastSendDb.fill(std::numeric_limits<float>::quiet_NaN());
     for (auto& slot : track.plugins)
         if (slot->processor)
         {
@@ -498,6 +507,8 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         maximumLatency = juce::jmax(maximumLatency, latency);
     }
     playHead->update(start, timeline);
+    // Automation is evaluated at the segment edges (beats follow the tempo map).
+    const double automationFrom = timeline.beatsAt(start), automationTo = transportPlaying ? timeline.beatsAt(end) : automationFrom;
     // Routing: resolve each channel's output (group) and sends (FX), then give every bus a rank
     // above all channels feeding it. Rendering rank by rank guarantees sources fill a bus
     // before the bus itself is processed. No allocation: state lives in each track's runtime.
@@ -649,11 +660,27 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         }
         // Channels fed by a soloed track stay open (solo-implied mute does not apply to buses).
         const bool audible = !track->mute.load() && (!hasSolo || track->solo.load() || track->isBus() || rt.destinationSoloed);
-        const float gain = audible ? juce::jlimit(0.0f, 4.0f, finiteGain(track->gain.load())) : 0.0f;
-        const float pan = juce::jlimit(-1.0f, 1.0f, finiteGain(track->pan.load()));
+        // Fader and pan: the static value, or the curve in Read mode, ramped across the segment.
+        const auto& automation = track->automation;
+        using domain::AutomationParameter;
+        const auto volumeRamp = audio::automationRamp(rt.lastGain, automation.volume, automation.reads({ AutomationParameter::volume }),
+                                                      automationFrom, automationTo, juce::jlimit(0.0f, 4.0f, finiteGain(track->gain.load())));
+        const auto panRamp = audio::automationRamp(rt.lastPan, automation.pan, automation.reads({ AutomationParameter::pan }),
+                                                   automationFrom, automationTo, juce::jlimit(-1.0f, 1.0f, finiteGain(track->pan.load())));
         // Equal-power pan, -3 dB at centre. Stereo channels are balanced, not summed.
-        const float gains[] { gain * std::cos((pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f),
-                              gain * std::sin((pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f) };
+        const auto channelGains = [](float g, float p, float* out)
+        {
+            out[0] = g * std::cos((p + 1.0f) * juce::MathConstants<float>::pi * 0.25f);
+            out[1] = g * std::sin((p + 1.0f) * juce::MathConstants<float>::pi * 0.25f);
+        };
+        float gains[2] {}, gainStep[2] {}, gainsFrom[2] {};
+        channelGains(audible ? volumeRamp.to : 0.0f, panRamp.to, gains);
+        const bool faderRamp = ! volumeRamp.constant() || ! panRamp.constant();
+        if (faderRamp)
+        {
+            channelGains(audible ? volumeRamp.from : 0.0f, panRamp.from, gainsFrom);
+            for (int ch = 0; ch < 2; ++ch) gainStep[ch] = (gains[ch] - gainsFrom[ch]) / static_cast<float>(samples);
+        }
         const float low = juce::Decibels::decibelsToGain(juce::jlimit(-24.0f, 24.0f, finiteGain(track->lowGainDb.load())));
         const float mid = juce::Decibels::decibelsToGain(juce::jlimit(-24.0f, 24.0f, finiteGain(track->midGainDb.load())));
         const float high = juce::Decibels::decibelsToGain(juce::jlimit(-24.0f, 24.0f, finiteGain(track->highGainDb.load())));
@@ -666,16 +693,22 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         float peaks[2] {};
         // Post-fader output goes to the group bus or the Stereo Out mix. Sends tap the signal
         // before the fader (pre: after inserts and EQ, follows mute) or after fader and pan.
-        float sendGain[Track::sendCount] {};
-        bool sendPre[Track::sendCount] {};
+        float sendGain[Track::sendCount] {}, sendFrom[Track::sendCount] {}, sendStep[Track::sendCount] {};
+        bool sendPre[Track::sendCount] {}, sendRamp[Track::sendCount] {};
         int activeSends[Track::sendCount] {}, activeSendCount = 0;
         for (int k = 0; k < Track::sendCount; ++k)
         {
             const auto& send = track->sends[static_cast<size_t>(k)];
             sendPre[k] = send.preFader.load();
             const float level = juce::jlimit(-60.0f, 6.0f, finiteGain(send.levelDb.load()));
-            sendGain[k] = rt.sendIndex[static_cast<size_t>(k)] < 0 || level <= -60.0f ? 0.0f : juce::Decibels::decibelsToGain(level) * (sendPre[k] && ! audible ? 0.0f : 1.0f);
-            if (sendGain[k] > 0.0f) activeSends[activeSendCount++] = k;
+            const auto ramp = audio::automationRamp(rt.lastSendDb[static_cast<size_t>(k)], automation.sends[static_cast<size_t>(k)],
+                                                    automation.reads({ AutomationParameter::send, k }), automationFrom, automationTo, level);
+            const auto toGain = [&](float db) { return rt.sendIndex[static_cast<size_t>(k)] < 0 || db <= -60.0f ? 0.0f : juce::Decibels::decibelsToGain(db) * (sendPre[k] && ! audible ? 0.0f : 1.0f); };
+            sendGain[k] = toGain(ramp.to);
+            sendFrom[k] = ramp.constant() ? sendGain[k] : toGain(ramp.from);
+            sendRamp[k] = sendFrom[k] != sendGain[k];
+            if (sendRamp[k]) sendStep[k] = (sendGain[k] - sendFrom[k]) / static_cast<float>(samples);
+            if (sendGain[k] > 0.0f || sendFrom[k] > 0.0f) activeSends[activeSendCount++] = k;
         }
         for (int ch = 0; ch < 2; ++ch)
         {
@@ -699,12 +732,12 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
                 const int readIndex = (writeIndex + rt.delay.getNumSamples() - compensation) % rt.delay.getNumSamples();
                 rt.delay.setSample(ch, writeIndex, finiteGain(eq));
                 const float preFader = rt.delay.getSample(ch, readIndex);
-                const float delayed = preFader * gains[ch];
+                const float delayed = preFader * (faderRamp ? gainsFrom[ch] + gainStep[ch] * static_cast<float>(i) : gains[ch]);
                 dst[i] += delayed;
                 for (int n = 0; n < activeSendCount; ++n)
                 {
                     const int k = activeSends[n];
-                    sendDst[k][i] += (sendPre[k] ? preFader : delayed) * sendGain[k];
+                    sendDst[k][i] += (sendPre[k] ? preFader : delayed) * (sendRamp[k] ? sendFrom[k] + sendStep[k] * static_cast<float>(i) : sendGain[k]);
                 }
                 peaks[ch] = juce::jmax(peaks[ch], std::abs(delayed));
             }
@@ -1067,6 +1100,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
         set(t, "id", track->id); set(t, "name", track->name); set(t, "colour", track->colour.toString()); set(t, "stripWidth", track->stripWidth);
         set(t, "kind", trackKindId(track->kind)); set(t, "isMidi", track->isMidi); set(t, "gain", track->gain.load()); set(t, "pan", track->pan.load());
         set(t,"trackData",persistence::writeTrackData(track->data));
+        if (! track->automation.empty()) set(t, "automation", persistence::writeAutomation(track->automation));
         set(t, "mute", track->mute.load()); set(t, "solo", track->solo.load());
         set(t,"inputLeft",track->inputLeft);set(t,"inputRight",track->inputRight);
         set(t, "output", track->output);
@@ -1168,6 +1202,7 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
         track->kind = trackKindFromId(t.getProperty("kind", {}).toString(), static_cast<bool>(t["isMidi"]));
         track->isMidi = track->kind == TrackKind::instrument || track->kind == TrackKind::midi;
         track->data=persistence::readTrackData(t.getProperty("trackData",{}));
+        track->automation = persistence::readAutomation(t.getProperty("automation", {}));
         track->output = t.getProperty("output", {}).toString();
         if (auto* sends = t["sends"].getArray())
             for (int k = 0; k < juce::jmin(Track::sendCount, sends->size()); ++k)

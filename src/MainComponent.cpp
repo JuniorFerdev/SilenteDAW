@@ -24,6 +24,7 @@
 #include "ui/project/MarkerInspector.h"
 #include "ui/project/AddTrackDialog.h"
 #include "ui/midi/PianoRoll.h"
+#include "ui/automation/AutomationLane.h"
 #include "audio/FadeCurves.h"
 #include "audio/RangeEdit.h"
 #include "audio/EventEdit.h"
@@ -792,6 +793,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     SilenteLookAndFeel look;
     Arrangement arrangement;
     ui::PianoRoll piano;
+    ui::AutomationLane automationLane { engine }; // lower zone «Automatización»
     ui::MarkerInspector markerInspector;
     ui::MarkerInfoLine markerInfo;
     Mixer mixer;
@@ -799,7 +801,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     RightRack rightRack;
     juce::TextButton play { juce::String::fromUTF8("▶") }, stop { juce::String::fromUTF8("■") }, record { juce::String::fromUTF8("●") }, rewind { juce::String::fromUTF8("|‹") }, loop { i18n::tr("Ciclo") }, click { i18n::tr("Click") };
     juce::TextButton importButton { i18n::tr("Importar") }, exportButton, settings { i18n::tr("Audio") }, addTrackButton { "+" };
-    juce::TextButton mixerTab { i18n::tr("Mezclador") }, pianoTab { i18n::tr("Piano roll") }, undoButton { juce::String::fromUTF8("↶") }, redoButton { juce::String::fromUTF8("↷") }, splitButton { i18n::tr("Dividir") }, duplicateButton { i18n::tr("Duplicar") }, snapButton { i18n::tr("Rejilla 1/16") }, zoomOut { juce::String::fromUTF8("−") }, zoomIn { "+" };
+    juce::TextButton mixerTab { i18n::tr("Mezclador") }, pianoTab { i18n::tr("Piano roll") }, automationTab { i18n::tr("Automatización") }, undoButton { juce::String::fromUTF8("↶") }, redoButton { juce::String::fromUTF8("↷") }, splitButton { i18n::tr("Dividir") }, duplicateButton { i18n::tr("Duplicar") }, snapButton { i18n::tr("Rejilla 1/16") }, zoomOut { juce::String::fromUTF8("−") }, zoomIn { "+" };
     juce::TextButton mute { i18n::tr("Mute") }, solo { i18n::tr("Solo") }, arm { i18n::tr("Grabar") }, monitor { i18n::tr("Monitor") }, scan { i18n::tr("Buscar plugins") }, browser { i18n::tr("Instrumentos y efectos") }, demo { i18n::tr("Abrir sesión de ejemplo") };
     juce::TextButton selectTool{i18n::tr("Selección")},cutTool{i18n::tr("Dividir")},eraseTool{i18n::tr("Borrador")},drawTool{i18n::tr("Dibujar")},trackColour{i18n::tr("Color de pista")};
     juce::TextButton glueTool,zoomTool,muteTool,playTool,rangeTool;
@@ -889,7 +891,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     juce::ShapeButton clickOptions{"metronome-options",muted,ink,accent};juce::TextButton tapButton{"TAP"};
     std::function<void()> afterSave;
     bool visibilityVisible=false;
-    bool dirty = false, pianoVisible = false, syncing = false, closing = false;
+    bool dirty = false, pianoVisible = false, automationVisible = false, syncing = false, closing = false;
     int selected = 0;
     juce::String notice { i18n::tr("Listo. Pulsa Espacio para escuchar la sesión.") };
     juce::StringArray recentFiles;
@@ -903,6 +905,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         domain::TrackData data;
         float gain, pan, low, mid, high; bool mute, solo, armed, monitor;int inputLeft,inputRight;
         juce::String output; struct Send { juce::String target; float level; bool pre, on; }; std::array<Send,Track::sendCount> sends;
+        domain::TrackAutomation automation;
     };
     struct Snapshot { std::vector<TrackState> tracks; domain::TempoMap tempoMap; double tempo, loopStart, loopEnd; float master; bool looping; juce::String action,activeMarker; juce::Time time; };
     std::deque<Snapshot> undoStack, redoStack;
@@ -1040,7 +1043,10 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         addTrackButton.setTooltip(i18n::tr("Añadir pista"));addTrackButton.setComponentID("add-track");
         addTrackButton.onClick=[this]{showAddTrack({});};
         arrangement.addTracks=[this]{showAddTrack({});};
-        mixerTab.onClick=[this]{setPiano(false);};pianoTab.onClick=[this]{setPiano(true);};
+        mixerTab.onClick=[this]{setPiano(false);};pianoTab.onClick=[this]{setPiano(true);};automationTab.onClick=[this]{setAutomation();};
+        automationTab.setComponentID("lower-automation-tab");automationTab.setClickingTogglesState(true);owner.addAndMakeVisible(automationTab);owner.addAndMakeVisible(automationLane);automationLane.setVisible(false);
+        automationLane.beforeEdit=[this]{pushUndo(i18n::tr("Editar automatización"));};automationLane.changed=[this]{markDirty();};
+        automationLane.header=Arrangement::header;automationLane.timeline=[this](double& pps,double& scroll){pps=arrangement.pixelsPerSecond;scroll=arrangement.scrollSeconds;};
         undoButton.onClick=[this]{undo(false);};redoButton.onClick=[this]{undo(true);};splitButton.onClick=[this]{arrangement.splitSelected();};duplicateButton.onClick=[this]{if(pianoVisible)duplicateNote();else arrangement.duplicateSelected();};
         // Ajustar act./desact., Tipo de ajuste and Tipo de rejilla (manual pp. 65, 108–112).
         setButtonIcon(snapButton,ToolIcon::snap);snapButton.setTooltip(i18n::tr("Ajustar act./desact."));
@@ -1208,7 +1214,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     void setupSlider(juce::Slider& s,double a,double b,double step,juce::Slider::SliderStyle style,const juce::String& suffix,double reset)
     {s.setSliderStyle(style);s.setRange(a,b,step);s.setTextBoxStyle(style==juce::Slider::RotaryHorizontalVerticalDrag?juce::Slider::TextBoxBelow:juce::Slider::TextBoxRight,false,style==juce::Slider::RotaryHorizontalVerticalDrag?55:64,20);s.setTextValueSuffix(suffix);s.setDoubleClickReturnValue(true,reset);}
     std::shared_ptr<Track> currentTrack()const {return selected>=0&&selected<(int)engine.tracks.size()?engine.tracks[(size_t)selected]:nullptr;}
-    void select(int i){if(selected!=i){arrangement.selectedMarker.clear();arrangement.selectedClip=-1;}selected=i;arrangement.selectedTrack=i;piano.track=i;piano.clearSelection();owner.resized();syncInspector();owner.repaint();}
+    void select(int i){if(selected!=i){arrangement.selectedMarker.clear();arrangement.selectedClip=-1;}selected=i;arrangement.selectedTrack=i;piano.track=i;piano.clearSelection();automationLane.setTrack(i);owner.resized();syncInspector();owner.repaint();}
     void markDirty(){dirty=true;owner.repaint();}
     void changeListenerCallback(juce::ChangeBroadcaster*)override{if(addTrackWindow&&addTrackWindow->isVisible())updateTrackDialogOptions();}
     void updateTrackDialogOptions()
@@ -1320,7 +1326,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         const juce::ScopedLock lock(engine.modelLock);Snapshot s;s.tempo=engine.tempo;s.tempoMap=engine.tempoMap;s.master=engine.masterGain;s.loopStart=engine.loopStart;s.loopEnd=engine.loopEnd;s.looping=engine.looping;s.activeMarker=engine.activeMarkerTrack;
         for(auto& t:engine.tracks)
         {
-            TrackState state{t,t->name,t->colour,t->clips,t->notes,t->data,t->gain,t->pan,t->lowGainDb,t->midGainDb,t->highGainDb,t->mute,t->solo,t->armed,t->monitor,t->inputLeft,t->inputRight,t->output,{}};
+            TrackState state{t,t->name,t->colour,t->clips,t->notes,t->data,t->gain,t->pan,t->lowGainDb,t->midGainDb,t->highGainDb,t->mute,t->solo,t->armed,t->monitor,t->inputLeft,t->inputRight,t->output,{},t->automation};
             for(size_t k=0;k<state.sends.size();++k)state.sends[k]={t->sends[k].target,t->sends[k].levelDb.load(),t->sends[k].preFader.load(),t->sends[k].enabled.load()};
             s.tracks.push_back(std::move(state));
         }
@@ -1328,13 +1334,15 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     }
     void restore(const Snapshot& s)
     {
-        const juce::ScopedLock lock(engine.modelLock);engine.panic();engine.tracks.clear();for(auto& a:s.tracks){auto& t=*a.track;t.name=a.name;t.colour=a.colour;t.clips=a.clips;t.notes=a.notes;t.data=a.data;t.gain=a.gain;t.pan=a.pan;t.lowGainDb=a.low;t.midGainDb=a.mid;t.highGainDb=a.high;t.mute=a.mute;t.solo=a.solo;t.armed=a.armed;t.monitor=a.monitor;t.inputLeft=a.inputLeft;t.inputRight=a.inputRight;t.output=a.output;for(size_t k=0;k<a.sends.size();++k){t.sends[k].target=a.sends[k].target;t.sends[k].levelDb=a.sends[k].level;t.sends[k].preFader=a.sends[k].pre;t.sends[k].enabled=a.sends[k].on;}engine.tracks.push_back(a.track);}engine.tempo=s.tempo;engine.tempoMap=s.tempoMap;engine.masterGain=s.master;engine.loopStart=s.loopStart;engine.loopEnd=s.loopEnd;engine.looping=s.looping;engine.activeMarkerTrack=s.activeMarker;selected=juce::jlimit(0,juce::jmax(0,(int)engine.tracks.size()-1),selected);arrangement.selectedClip=-1;arrangement.selectedMarker.clear();piano.clearSelection();markDirty();owner.resized();refresh();
+        const juce::ScopedLock lock(engine.modelLock);engine.panic();engine.tracks.clear();for(auto& a:s.tracks){auto& t=*a.track;t.name=a.name;t.colour=a.colour;t.clips=a.clips;t.notes=a.notes;t.data=a.data;t.gain=a.gain;t.pan=a.pan;t.lowGainDb=a.low;t.midGainDb=a.mid;t.highGainDb=a.high;t.mute=a.mute;t.solo=a.solo;t.armed=a.armed;t.monitor=a.monitor;t.inputLeft=a.inputLeft;t.inputRight=a.inputRight;t.output=a.output;for(size_t k=0;k<a.sends.size();++k){t.sends[k].target=a.sends[k].target;t.sends[k].levelDb=a.sends[k].level;t.sends[k].preFader=a.sends[k].pre;t.sends[k].enabled=a.sends[k].on;}t.automation=a.automation;engine.tracks.push_back(a.track);}engine.tempo=s.tempo;engine.tempoMap=s.tempoMap;engine.masterGain=s.master;engine.loopStart=s.loopStart;engine.loopEnd=s.loopEnd;engine.looping=s.looping;engine.activeMarkerTrack=s.activeMarker;selected=juce::jlimit(0,juce::jmax(0,(int)engine.tracks.size()-1),selected);arrangement.selectedClip=-1;arrangement.selectedMarker.clear();piano.clearSelection();markDirty();owner.resized();refresh();
     }
     // Each undo step stores the state before an edit plus the edit's name and time (Historial de ediciones).
     void pushUndo(const juce::String& action={}){auto s=snapshot();s.action=action.isEmpty()?i18n::tr("Edición"):action;s.time=juce::Time::getCurrentTime();undoStack.push_back(std::move(s));if(undoStack.size()>100)undoStack.pop_front();redoStack.clear();}
     void undo(bool redo){auto& from=redo?redoStack:undoStack;auto& to=redo?undoStack:redoStack;if(from.empty())return;to.push_back(snapshot());to.back().action=from.back().action;to.back().time=from.back().time;auto s=std::move(from.back());from.pop_back();restore(s);notice=redo?i18n::tr("Edición restaurada."):i18n::tr("Edición deshecha.");}
     void duplicateNote(){const juce::ScopedLock lock(engine.modelLock);auto t=currentTrack();if(!t||piano.selected<0||piano.selected>=(int)t->notes.size())return;pushUndo();auto n=t->notes[(size_t)piano.selected];n.id=juce::Uuid().toString();n.startBeats+=n.lengthBeats;t->notes.push_back(n);piano.selectOnly((int)t->notes.size()-1);markDirty();}
-    void setPiano(bool show){pianoVisible=show;piano.setVisible(show);keyboard.setVisible(show);mixer.setVisible(!show);mixerTab.setToggleState(!show,juce::dontSendNotification);pianoTab.setToggleState(show,juce::dontSendNotification);owner.resized();owner.repaint();}
+    void setPiano(bool show){pianoVisible=show;automationVisible=false;piano.setVisible(show);keyboard.setVisible(show);mixer.setVisible(!show);mixerTab.setToggleState(!show,juce::dontSendNotification);pianoTab.setToggleState(show,juce::dontSendNotification);automationTab.setToggleState(false,juce::dontSendNotification);owner.resized();owner.repaint();}
+    // Lower zone «Automatización»: the automation lane of the selected track.
+    void setAutomation(){pianoVisible=false;automationVisible=true;automationLane.setTrack(selected);mixerTab.setToggleState(false,juce::dontSendNotification);pianoTab.setToggleState(false,juce::dontSendNotification);automationTab.setToggleState(true,juce::dontSendNotification);owner.resized();owner.repaint();}
     // Transport options of the Transporte menu (manual pp. 311–331), saved per user.
     int startMode=0; // 0 cursor, 1 cycle start, 2 selection, 3 selection or cycle
     bool returnToStart=false,usePreRoll=false,usePostRoll=false,autoScroll=true,stationary=false;
@@ -1634,7 +1642,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
 #endif
             if(window->getName()!=title)window->setName(title);
         }
-        undoButton.setEnabled(!undoStack.empty());redoButton.setEnabled(!redoStack.empty());arrangement.selectedTrack=selected;piano.track=selected;syncInspector();if(mixer.isShowing())mixer.refresh();
+        undoButton.setEnabled(!undoStack.empty());redoButton.setEnabled(!redoStack.empty());arrangement.selectedTrack=selected;piano.track=selected;automationLane.setTrack(selected);syncInspector();if(mixer.isShowing())mixer.refresh();
         // Calls from edits repaint everything; the 24 Hz timer repaints the whole window only when
         // something visible changed, otherwise just the cursor, meters and transport.
         const auto signature=viewSignature();
@@ -1701,11 +1709,11 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         rightSplit.setBounds(browserRect.getX()-3,browserRect.getY(),6,browserRect.getHeight());rightSplit.setVisible(showRight);
         lowerSplit.setBounds(lowerRect.getX(),lowerRect.getY()-3,lowerRect.getWidth(),6);lowerSplit.setVisible(showLower);
         for(auto* z:{&channelSplit,&inspectorSplit,&rightSplit,&lowerSplit})z->toFront(false);
-        mixerTab.setButtonText(i18n::tr("MixConsole"));pianoTab.setButtonText(i18n::tr("Editor"));
+        mixerTab.setButtonText(i18n::tr("MixConsole"));pianoTab.setButtonText(i18n::tr("Editor"));automationTab.setButtonText(i18n::tr("Automatización"));
         if(showLower)
         {
-            mixerTab.setBounds(lowerRect.getX()+5,lowerRect.getBottom()-28,101,25);pianoTab.setBounds(lowerRect.getX()+109,lowerRect.getBottom()-28,101,25);
-            auto lowerContent=lowerRect.withTrimmedBottom(31);mixer.setBounds(lowerContent);lowerConsole->setBounds(lowerContent);piano.setBounds(lowerContent.withTrimmedBottom(46));keyboard.setBounds(lowerContent.removeFromBottom(44));
+            mixerTab.setBounds(lowerRect.getX()+5,lowerRect.getBottom()-28,101,25);pianoTab.setBounds(lowerRect.getX()+109,lowerRect.getBottom()-28,101,25);automationTab.setBounds(lowerRect.getX()+213,lowerRect.getBottom()-28,121,25);
+            auto lowerContent=lowerRect.withTrimmedBottom(31);mixer.setBounds(lowerContent);automationLane.setBounds(lowerContent);lowerConsole->setBounds(lowerContent);piano.setBounds(lowerContent.withTrimmedBottom(46));keyboard.setBounds(lowerContent.removeFromBottom(44));
         }
         layoutInspector(dx,top,left,inspectorRect.getBottom()-32);
         markerInspector.setBounds(inspectorRect.withTrimmedTop(31).withTrimmedBottom(31));markerInfo.setBounds(infoRect);
@@ -1757,7 +1765,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         if(!shown){instrument.setVisible(false);inputRouting.setVisible(false);}
         for(auto* c:std::initializer_list<juce::Component*>{&inspectorTab,&visibilityTab,&trackTabButton,&editorTabButton})c->setVisible(showLeft);
         visibility.setVisible(showLeft&&visibilityVisible);rightRack.setVisible(showRight);channelTab->setVisible(showChannel);
-        mixerTab.setVisible(showLower);pianoTab.setVisible(showLower);mixer.setVisible(false);lowerConsole->setVisible(showLower&&!pianoVisible);piano.setVisible(showLower&&pianoVisible);keyboard.setVisible(showLower&&pianoVisible);
+        mixerTab.setVisible(showLower);pianoTab.setVisible(showLower);automationTab.setVisible(showLower);automationLane.setVisible(showLower&&automationVisible);mixer.setVisible(false);lowerConsole->setVisible(showLower&&!pianoVisible&&!automationVisible);piano.setVisible(showLower&&pianoVisible);keyboard.setVisible(showLower&&pianoVisible);
         for(auto* c:std::initializer_list<juce::Component*>{&rewind,&stop,&play,&record,&loop,&click,&clickOptions,&tapButton,&transportTime,&tempo})c->setVisible(showTransport);
         // Language, audio setup and import live in the menus (Idioma, Estudio, Archivo), as in Cubase.
         for(auto* c:std::initializer_list<juce::Component*>{&languageButton,&settings,&importButton,&projectTitle})c->setVisible(false);

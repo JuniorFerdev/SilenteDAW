@@ -6,6 +6,7 @@
 #include <atomic>
 #include "audio/DeviceSettings.h"
 #include "audio/Metronome.h"
+#include "domain/Automation.h"
 #include "domain/MidiNote.h"
 #include "domain/TempoMap.h"
 #include "domain/TrackData.h"
@@ -74,8 +75,12 @@ struct Track
     std::atomic<float> lowGainDb { 0.0f }, midGainDb { 0.0f }, highGainDb { 0.0f };
     static constexpr int sendCount = 16;
     static constexpr int insertCount = 10;
+    static_assert(sendCount == domain::automationSendCount, "one automation curve per send");
     juce::String output; // group track id; empty = Stereo Out
     std::array<TrackSend, sendCount> sends;
+    // Volume, pan and send automation with the track's R/W modes. Edited on the message thread
+    // under modelLock; the audio thread reads it only while it holds the try-lock.
+    domain::TrackAutomation automation;
     bool isBus() const noexcept { return kind == TrackKind::fx || kind == TrackKind::group; }
     std::vector<AudioClip> clips;
     std::vector<MidiNote> notes;

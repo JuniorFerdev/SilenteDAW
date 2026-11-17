@@ -17,5 +17,7 @@ inline const juce::Colour activeFill { 0xff8e8f90 }, activeInk { 0xff141618 };
 // Faders and sliders: grey, as in Cubase (no accent colour on controls).
 // Loaded insert slots are teal in Cubase.
 inline const juce::Colour insertLoaded { 0xff1d8597 };
+// Automation (Cubase habit): Read green, Write red; curve and points of the automation lane.
+inline const juce::Colour automationRead { 0xff3fbf5c }, automationWrite { 0xffe2453c }, automationCurve { 0xffe6c84a }, automationLane { 0xff26282b };
 inline const juce::Colour faderCap { 0xffb9bbbd }, faderGroove { 0xff0f1011 }, sliderFill { 0xffbfc1c3 }, knobRing { 0xffaeb0b2 };
 }
