@@ -2022,7 +2022,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     }
     void open()
     {
-        confirmDiscard([this]{chooser=std::make_unique<juce::FileChooser>(i18n::tr("Abrir sesión de Silente"),juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),"*.silente;*.json",true);chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe=juce::Component::SafePointer<MainComponent>(&owner)](const juce::FileChooser& fc){if(!safe||fc.getResult()==juce::File())return;auto& self=*safe->ui;self.plugins.closeEditors();self.stopTransport();auto r=self.engine.loadProject(fc.getResult());if(r.failed()){self.error(r.getErrorMessage());return;}self.dirty=false;self.undoStack.clear();self.redoStack.clear();self.selected=0;self.arrangement.selectedClip=-1;self.arrangement.scrollSeconds=0;self.arrangement.firstTrack=0;self.notice=i18n::tr("Sesión abierta: ")+fc.getResult().getFileName();self.refresh();if(self.engine.lastWarning.isNotEmpty())self.error(self.engine.lastWarning);});});
+        confirmDiscard([this]{chooser=std::make_unique<juce::FileChooser>(i18n::tr("Abrir proyecto de Silente o Cubase"),juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),"*.silente;*.json;*.cpr",true);chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe=juce::Component::SafePointer<MainComponent>(&owner)](const juce::FileChooser& fc){if(!safe||fc.getResult()==juce::File())return;auto& self=*safe->ui;if(self.routeCpr(fc.getResult()))return;self.plugins.closeEditors();self.stopTransport();auto r=self.engine.loadProject(fc.getResult());if(r.failed()){self.error(r.getErrorMessage());return;}self.dirty=false;self.undoStack.clear();self.redoStack.clear();self.selected=0;self.arrangement.selectedClip=-1;self.arrangement.scrollSeconds=0;self.arrangement.firstTrack=0;self.notice=i18n::tr("Sesión abierta: ")+fc.getResult().getFileName();self.refresh();if(self.engine.lastWarning.isNotEmpty())self.error(self.engine.lastWarning);});});
     }
     void importPaths(const juce::StringArray& input,int trackIndex=-1,double at=0)
     {
@@ -2072,6 +2072,13 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
                 juce::MessageManager::callAsync([safe,cpr]{if(safe)safe->ui->chooseCubaseDestination(cpr);});
             });
         });
+    }
+    // «Abrir proyecto» con un .cpr: mismo flujo que la importación (destino fuera de la carpeta del .cpr, informe).
+    bool routeCpr(const juce::File& file)
+    {
+        if(!file.hasFileExtension("cpr"))return false;
+        if(owner.cubaseImportOverride)owner.cubaseImportOverride(file);else chooseCubaseDestination(file);
+        return true;
     }
     void chooseCubaseDestination(const juce::File& cpr)
     {
@@ -2413,6 +2420,7 @@ void MainComponent::useSettingsFolder(const juce::File& folder){app::usePreferen
 void MainComponent::timerCallback(){ui->refresh(true);}
 void MainComponent::newProject(){ui->confirmDiscard([this]{ui->stopTransport();ui->plugins.closeEditors();ui->engine.clear();ui->selected=0;ui->arrangement.selectedClip=-1;ui->arrangement.scrollSeconds=0;ui->arrangement.firstTrack=0;ui->undoStack.clear();ui->redoStack.clear();ui->dirty=false;ui->notice=i18n::tr("Nueva sesión. Añade una pista o arrastra tus archivos.");ui->refresh();});}
 void MainComponent::openProject(){ui->open();}
+bool MainComponent::openProjectFile(const juce::File& file){return ui->routeCpr(file);}
 void MainComponent::saveProject(){ui->save();}
 void MainComponent::importFiles(){ui->importChooser();}
 void MainComponent::importCubaseProject(){ui->importCubase();}

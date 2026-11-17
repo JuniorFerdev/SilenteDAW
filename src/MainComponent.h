@@ -25,6 +25,9 @@ public:
     static void useSettingsFolder(const juce::File&);
     void newProject();
     void openProject();
+    // Ruta de un archivo elegido en «Abrir proyecto»: si es .cpr entra en el flujo de importación (true); si no, false.
+    bool openProjectFile(const juce::File&);
+    std::function<void(const juce::File&)> cubaseImportOverride; // pruebas: sustituye el selector de destino
     void saveProject();
     void importFiles();
     void importCubaseProject(); // Archivo › «Importar proyecto Cubase (.cpr)…» (io/CprImport)

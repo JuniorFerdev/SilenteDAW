@@ -59,6 +59,14 @@ public:
         pianoRollChecks();tempoMapChecks();automationChecks();
         runFolderUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runPoolUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
+        {   // Abrir proyecto con un .cpr entra en el flujo de importación; otras extensiones no (el selector nativo no es testeable)
+            File routed;view.cubaseImportOverride=[&routed](const File& f){routed=f;};
+            const auto cprFile=output.getChildFile("open-route.cpr");
+            expect(view.openProjectFile(cprFile)&&routed==cprFile,"open: a .cpr goes to the Cubase import flow");
+            routed=File();
+            expect(!view.openProjectFile(output.getChildFile("open-route.silente"))&&routed==File(),"open: a .silente is not routed to the import");
+            view.cubaseImportOverride=nullptr;
+        }
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {
