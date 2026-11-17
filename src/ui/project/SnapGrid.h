@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_core/juce_core.h>
+#include "../../domain/TempoMap.h"
 #include <cmath>
 #include <vector>
 
@@ -49,6 +50,12 @@ struct SnapGrid
     // within 10 px and win over the grid when they are closer.
     double snap(double seconds, double tempo, double pixelsPerSecond, const std::vector<double>& eventEdges, double cursor) const
     {
+        return snap(seconds, domain::TempoView { juce::jlimit(domain::minimumBpm, domain::maximumBpm, tempo), nullptr }, pixelsPerSecond, eventEdges, cursor);
+    }
+    // With the tempo map, musical grids follow tempo and time signature changes: positions are
+    // rounded in beats inside the bar that contains them («Compás» = nearest bar start).
+    double snap(double seconds, const domain::TempoView& timeline, double pixelsPerSecond, const std::vector<double>& eventEdges, double cursor) const
+    {
         if (! enabled) return juce::jmax(0.0, seconds);
         const double reach = magnetPixels / juce::jmax(1.0, pixelsPerSecond);
         double best = seconds, bestDistance = reach;
@@ -57,10 +64,44 @@ struct SnapGrid
         if (usesCursor()) consider(cursor);
         if (usesEvents()) for (double edge : eventEdges) consider(edge);
         if (magnetic) return juce::jmax(0.0, best);
-        if (usesGrid()) { const double unit = unitSeconds(tempo, pixelsPerSecond); return juce::jmax(0.0, std::round(seconds / unit) * unit); }
-        return juce::jmax(0.0, seconds);
+        if (! usesGrid()) return juce::jmax(0.0, seconds);
+        const bool timeGrid = grid == GridType::ms10 || grid == GridType::ms100 || grid == GridType::ms1000;
+        if (timeline.isConstant() || timeGrid) { const double unit = unitSeconds(timeline.bpm, pixelsPerSecond); return juce::jmax(0.0, std::round(seconds / unit) * unit); }
+        const double beats = timeline.beatsAt(juce::jmax(0.0, seconds));
+        const auto bar = timeline.barAt(beats);
+        const double start = beats - bar.beatInBar, length = bar.signature.barBeats();
+        double unit = 0.25;
+        switch (grid)
+        {
+            case GridType::bar: unit = length; break;
+            case GridType::beat: unit = bar.signature.unitBeats(); break;
+            case GridType::eighth: unit = 0.5; break;
+            case GridType::sixteenth: unit = 0.25; break;
+            case GridType::thirtySecond: unit = 0.125; break;
+            case GridType::adaptToZoom:
+            {
+                const double secondsPerBeat = 60.0 / timeline.bpmAt(beats);
+                unit = length;
+                while (unit / 2.0 * secondsPerBeat * pixelsPerSecond >= 16.0 && unit > 1.0 / 16.0) unit /= 2.0;
+                break;
+            }
+            default: break;
+        }
+        const double snapped = juce::jmin(start + length, start + std::round(bar.beatInBar / unit) * unit);
+        return juce::jmax(0.0, timeline.secondsAt(snapped));
     }
 
+    // Compases+Tiempos with the tempo map: beats count in the signature's unit (eighths in 6/8).
+    static juce::String formatTime(double seconds, TimeFormat f, const domain::TempoView& timeline, double sampleRate)
+    {
+        if (f != TimeFormat::barsBeats || timeline.isConstant()) return formatTime(seconds, f, timeline.bpm, sampleRate);
+        const auto position = timeline.barAt(timeline.beatsAt(juce::jmax(0.0, seconds)));
+        const double unit = position.signature.unitBeats();
+        const int beat = juce::jlimit(0, position.signature.numerator - 1, (int) std::floor(position.beatInBar / unit + 1.0e-9));
+        const double sixteenths = juce::jmax(0.0, position.beatInBar - beat * unit) * 4.0;
+        const int six = (int) std::floor(sixteenths + 1.0e-9);
+        return juce::String(position.bar + 1) + ". " + juce::String(beat + 1) + ". " + juce::String(six + 1) + ". " + juce::String(juce::jmax(0, (int) std::floor((sixteenths - six) * 120.0 + 1.0e-6)));
+    }
     static juce::String formatTime(double seconds, TimeFormat f, double tempo, double sampleRate)
     {
         seconds = juce::jmax(0.0, seconds);

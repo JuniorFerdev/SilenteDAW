@@ -26,11 +26,11 @@ MarkerInspector::MarkerInspector()
     header.addColumn(i18n::tr("Posición"),3,115,70,240,flags);
     table.setColour(juce::ListBox::backgroundColourId,bg);table.setOutlineThickness(1);table.setColour(juce::ListBox::outlineColourId,line);
 }
-void MarkerInspector::showTrack(const juce::String& id,const juce::String& title,juce::Colour c,const domain::TrackData& data,const juce::String& selected,bool isActive,int format,double tempo,double rate)
+void MarkerInspector::showTrack(const juce::String& id,const juce::String& title,juce::Colour c,const domain::TrackData& data,const juce::String& selected,bool isActive,int format,const domain::TempoView& tempo,double rate)
 {
-    const bool timeChanged=timeFormat!=format||bpm!=tempo||sampleRate!=rate;
+    const bool timeChanged=timeFormat!=format||bpm!=tempo.bpm||map!=(tempo.map?*tempo.map:domain::TempoMap{})||sampleRate!=rate;
     syncing=true;if(trackId!=id&&name.isBeingEdited())name.hideEditor(true);
-    trackId=id;selection=selected;colour=c;timeFormat=format;bpm=tempo;sampleRate=rate;
+    trackId=id;selection=selected;colour=c;timeFormat=format;bpm=tempo.bpm;map=tempo.map?*tempo.map:domain::TempoMap{};sampleRate=rate;
     if(!name.isBeingEdited())name.setText(title,juce::dontSendNotification);
     name.setColour(juce::Label::backgroundColourId,c);name.setColour(juce::Label::textColourId,activeInk);
     active.setToggleState(isActive,juce::dontSendNotification);
@@ -60,7 +60,7 @@ void MarkerInspector::paintCell(juce::Graphics& g,int row,int column,int width,i
 {
     if(!juce::isPositiveAndBelow(row,(int)rows.size()))return;const auto& marker=rows[(size_t)row];
     juce::String value;if(column==1)value=juce::String::fromUTF8("▷");if(column==2)value=marker.cycle?"["+juce::String(marker.number)+"]":juce::String(marker.number);
-    if(column==3)value=timelinePosition(marker.position,timeFormat,bpm,sampleRate);if(column==4)value=marker.description;
+    if(column==3)value=timelinePosition(marker.position,timeFormat,view(),sampleRate);if(column==4)value=marker.description;
     if(column==2){g.setColour(marker.colour.isTransparent()?colour:marker.colour);g.fillRect(1,3,3,height-6);}
     text(g,value,{5,0,width-7,height},11,chosen?activeInk:ink);
 }
@@ -77,12 +77,12 @@ void MarkerInspector::cellDoubleClicked(int row,int column,const juce::MouseEven
     if(!juce::isPositiveAndBelow(row,(int)rows.size()))return;const auto marker=rows[(size_t)row];
     if(column==4||column==3)
     {
-        auto editor=std::make_unique<juce::TextEditor>();editor->setSize(column==4?240:180,27);editor->setText(column==4?marker.description:timelinePosition(marker.position,timeFormat,bpm,sampleRate));editor->selectAll();
-        auto* field=editor.get();const auto id=trackId;const auto callback=edit;const auto format=timeFormat;const auto tempo=bpm;const auto rate=sampleRate;
-        field->onReturnKey=[safe=juce::Component::SafePointer<juce::TextEditor>(field),id,marker,column,format,tempo,rate,callback]()mutable
+        auto editor=std::make_unique<juce::TextEditor>();editor->setSize(column==4?240:180,27);editor->setText(column==4?marker.description:timelinePosition(marker.position,timeFormat,view(),sampleRate));editor->selectAll();
+        auto* field=editor.get();const auto id=trackId;const auto callback=edit;const auto format=timeFormat;const auto tempoBpm=bpm;const auto tempoMap=map;const auto rate=sampleRate;
+        field->onReturnKey=[safe=juce::Component::SafePointer<juce::TextEditor>(field),id,marker,column,format,tempoBpm,tempoMap,rate,callback]()mutable
         {
             if(!safe)return;auto edited=marker;
-            if(column==4)edited.description=safe->getText();else if(auto seconds=parseTimelinePosition(safe->getText(),format,tempo,rate)){const double length=edited.end-edited.position;edited.position=*seconds;edited.end=edited.cycle?*seconds+length:*seconds;}else return;
+            if(column==4)edited.description=safe->getText();else if(auto seconds=parseTimelinePosition(safe->getText(),format,domain::TempoView{tempoBpm,&tempoMap},rate)){const double length=edited.end-edited.position;edited.position=*seconds;edited.end=edited.cycle?*seconds+length:*seconds;}else return;
             if(callback)callback(id,edited);if(auto* box=safe->findParentComponentOfClass<juce::CallOutBox>())box->dismiss();
         };
         field->onEscapeKey=[safe=juce::Component::SafePointer<juce::TextEditor>(field)]{if(safe)if(auto* box=safe->findParentComponentOfClass<juce::CallOutBox>())box->dismiss();};
@@ -96,11 +96,11 @@ MarkerInfoLine::MarkerInfoLine()
     for(auto* label:{&description,&start,&end}){addAndMakeVisible(label);label->setEditable(false,true);label->setColour(juce::Label::backgroundColourId,bg);label->setColour(juce::Label::textColourId,ink);}
     description.onTextChange=[this]{commit(0);};start.onTextChange=[this]{commit(1);};end.onTextChange=[this]{commit(2);};
 }
-void MarkerInfoLine::showMarker(const juce::String& track,const domain::Marker* value,int format,double tempo,double rate)
+void MarkerInfoLine::showMarker(const juce::String& track,const domain::Marker* value,int format,const domain::TempoView& tempo,double rate)
 {
-    const bool changed=value&&(marker!=*value||timeFormat!=format||bpm!=tempo||sampleRate!=rate);
+    const bool changed=value&&(marker!=*value||timeFormat!=format||bpm!=tempo.bpm||map!=(tempo.map?*tempo.map:domain::TempoMap{})||sampleRate!=rate);
     if(!value||trackId!=track||marker.id!=value->id)for(auto* label:{&description,&start,&end})if(label->isBeingEdited())label->hideEditor(true);
-    setVisible(value!=nullptr);if(!value)return;trackId=track;marker=*value;timeFormat=format;bpm=tempo;sampleRate=rate;
+    setVisible(value!=nullptr);if(!value)return;trackId=track;marker=*value;timeFormat=format;bpm=tempo.bpm;map=tempo.map?*tempo.map:domain::TempoMap{};sampleRate=rate;
     if(!description.isBeingEdited())description.setText(marker.description,juce::dontSendNotification);
     if(!start.isBeingEdited())start.setText(timelinePosition(marker.position,format,tempo,rate),juce::dontSendNotification);
     if(!end.isBeingEdited())end.setText(timelinePosition(marker.end,format,tempo,rate),juce::dontSendNotification);
@@ -111,12 +111,12 @@ void MarkerInfoLine::commit(int field)
     auto changed=marker;if(field==0)changed.description=description.getText();
     else
     {
-        if(auto value=parseTimelinePosition(field==1?start.getText():end.getText(),timeFormat,bpm,sampleRate))
+        if(auto value=parseTimelinePosition(field==1?start.getText():end.getText(),timeFormat,view(),sampleRate))
         {if(field==1){changed.position=*value;if(!changed.cycle)changed.end=*value;}else changed.end=*value;}
-        else{showMarker(trackId,&marker,timeFormat,bpm,sampleRate);return;}
+        else{showMarker(trackId,&marker,timeFormat,view(),sampleRate);return;}
     }
     if(domain::validMarker(changed)&&edit)edit(trackId,changed);
-    else showMarker(trackId,&marker,timeFormat,bpm,sampleRate);
+    else showMarker(trackId,&marker,timeFormat,view(),sampleRate);
 }
 void MarkerInfoLine::paint(juce::Graphics& g)
 {

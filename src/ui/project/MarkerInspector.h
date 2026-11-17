@@ -15,7 +15,7 @@ public:
     std::function<void(bool,bool)> add;
     std::function<void(const juce::String&)> activate;
     std::function<void(const juce::String&,const juce::String&)> rename;
-    void showTrack(const juce::String& id,const juce::String& name,juce::Colour,const domain::TrackData&,const juce::String& selected,bool active,int format,double tempo,double rate);
+    void showTrack(const juce::String& id,const juce::String& name,juce::Colour,const domain::TrackData&,const juce::String& selected,bool active,int format,const domain::TempoView& tempo,double rate);
     void paint(juce::Graphics&) override;
     void resized() override;
 private:
@@ -28,6 +28,8 @@ private:
     bool syncing=false;
     int timeFormat=0;
     double bpm=120,sampleRate=48000;
+    domain::TempoMap map;
+    domain::TempoView view()const{return {bpm,&map};}
     int getNumRows() override;
     void paintRowBackground(juce::Graphics&,int,int,int,bool) override;
     void paintCell(juce::Graphics&,int,int,int,int,bool) override;
@@ -41,7 +43,7 @@ class MarkerInfoLine final : public juce::Component
 public:
     MarkerInfoLine();
     std::function<void(const juce::String&,const domain::Marker&)> edit;
-    void showMarker(const juce::String& track,const domain::Marker*,int format,double tempo,double rate);
+    void showMarker(const juce::String& track,const domain::Marker*,int format,const domain::TempoView& tempo,double rate);
     void paint(juce::Graphics&) override;
     void resized() override;
     void beginRename(){description.showEditor();}
@@ -51,6 +53,8 @@ private:
     domain::Marker marker;
     int timeFormat=0;
     double bpm=120,sampleRate=48000;
+    domain::TempoMap map;
+    domain::TempoView view()const{return {bpm,&map};}
     void commit(int field);
 };
 }

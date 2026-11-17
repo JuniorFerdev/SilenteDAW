@@ -1,7 +1,9 @@
 #include "i18n/Translations.h"
 #include "AudioEngine.h"
+#include <map>
 #include "plugins/PluginSelection.h"
 #include "persistence/TrackDataJson.h"
+#include "persistence/TempoMapJson.h"
 #include "audio/BandlimitedInterpolator.h"
 #include "audio/RecordingModes.h"
 #include "audio/FadeCurves.h"
@@ -97,22 +99,34 @@ Track::~Track() = default;
 struct AudioEngine::EnginePlayHead final : juce::AudioPlayHead
 {
     AudioEngine& engine;
-    double blockPosition = 0.0;
+    // Musical position of the block being processed. Written by the audio thread in renderSegment
+    // (under modelLock) before the plugins run; getPosition() only copies these values.
+    double blockPosition = 0.0, bpm = 120.0, ppq = 0.0, barStartPpq = 0.0, loopStartPpq = 0.0, loopEndPpq = 0.0;
+    int numerator = 4, denominator = 4;
     explicit EnginePlayHead(AudioEngine& e) : engine(e) {}
+    void update(double position, const domain::TempoView& view) noexcept
+    {
+        blockPosition = position;
+        ppq = view.beatsAt(position);
+        bpm = view.bpmAt(ppq);
+        loopStartPpq = view.beatsAt(engine.loopStart.load()); loopEndPpq = view.beatsAt(engine.loopEnd.load());
+        if (view.isConstant()) { barStartPpq = std::floor(position * view.bpm / 240.0) * 4.0; numerator = denominator = 4; return; }
+        const auto bar = view.barAt(ppq);
+        barStartPpq = ppq - bar.beatInBar; numerator = bar.signature.numerator; denominator = bar.signature.denominator;
+    }
     juce::Optional<PositionInfo> getPosition() const override
     {
         PositionInfo info;
-        const double bpm = juce::jlimit(20.0, 400.0, engine.tempo.load());
         info.setTimeInSeconds(blockPosition);
         info.setTimeInSamples(static_cast<juce::int64>(blockPosition * engine.sampleRate.load()));
         info.setBpm(bpm);
-        info.setTimeSignature(TimeSignature { 4, 4 });
-        info.setPpqPosition(blockPosition * bpm / 60.0);
-        info.setPpqPositionOfLastBarStart(std::floor(blockPosition * bpm / 240.0) * 4.0);
+        info.setTimeSignature(TimeSignature { numerator, denominator });
+        info.setPpqPosition(ppq);
+        info.setPpqPositionOfLastBarStart(barStartPpq);
         info.setIsPlaying(engine.playing.load());
         info.setIsRecording(engine.recording.load());
         info.setIsLooping(engine.looping.load());
-        info.setLoopPoints(LoopPoints { engine.loopStart.load() * bpm / 60.0, engine.loopEnd.load() * bpm / 60.0 });
+        info.setLoopPoints(LoopPoints { loopStartPpq, loopEndPpq });
         return info;
     }
 };
@@ -206,6 +220,7 @@ void AudioEngine::clear()
     projectFile = juce::File();
     lastWarning.clear();
     tempo = 120.0;
+    tempoMap = {};
     masterGain = 0.8f;
     looping = false;
     punchIn = false; punchOut = false; audioRecordMode = 1; recordBitDepth = 24;
@@ -410,7 +425,10 @@ void AudioEngine::render(float* const* output, int outputChannels, int samples,
         const auto left = countInSamples.load();
         processed = static_cast<int>(juce::jmin<juce::int64>(samples, left));
         const double elapsed = static_cast<double>(countInLength.load() - left) / rate;
-        click.render(mixBuffer, 0, processed, elapsed, juce::jlimit(20.0, 400.0, tempo.load()), 4);
+        const auto timeline = tempoView();
+        const double beat = timeline.beatsAt(cursor);
+        const auto signature = timeline.isConstant() ? domain::SignatureEvent {} : timeline.barAt(beat).signature;
+        click.render(mixBuffer, 0, processed, elapsed, timeline.isConstant() ? timeline.bpm : timeline.bpmAt(beat), juce::jmax(1, juce::roundToInt(signature.barBeats())));
         countInSamples = left - processed;
     }
     const int countedIn = processed;
@@ -467,7 +485,8 @@ void AudioEngine::render(float* const* output, int outputChannels, int samples,
 void AudioEngine::renderSegment(int offset, int samples, double start, bool transportPlaying,
                                 const float* const* input, int inputChannels)
 {
-    const double rate = sampleRate.load(), bpm = juce::jlimit(20.0, 400.0, tempo.load());
+    const double rate = sampleRate.load();
+    const auto timeline = tempoView(); // under modelLock (render holds the try-lock)
     const double end = start + samples / rate;
     const bool hasSolo = std::any_of(tracks.begin(), tracks.end(), [](const auto& t) { return (t->hasAudioChannel()||t->kind==TrackKind::folder)&&t->solo.load(); });
     int maximumLatency = 0;
@@ -478,7 +497,7 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
             if (slot->processor && !slot->bypassed.load()) latency += juce::jmax(0, slot->processor->getLatencySamples());
         maximumLatency = juce::jmax(maximumLatency, latency);
     }
-    playHead->blockPosition = start;
+    playHead->update(start, timeline);
     // Routing: resolve each channel's output (group) and sends (FX), then give every bus a rank
     // above all channels feeding it. Rendering rank by rank guarantees sources fill a bus
     // before the bus itself is processed. No allocation: state lives in each track's runtime.
@@ -597,7 +616,7 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
             }
             for (const auto& note : track->notes)
             {
-                const double on = note.startBeats * 60.0 / bpm, off = (note.startBeats + note.lengthBeats) * 60.0 / bpm;
+                const double on = timeline.secondsAt(note.startBeats), off = timeline.secondsAt(note.startBeats + note.lengthBeats);
                 const auto add = [&](double time, bool isOn)
                 {
                     if (time >= start - 1.0e-10 && time < end - 1.0e-10)
@@ -758,7 +777,7 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         else if (session.captured > 0 && ! looping.load() && end >= to) punchedOut = true;
     }
     if (metronome.load() && transportPlaying && (! click.onlyWhenRecording.load() || recording.load()))
-        click.render(mixBuffer, offset, samples, start, bpm, 4);
+        click.render(mixBuffer, offset, samples, start, timeline);
 }
 
 juce::String AudioEngine::supportedAudioWildcard() const { return formatManager.getWildcardForAllFormats(); }
@@ -801,22 +820,58 @@ juce::Result AudioEngine::importMidi(const juce::File& file)
     if (!stream) return juce::Result::fail(i18n::tr("No se puede abrir el archivo MIDI."));
     juce::MidiFile midi;
     if (!midi.readFrom(*stream)) return juce::Result::fail(i18n::tr("Archivo MIDI no válido."));
-    double firstBpm = 120.0, firstTempoTime = std::numeric_limits<double>::max();
+    // Tempo and time signature meta events of every track, in ticks.
+    const int ppq = midi.getTimeFormat();
+    std::vector<std::pair<double, double>> tempoTicks;
+    std::vector<std::pair<double, std::pair<int, int>>> signatureTicks;
     for (int t = 0; t < midi.getNumTracks(); ++t)
         for (int e = 0; e < midi.getTrack(t)->getNumEvents(); ++e)
         {
             const auto& message = midi.getTrack(t)->getEventPointer(e)->message;
-            if (message.isTempoMetaEvent() && message.getTimeStamp() < firstTempoTime)
-            { firstBpm = 60.0 / message.getTempoSecondsPerQuarterNote(); firstTempoTime = message.getTimeStamp(); }
+            if (message.isTempoMetaEvent() && message.getTempoSecondsPerQuarterNote() > 0.0)
+                tempoTicks.push_back({ message.getTimeStamp(), 60.0 / message.getTempoSecondsPerQuarterNote() });
+            if (message.isTimeSignatureMetaEvent())
+            { int numerator = 4, denominator = 4; message.getTimeSignatureInfo(numerator, denominator); signatureTicks.push_back({ message.getTimeStamp(), { numerator, denominator } }); }
         }
-    midi.convertTimestampTicksToSeconds();
+    std::stable_sort(tempoTicks.begin(), tempoTicks.end(), [](const auto& x, const auto& y) { return x.first < y.first; });
+    std::stable_sort(signatureTicks.begin(), signatureTicks.end(), [](const auto& x, const auto& y) { return x.first < y.first; });
+    // An empty project adopts the file's tempo map (notes stay in musical time, ticks / PPQ).
+    // Otherwise the notes keep their absolute times, placed with the project's map.
+    juce::MidiFile timed(midi);
+    timed.convertTimestampTicksToSeconds();
     const juce::ScopedLock lock(modelLock);
-    if (tracks.empty()) tempo = juce::jlimit(20.0, 400.0, firstBpm);
-    const double scale = tempo.load() / 60.0;
+    const bool adoptMap = tracks.empty() && ppq > 0;
+    if (tracks.empty())
+    {
+        // SMF: 120 BPM until the first tempo event.
+        double base = 120.0;
+        domain::TempoMap map;
+        for (const auto& [tick, bpm] : tempoTicks)
+            if (tick <= 0.0 || ppq <= 0) base = bpm;
+            else map.tempos.push_back({ tick / ppq, bpm, false });
+        if (ppq <= 0 && ! tempoTicks.empty()) { base = tempoTicks.front().second; map.tempos.clear(); }
+        if (ppq > 0)
+            for (const auto& [tick, signature] : signatureTicks)
+            {
+                if (! domain::validDenominator(signature.second)) continue;
+                // A change belongs to the bar that starts at (or right after) its position.
+                const domain::TempoView view { base, &map };
+                const auto at = view.barAt(tick / ppq);
+                const int bar = at.bar + (at.beatInBar > 1.0e-6 ? 1 : 0);
+                const auto current = view.signatureAtBar(bar);
+                if (current.numerator == signature.first && current.denominator == signature.second) continue; // already in force
+                map.signatures.push_back({ bar, signature.first, signature.second });
+                map.normalise();
+            }
+        map.normalise();
+        tempo = juce::jlimit(domain::minimumBpm, domain::maximumBpm, base);
+        tempoMap = std::move(map);
+    }
+    const auto timeline = tempoView();
     int imported = 0;
     for (int t = 0; t < midi.getNumTracks(); ++t)
     {
-        juce::MidiMessageSequence sequence(*midi.getTrack(t));
+        juce::MidiMessageSequence sequence(adoptMap ? *midi.getTrack(t) : *timed.getTrack(t));
         sequence.updateMatchedPairs();
         auto track = makeTrack(file.getFileNameWithoutExtension() + juce::String::fromUTF8(" · ") + juce::String(t + 1), true);
         for (int e = 0; e < sequence.getNumEvents(); ++e)
@@ -827,15 +882,17 @@ juce::Result AudioEngine::importMidi(const juce::File& file)
             {
                 MidiNote note;
                 note.pitch = event->message.getNoteNumber(); note.velocity = event->message.getVelocity();
-                note.startBeats = juce::jmax(0.0, event->message.getTimeStamp() * scale);
-                note.lengthBeats = juce::jmax(0.001, (event->noteOffObject->message.getTimeStamp() - event->message.getTimeStamp()) * scale);
+                const double on = event->message.getTimeStamp(), off = event->noteOffObject->message.getTimeStamp();
+                note.startBeats = juce::jmax(0.0, adoptMap ? on / ppq : timeline.beatsAt(on));
+                note.lengthBeats = juce::jmax(0.001, adoptMap ? (off - on) / ppq : timeline.beatsBetween(on, off));
                 track->notes.push_back(note);
             }
         }
         if (!track->notes.empty()) { tracks.push_back(track); ++imported; }
     }
     if (imported == 0) return juce::Result::fail(i18n::tr("El archivo MIDI no contiene notas con inicio y final."));
-    lastWarning = i18n::tr("MIDI importado como notas; los cambios de tempo se convierten a tiempos absolutos. CC, SysEx y cambios de programa no se conservan.");
+    lastWarning = adoptMap ? i18n::tr("MIDI importado como notas con su mapa de tempo y de compás. CC, SysEx y cambios de programa no se conservan.")
+                           : i18n::tr("MIDI importado como notas; los cambios de tempo se convierten a tiempos absolutos. CC, SysEx y cambios de programa no se conservan.");
     return juce::Result::ok();
 }
 juce::Result AudioEngine::exportMidi(const juce::File& file, int trackIndex)
@@ -845,10 +902,35 @@ juce::Result AudioEngine::exportMidi(const juce::File& file, int trackIndex)
     int written = 0;
     {
         const juce::ScopedLock lock(modelLock);
+        // Conductor track: the tempo map (SMF has only tempo steps, so a ramp is written as one
+        // step per sixteenth whose tempo keeps the exact elapsed time of that sixteenth) and the
+        // time signature changes at their bar starts.
+        const auto timeline = tempoView();
+        std::map<juce::int64, double> steps { { 0, timeline.bpm } };
+        double fromBeat = 0.0;
+        for (const auto& e : tempoMap.tempos)
+        {
+            if (e.ramp)
+            {
+                const int count = juce::jmax(1, static_cast<int>(std::ceil((e.beat - fromBeat) * 4.0 - 1.0e-9)));
+                const double step = (e.beat - fromBeat) / count;
+                for (int i = 0; i < count; ++i)
+                {
+                    const double b0 = fromBeat + i * step, b1 = b0 + step;
+                    steps[std::llround(b0 * midiExportPpq)] = 60.0 * step / (timeline.secondsAt(b1) - timeline.secondsAt(b0));
+                }
+            }
+            steps[std::llround(e.beat * midiExportPpq)] = e.bpm;
+            fromBeat = e.beat;
+        }
         juce::MidiMessageSequence conductor;
-        conductor.addEvent(juce::MidiMessage::tempoMetaEvent(juce::roundToInt(60000000.0 / juce::jlimit(20.0, 400.0, tempo.load()))), 0.0);
-        conductor.addEvent(juce::MidiMessage::timeSignatureMetaEvent(4, 4), 0.0);
-        conductor.addEvent(juce::MidiMessage::endOfTrack(), 0.0);
+        for (const auto& [tick, bpm] : steps)
+            conductor.addEvent(juce::MidiMessage::tempoMetaEvent(juce::roundToInt(60000000.0 / juce::jlimit(domain::minimumBpm, domain::maximumBpm, bpm))), static_cast<double>(tick));
+        if (tempoMap.signatures.empty() || tempoMap.signatures.front().bar > 0) conductor.addEvent(juce::MidiMessage::timeSignatureMetaEvent(4, 4), 0.0);
+        for (const auto& signature : tempoMap.signatures)
+            conductor.addEvent(juce::MidiMessage::timeSignatureMetaEvent(signature.numerator, signature.denominator), std::round(timeline.barStart(signature.bar) * midiExportPpq));
+        conductor.sort();
+        conductor.addEvent(juce::MidiMessage::endOfTrack(), conductor.getEndTime());
         midi.addTrack(conductor);
         for (int t = 0; t < static_cast<int>(tracks.size()); ++t)
         {
@@ -890,7 +972,7 @@ double AudioEngine::duration() const
     for (const auto& track : tracks)
     {
         for (const auto& clip : track->clips) result = juce::jmax(result, clip.startSeconds + clip.durationSeconds);
-        for (const auto& note : track->notes) result = juce::jmax(result, (note.startBeats + note.lengthBeats) * 60.0 / juce::jlimit(20.0, 400.0, tempo.load()));
+        for (const auto& note : track->notes) result = juce::jmax(result, tempoView().secondsAt(note.startBeats + note.lengthBeats));
         for(const auto& marker:track->data.markers)result=juce::jmax(result,marker.cycle?marker.end:marker.position);
     }
     return result;
@@ -976,6 +1058,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
     set(root, "audioRecordMode", audioRecordMode.load()); set(root, "recordBitDepth", recordBitDepth.load());
     set(root, "looping", looping.load()); set(root, "loopStart", loopStart.load()); set(root, "loopEnd", loopEnd.load());
     set(root, "positionSeconds", positionSeconds.load());
+    if (! tempoMap.empty()) set(root, "tempoMap", persistence::writeTempoMap(tempoMap));
     const auto media = destination.getParentDirectory().getChildFile(destination.getFileNameWithoutExtension() + " Media");
     juce::Array<juce::var> trackArray;
     for (const auto& track : tracks)
@@ -1163,6 +1246,7 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
     tempo = juce::jlimit(20.0, 400.0, number(json, "tempo", 120.0)); masterGain = static_cast<float>(juce::jlimit(0.0, 4.0, number(json, "masterGain", 0.8)));
     looping = static_cast<bool>(json["looping"]); loopStart = juce::jmax(0.0, number(json, "loopStart", 0.0)); loopEnd = juce::jmax(loopStart.load() + 0.001, number(json, "loopEnd", 8.0));
     positionSeconds = juce::jmax(0.0, number(json, "positionSeconds", 0.0));
+    tempoMap = persistence::readTempoMap(json["tempoMap"]);
     projectName = json.getProperty("name", file.getFileNameWithoutExtension()).toString(); projectFile = file;
     lastWarning = warnings.joinIntoString("\n");
     for (auto& track : tracks) prepareTrack(*track);
@@ -1288,7 +1372,12 @@ juce::Result AudioEngine::beginRecording(const juce::File& directory, RecordOpti
         session->entries.push_back(std::move(entry));
     }
     recordingSession = std::move(session);
-    const auto countIn = options.countIn ? static_cast<juce::int64>(std::llround(click.countInBars.load() * 4 * 60.0 / juce::jlimit(20.0, 400.0, tempo.load()) * sampleRate.load())) : 0;
+    // Count-in at the tempo and signature where the recording starts (whole quarter beats per bar).
+    const auto timeline = tempoView();
+    const double startBeat = timeline.beatsAt(positionSeconds.load());
+    const int countInBeats = timeline.isConstant() ? 4 : juce::jmax(1, juce::roundToInt(timeline.barAt(startBeat).signature.barBeats()));
+    const double countInBpm = timeline.isConstant() ? timeline.bpm : timeline.bpmAt(startBeat);
+    const auto countIn = options.countIn ? static_cast<juce::int64>(std::llround(click.countInBars.load() * countInBeats * 60.0 / countInBpm * sampleRate.load())) : 0;
     countInLength = countIn; countInSamples = countIn;
     capturing = false; punchedOut = false; recordLapStart = -1.0; recordLapOffset = 0; recordCaptured = 0;
     recording = true; chaseRequested = true; playing = true;
@@ -1368,8 +1457,9 @@ juce::Result AudioEngine::endRecording()
             {
                 if (starts[static_cast<size_t>(pitch)] < 0.0) return;
                 MidiNote note; note.pitch = pitch; note.velocity = velocities[static_cast<size_t>(pitch)];
-                note.startBeats = starts[static_cast<size_t>(pitch)] * session->bpm / 60.0;
-                note.lengthBeats = juce::jmax(0.001, (seconds - starts[static_cast<size_t>(pitch)]) * session->bpm / 60.0);
+                const domain::TempoView timeline { session->bpm, &tempoMap };
+                note.startBeats = timeline.beatsAt(starts[static_cast<size_t>(pitch)]);
+                note.lengthBeats = juce::jmax(0.001, timeline.beatsBetween(starts[static_cast<size_t>(pitch)], seconds));
                 notes.push_back(note); starts[static_cast<size_t>(pitch)] = -1.0;
             };
             for (const auto metadata : entry.midi)

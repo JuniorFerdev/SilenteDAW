@@ -305,7 +305,7 @@ private:
         if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo"));menu.addSeparator();menu.addItem(16,i18n::tr("Añadir pista de regla"));menu.addItem(17,i18n::tr("Añadir pista de marcador")); }
         if (index == 3 && window) return window->content().audioMenu();
         if (index == 4 && window) return window->content().transportMenu();
-        if (index == 5) { menu.addItem(20,i18n::tr("MixConsole  F3")); menu.addItem(27,i18n::tr("MixConsole en zona inferior  ⌥F3")); menu.addItem(21,i18n::tr("Instrumentos y efectos…")); menu.addItem(22,i18n::tr("Dispositivos de audio y MIDI…")); menu.addItem(23,i18n::tr("Apagar todas las notas")); menu.addSeparator(); menu.addItem(24,i18n::tr("Metrónomo  C"),true,window&&window->content().metronomeOn()); menu.addItem(25,i18n::tr("Ajustes del metrónomo…")); menu.addItem(26,i18n::tr("Calculadora de tempo (Tap)…")); }
+        if (index == 5) { menu.addItem(20,i18n::tr("MixConsole  F3")); menu.addItem(27,i18n::tr("MixConsole en zona inferior  ⌥F3")); menu.addItem(21,i18n::tr("Instrumentos y efectos…")); menu.addItem(22,i18n::tr("Dispositivos de audio y MIDI…")); menu.addItem(23,i18n::tr("Apagar todas las notas")); menu.addSeparator(); menu.addItem(24,i18n::tr("Metrónomo  C"),true,window&&window->content().metronomeOn()); menu.addItem(25,i18n::tr("Ajustes del metrónomo…")); menu.addItem(26,i18n::tr("Calculadora de tempo (Tap)…")); menu.addItem(29,i18n::tr("Mapa de tempo y de compás…")); }
         if (index == 8) { menu.addItem(30,i18n::tr("Acerca de Silente")); menu.addItem(31,i18n::tr("Guía rápida")); }
         if (index == 1)
         {
@@ -354,7 +354,7 @@ private:
             case 20: c.showMixConsole(); break; case 27: c.showMixer(); break; case 21: c.showPlugins(); break; case 22: c.showAudioSettings(); break;
             case 23: engine->panic(); break;
             case 28: c.showSettings(); break;
-            case 24: c.toggleMetronome(); break; case 25: c.showMetronomeSettings(); break; case 26: c.showTapTempo(); break;
+            case 24: c.toggleMetronome(); break; case 25: c.showMetronomeSettings(); break; case 26: c.showTapTempo(); break; case 29: c.showTempoMap(); break;
             case 40: i18n::setLanguage(i18n::Language::spanish);break;
             case 50: case 51: case 52: case 53: case 54: setInterfaceScale(interfaceScales[item-50]); break;
             case 60: c.runCommand("undo"); break; case 61: c.runCommand("redo"); break; case 62: c.runCommand("cut"); break; case 63: c.runCommand("copy"); break;

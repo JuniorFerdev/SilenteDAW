@@ -124,6 +124,30 @@ void Metronome::render(juce::AudioBuffer<float>& out, int offset, int samples, d
     }
 }
 
+void Metronome::render(juce::AudioBuffer<float>& out, int offset, int samples, double startSeconds, const domain::TempoView& timeline)
+{
+    if (timeline.isConstant()) { render(out, offset, samples, startSeconds, timeline.bpm, 4); return; }
+    const int division = juce::jlimit(1, 4, subdivision.load());
+    int done = 0;
+    while (done < samples)
+    {
+        // Next grid line (in beats) at or after the current sample, placed in time with the map.
+        const double now = startSeconds + done / rate;
+        const double tick = std::ceil(timeline.beatsAt(now) * division - 1.0e-9);
+        const int at = done + juce::jmax(0, (int) std::ceil((timeline.secondsAt(tick / division) - now) * rate - 1.0e-6));
+        const int until = juce::jmin(samples, at);
+        play(voice, out, offset + done, until - done);
+        if (at >= samples) break;
+        const auto index = (juce::int64) tick;
+        const bool onBeat = index % division == 0;
+        const bool barStart = onBeat && timeline.barAt((double) index / division).beatInBar < 1.0e-6;
+        voice = { ! onBeat ? subClick : (barStart && accent.load() ? accentClick : beatClick), 0 };
+        done = at;
+        play(voice, out, offset + done, 1);
+        ++done;
+    }
+}
+
 void Metronome::renderPreview(juce::AudioBuffer<float>& out, int samples)
 {
     if (previewRequested.exchange(false)) previewVoice = { accentClick, 0 };

@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
+#include "../domain/TempoMap.h"
 #include <array>
 #include <atomic>
 #include <vector>
@@ -25,6 +26,9 @@ public:
     // Adds clicks for the transport span [startSeconds, startSeconds + samples / rate) into
     // both channels of `out`, starting at `offset`. A click starts on every grid line.
     void render(juce::AudioBuffer<float>& out, int offset, int samples, double startSeconds, double bpm, int beatsPerBar);
+    // Same with the project tempo map: clicks on every grid line of the map, accent on bar starts.
+    // A map without events uses the single-tempo version above (identical output).
+    void render(juce::AudioBuffer<float>& out, int offset, int samples, double startSeconds, const domain::TempoView& timeline);
     void reset() noexcept { voice = {}; }
     void requestPreview() noexcept { previewRequested = true; }
     // Plays a pending preview click while the transport is stopped.

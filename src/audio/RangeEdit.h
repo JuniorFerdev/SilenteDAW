@@ -1,11 +1,13 @@
 #pragma once
 #include "../AudioEngine.h"
+#include "../domain/TempoMap.h"
 #include <vector>
 
 namespace silente::audio
 {
 // Range editing (Cubase manual, «Edición de rangos», pp. 295–305) on the events of one track.
-// Times are seconds; MIDI notes are converted with the tempo. Events that cross a range edge are
+// Times are seconds; MIDI notes are converted with the tempo map (shifting time does not move
+// tempo events). Events that cross a range edge are
 // split first, so only what lies inside the range is affected.
 struct TimeRange
 {
@@ -15,11 +17,11 @@ struct TimeRange
 
 void splitAt(std::vector<AudioClip>&, double seconds);                       // Dividir en una posición
 void splitRange(std::vector<AudioClip>&, TimeRange);                          // Rango › Dividir (⇧X)
-void deleteRange(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, double bpm);   // Suprimir
-void deleteTime(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, double bpm);    // Suprimir intervalo de tiempo
-void insertSilence(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, double bpm); // Insertar silencio
+void deleteRange(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, const domain::TempoView& tempo);   // Suprimir
+void deleteTime(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, const domain::TempoView& tempo);    // Suprimir intervalo de tiempo
+void insertSilence(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, const domain::TempoView& tempo); // Insertar silencio
 void truncate(std::vector<AudioClip>&, TimeRange);                            // Truncar
-void duplicateRange(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, double bpm);// Duplicar
+void duplicateRange(std::vector<AudioClip>&, std::vector<MidiNote>&, TimeRange, const domain::TempoView& tempo);// Duplicar
 // Ajustar fundidos al rango (A): a range over the start of an event sets its fade-in, over its end
 // the fade-out, and inside it both (fade-in up to the range start, fade-out from the range end).
 void adjustFadesToRange(std::vector<AudioClip>&, TimeRange);
@@ -31,7 +33,7 @@ struct RangeContent
     std::vector<AudioClip> clips;
     std::vector<MidiNote> notes;
 };
-RangeContent copyRange(const std::vector<AudioClip>&, const std::vector<MidiNote>&, TimeRange, double bpm);
+RangeContent copyRange(const std::vector<AudioClip>&, const std::vector<MidiNote>&, TimeRange, const domain::TempoView& tempo);
 // Places the content at `at` seconds, on top of what is there (the moved audio is heard).
-void pasteContent(std::vector<AudioClip>&, std::vector<MidiNote>&, const RangeContent&, double at, double bpm);
+void pasteContent(std::vector<AudioClip>&, std::vector<MidiNote>&, const RangeContent&, double at, const domain::TempoView& tempo);
 }

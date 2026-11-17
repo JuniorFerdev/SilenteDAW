@@ -11,10 +11,18 @@ void PianoRoll::paint(juce::Graphics& g)
 {
     g.fillAll(bg);if(track<0||track>=(int)engine.tracks.size()||!engine.tracks[(size_t)track]->isMidi){text(g,i18n::tr("Selecciona una pista de instrumento"),getLocalBounds().withTrimmedBottom(25),17,muted,juce::Justification::centred);text(g,i18n::tr("Añade notas con doble clic · arrastra para mover · borde derecho para duración"),getLocalBounds().removeFromBottom(45),12,muted,juce::Justification::centred);return;}
     for(int y=24,p=topPitch;y<getHeight();y+=row,--p){const bool black=p%12==1||p%12==3||p%12==6||p%12==8||p%12==10;g.setColour(black?bg:panel);g.fillRect(52,y,getWidth()-52,row);g.setColour(black?raised:pianoWhite);g.fillRect(0,y,50,row-1);if(p%12==0)text(g,juce::MidiMessage::getMidiNoteName(p,true,true,3),{5,y,43,row},9,black?ink:bg);g.setColour(line.withAlpha(.3f));g.drawHorizontalLine(y,52,(float)getWidth());}
+    const auto timeline=engine.tempoView();
+    if(timeline.isConstant())
     for(int b=(int)scrollBeats;b<scrollBeats+(getWidth()-52)/pixelsPerBeat+1;++b){int x=(int)beatX(b);g.setColour(b%4==0?line.brighter(.1f):line.withAlpha(.5f));g.drawVerticalLine(x,24,(float)getHeight());if(b%4==0)text(g,juce::String(b/4+1),{x+4,0,40,24},10,muted);if(pixelsPerBeat>40)for(int sub=1;sub<4;++sub){g.setColour(line.withAlpha(.18f));g.drawVerticalLine((int)(x+sub*pixelsPerBeat/4),24,(float)getHeight());}}
+    else
+    {   // Time signature changes: the axis stays in beats; bar lines follow the signature map.
+        const double last=scrollBeats+(getWidth()-52)/pixelsPerBeat+1;
+        for(int b=(int)scrollBeats;b<last;++b){int x=(int)beatX(b);g.setColour(line.withAlpha(.5f));g.drawVerticalLine(x,24,(float)getHeight());if(pixelsPerBeat>40)for(int sub=1;sub<4;++sub){g.setColour(line.withAlpha(.18f));g.drawVerticalLine((int)(x+sub*pixelsPerBeat/4),24,(float)getHeight());}}
+        for(int bar=timeline.barAt(scrollBeats).bar,guard=0;guard<4000&&timeline.barStart(bar)<last;++bar,++guard){int x=(int)beatX(timeline.barStart(bar));if(x<52)continue;g.setColour(line.brighter(.1f));g.drawVerticalLine(x,24,(float)getHeight());text(g,juce::String(bar+1),{x+4,0,40,24},10,muted);}
+    }
     auto& t=*engine.tracks[(size_t)track];for(int i=0;i<(int)t.notes.size();++i){auto r=noteRect(t.notes[(size_t)i]);g.setColour(selection.contains(t.notes[(size_t)i].id)?ink:t.colour.withAlpha(.75f));g.fillRoundedRectangle(r.reduced(1),2);if(r.getWidth()>38)text(g,juce::MidiMessage::getMidiNoteName(t.notes[(size_t)i].pitch,true,true,3),r.toNearestInt().reduced(4,0),9,bg);}
     if(!marquee.isEmpty()){g.setColour(ink.withAlpha(.12f));g.fillRect(marquee);g.setColour(ink.withAlpha(.7f));g.drawRect(marquee,1.f);}
-    float x=beatX(engine.positionSeconds*engine.tempo/60);if(x>=52){g.setColour(ink.withAlpha(.6f));g.drawVerticalLine((int)x,24,(float)getHeight());}
+    float x=beatX(timeline.isConstant()?engine.positionSeconds*engine.tempo/60:timeline.beatsAt(engine.positionSeconds.load()));if(x>=52){g.setColour(ink.withAlpha(.6f));g.drawVerticalLine((int)x,24,(float)getHeight());}
 }
 void PianoRoll::mouseDown(const juce::MouseEvent& e)
 {

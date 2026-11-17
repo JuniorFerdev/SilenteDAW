@@ -7,6 +7,7 @@
 #include "../src/AudioEngine.h"
 #include "../src/domain/Quantize.h"
 #include "../src/domain/NoteEdit.h"
+#include "../src/domain/TempoMap.h"
 #include "../src/persistence/TrackDataJson.h"
 #include "../src/plugins/PluginSelection.h"
 #include "../src/app/TrackCreation.h"
@@ -1107,6 +1108,122 @@ int runEngineTests(const juce::File& outputDir)
         require(quantizeSelectedNotes(q, {}, qs) == 1 && q[3].startBeats == 4.0, "empty selection quantizes all");
         auto erased = notes; require(eraseNotes(erased, sel) == 3 && erased.size() == 1 && erased[0].id == notes[3].id, "erase removes exactly the selection");
         require(selectAllNotes(notes).size() == 4, "select all");
+    });
+
+    suite.run("tempo map: jumps, ramps, signatures and the single-tempo identity", [&]
+    {
+        using namespace domain;
+        // No events: bit-identical to the historical single-tempo formulas.
+        const TempoView flat { 97.3, nullptr };
+        TempoMap emptyMap; const TempoView flatMap { 97.3, &emptyMap };
+        for (double b : { 0.0, 0.013, 1.0 / 3.0, 7.25, 1234.5678 })
+        {
+            require(flat.secondsAt(b) == b * 60.0 / 97.3 && flatMap.secondsAt(b) == b * 60.0 / 97.3, "flat secondsAt identity");
+            require(flat.beatsAt(b) == b * 97.3 / 60.0 && flatMap.beatsAt(b) == b * 97.3 / 60.0, "flat beatsAt identity");
+            require(flat.beatsBetween(0.5, b) == (b - 0.5) * 97.3 / 60.0, "flat beatsBetween identity");
+        }
+        require(flat.isConstant() && flatMap.isConstant(), "empty map is constant");
+        require(flat.beatsFromBarsBeats(3, 2, 3, 60) == (3.0 - 1) * 4 + (2.0 - 1) + (3.0 - 1) / 4 + 60.0 / 480, "flat bars.beats identity");
+        // 120 -> 90 BPM jump at beat 8.
+        TempoMap jump; jump.tempos.push_back({ 8.0, 90.0, false });
+        const TempoView j { 120.0, &jump };
+        near(j.secondsAt(8.0), 4.0, 1e-12, "jump: beat 8"); near(j.secondsAt(12.0), 4.0 + 4.0 * 60.0 / 90.0, 1e-12, "jump: beat 12");
+        near(j.beatsAt(6.0), 11.0, 1e-12, "jump: 6 s"); near(j.beatsAt(3.0), 6.0, 1e-12, "jump: 3 s");
+        near(j.bpmAt(7.999), 120.0, 0, "jump: before"); near(j.bpmAt(8.0), 90.0, 0, "jump: at point");
+        near(j.beatsBetween(3.0, 6.0), 5.0, 1e-12, "jump: beats between");
+        // Linear ramp (in beats) 120 -> 60 over beats 0–4: t(b) = 60/k · ln(v(b)/120), k = -15.
+        TempoMap ramp; ramp.tempos.push_back({ 4.0, 60.0, true });
+        const TempoView r { 120.0, &ramp };
+        near(r.secondsAt(4.0), 4.0 * std::log(2.0), 1e-12, "ramp: end"); near(r.secondsAt(2.0), 4.0 * std::log(4.0 / 3.0), 1e-12, "ramp: middle");
+        near(r.bpmAt(2.0), 90.0, 1e-12, "ramp: tempo in the middle"); near(r.secondsAt(6.0), 4.0 * std::log(2.0) + 2.0, 1e-12, "ramp: after");
+        near(r.beatsAt(4.0 * std::log(4.0 / 3.0)), 2.0, 1e-12, "ramp: inverse");
+        // Accelerando and a nearly flat ramp keep the inverse exact.
+        TempoMap mixed; mixed.tempos = { { 4.0, 60.0, true }, { 8.0, 150.0, false }, { 16.0, 150.000001, true }, { 20.0, 200.0, true } };
+        const TempoView m { 120.0, &mixed };
+        for (double b = 0.0; b < 30.0; b += 0.37) near(m.beatsAt(m.secondsAt(b)), b, 1e-9, "round trip at beat " + juce::String(b));
+        for (double b = 0.0; b < 29.0; b += 0.5) require(m.secondsAt(b + 0.5) > m.secondsAt(b), "time is monotonic");
+        // 3/4 for bars 1–2, 4/4 from bar 3, 6/8 from bar 5 (1-based).
+        TempoMap sig; sig.signatures = { { 4, 6, 8 }, { 0, 3, 4 }, { 2, 4, 4 } }; sig.normalise();
+        require(sig.signatures.front().bar == 0 && sig.signatures.back().bar == 4, "signatures sorted");
+        const TempoView s { 120.0, &sig };
+        require(! s.isConstant() && s.constantTempo(), "signature map is not plain 4/4");
+        near(s.barStart(1), 3.0, 0, "bar 2 start"); near(s.barStart(2), 6.0, 0, "bar 3 start"); near(s.barStart(4), 14.0, 0, "bar 5 start"); near(s.barStart(5), 17.0, 0, "bar 6 start");
+        const auto p = s.barAt(7.0); require(p.bar == 2 && p.beatInBar == 1.0 && p.signature.numerator == 4, "beat 7 is bar 3, beat 2");
+        const auto q = s.barAt(5.5); require(q.bar == 1 && q.beatInBar == 2.5 && q.signature.numerator == 3, "beat 5.5 is in bar 2 (3/4)");
+        const auto e = s.barAt(15.5); require(e.bar == 4 && e.beatInBar == 1.5 && e.signature.denominator == 8, "beat 15.5 is in bar 5 (6/8)");
+        near(s.beatsFromBarsBeats(5, 4, 1, 0), 15.5, 0, "5.4.1.0 in 6/8 counts eighths"); near(s.beatsFromBarsBeats(3, 1, 1, 0), 6.0, 0, "3.1.1.0");
+        // normalise: invalid and duplicate entries.
+        TempoMap dirty; dirty.tempos = { { 0.0, 90.0 }, { 4.0, 1000.0 }, { 2.0, 100.0 }, { 4.0, 80.0 } }; dirty.signatures = { { 1, 5, 3 }, { -1, 3, 4 }, { 1, 7, 8 } };
+        dirty.normalise();
+        require(dirty.tempos.size() == 2 && dirty.tempos[0].beat == 2.0 && dirty.tempos[1].bpm == 80.0, "tempo normalise");
+        require(dirty.signatures.size() == 1 && dirty.signatures[0].numerator == 7, "signature normalise");
+    });
+
+    suite.run("tempo map in the engine: notes, metronome, save/load and MIDI file round trip", [&]
+    {
+        // A note at beat 12 after a 120 -> 90 jump at beat 8 starts at 4 + 4 · 60/90 s.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            engine.tempoMap.tempos.push_back({ 8.0, 90.0, false });
+            auto midi = engine.addMidiTrack("Map");
+            MidiNote note; note.pitch = 69; note.velocity = 100; note.startBeats = 12.0; note.lengthBeats = 1.0; midi->notes.push_back(note);
+            near(engine.duration(), 4.0 + 5.0 * 60.0 / 90.0, 1e-9, "Duration follows the map");
+            engine.play(); const auto out = render(engine, (int) (rate * 7.0));
+            int first = -1;
+            for (int i = 0; i < out.getNumSamples() && first < 0; ++i) if (std::abs(out.getSample(0, i)) > 1.0e-5f) first = i;
+            near(first, (4.0 + 4.0 * 60.0 / 90.0) * rate, 2.0, "Note onset with the tempo jump");
+        }
+        // Metronome: beats 0, 1 at 120 BPM, beats 2, 3, 4 at 60 BPM; 3/4 bars so beat 3 is a downbeat.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0; engine.metronome = true;
+            engine.click.sound = (int) audio::ClickSound::classic; engine.click.levelDb = 0.0f; engine.click.subdivision = 1; engine.click.accent = true;
+            engine.tempoMap.tempos.push_back({ 2.0, 60.0, false }); engine.tempoMap.signatures.push_back({ 0, 3, 4 });
+            engine.play(); const auto found = onsets(render(engine, (int) (rate * 3.9)));
+            require(found.size() == 5, "Expected 5 clicks with the map, got " + juce::String((int) found.size()));
+            const double expected[] { 0.0, 0.5, 1.0, 2.0, 3.0 };
+            for (size_t k = 0; k < found.size(); ++k) near(found[k].first, expected[k] * rate, 2.0, "Mapped click " + juce::String((int) k));
+            require(found[3].second > found[2].second * 1.3f && found[0].second > found[1].second * 1.3f, "3/4 downbeats are not accented");
+        }
+        // Project file: the map survives save/load; a project without "tempoMap" reads an empty map.
+        {
+            AudioEngine source; setup(source); source.tempo = 120.0; source.addMidiTrack("Map");
+            source.tempoMap.tempos = { { 8.0, 90.0, false }, { 16.0, 140.5, true } };
+            source.tempoMap.signatures = { { 0, 3, 4 }, { 2, 7, 8 } };
+            const auto file = dir.getChildFile("tempo-map.silente"); requireOk(source.saveProject(file));
+            AudioEngine restored; setup(restored); requireOk(restored.loadProject(file));
+            require(restored.tempoMap == source.tempoMap, "Tempo map changed after save/load");
+            auto json = juce::JSON::parse(file);
+            json.getDynamicObject()->removeProperty("tempoMap");
+            const auto old = dir.getChildFile("tempo-map-old.silente"); require(old.replaceWithText(juce::JSON::toString(json)), "Cannot write old project");
+            requireOk(restored.loadProject(old));
+            require(restored.tempoMap.empty() && restored.tempoView().isConstant(), "Old project must read without tempo events");
+            AudioEngine plain; setup(plain); plain.addMidiTrack("Plain");
+            const auto plainFile = dir.getChildFile("plain.silente"); requireOk(plain.saveProject(plainFile));
+            require(! plainFile.loadFileAsString().contains("tempoMap"), "A project without events must not write a tempo map");
+        }
+        // Standard MIDI File: jumps and signatures come back; a ramp keeps the elapsed time.
+        {
+            AudioEngine source; setup(source); source.tempo = 120.0;
+            source.tempoMap.tempos = { { 8.0, 90.0, false }, { 12.0, 150.0, true } };
+            source.tempoMap.signatures = { { 1, 3, 4 }, { 3, 6, 8 } };
+            auto a = source.addMidiTrack("Notas");
+            for (double start : { 0.0, 7.5, 8.0, 10.25, 13.0, 15.5 }) { MidiNote n; n.pitch = 60; n.startBeats = start; n.lengthBeats = 0.5; a->notes.push_back(n); }
+            const auto file = dir.getChildFile("tempo-map.mid"); requireOk(source.exportMidi(file));
+            AudioEngine back; setup(back); requireOk(back.importMidi(file));
+            near(back.tempo.load(), 120.0, 1e-9, "Base tempo");
+            require(back.tempoMap.signatures == source.tempoMap.signatures, "Signatures after MIDI round trip");
+            const auto s = source.tempoView(), b = back.tempoView();
+            near(b.bpmAt(12.0), 150.0, 1e-3, "Tempo after the ramp"); require(b.bpmAt(8.0) > 90.0 && b.bpmAt(8.0) < 93.75, "First ramp step holds the mean tempo of its sixteenth"); near(b.bpmAt(7.9), 120.0, 1e-9, "Before the jump");
+            for (double beat = 0.0; beat <= 16.0; beat += 0.25) near(b.secondsAt(beat), s.secondsAt(beat), 2e-5, "Time of beat " + juce::String(beat));
+            auto notes = back.tracks.at(0)->notes; std::sort(notes.begin(), notes.end(), [](const MidiNote& x, const MidiNote& y) { return x.startBeats < y.startBeats; });
+            require(notes.size() == a->notes.size(), "Note count after MIDI round trip");
+            for (size_t k = 0; k < notes.size(); ++k) near(notes[k].startBeats, a->notes[k].startBeats, 0, "Note " + juce::String((int) k) + " beat");
+            // A project that already has tracks keeps its map and places the notes by time.
+            AudioEngine busy; setup(busy); busy.tempo = 60.0; busy.addMidiTrack("Existente"); requireOk(busy.importMidi(file));
+            require(busy.tempoMap.empty() && busy.tempo.load() == 60.0, "Import into a busy project changed its tempo");
+            auto placed = busy.tracks.at(1)->notes; std::sort(placed.begin(), placed.end(), [](const MidiNote& x, const MidiNote& y) { return x.startBeats < y.startBeats; });
+            for (size_t k = 0; k < placed.size(); ++k) near(placed[k].startBeats, s.secondsAt(a->notes[k].startBeats), 2e-5, "Busy note " + juce::String((int) k) + " at its time");
+        }
     });
 
     auto* report = new juce::DynamicObject();

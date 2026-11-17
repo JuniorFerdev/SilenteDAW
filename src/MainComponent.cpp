@@ -12,6 +12,7 @@
 #include "app/Preferences.h"
 #include "ui/metronome/MetronomePanel.h"
 #include "ui/metronome/TapTempoPanel.h"
+#include "ui/tempo/TempoMapPanel.h"
 #include "ui/mixconsole/MixConsole.h"
 #include "ui/project/ChannelTab.h"
 #include "ui/project/TrackFinder.h"
@@ -123,7 +124,7 @@ public:
         std::vector<double> edges;
         if(snapGrid.usesEvents())for(int t=0;t<(int)engine.tracks.size();++t)for(int c=0;c<(int)engine.tracks[(size_t)t]->clips.size();++c)
             if(!(t==ignoreTrack&&c==ignoreClip)){const auto& clip=engine.tracks[(size_t)t]->clips[(size_t)c];edges.push_back(clip.startSeconds);edges.push_back(clip.startSeconds+clip.durationSeconds);}
-        return snapGrid.snap(s,engine.tempo.load(),pixelsPerSecond,edges,engine.positionSeconds.load());
+        return snapGrid.snap(s,engine.tempoView(),pixelsPerSecond,edges,engine.positionSeconds.load());
     }
     std::function<void()> rulerMenu;
     std::function<void(int)> chooseTool;
@@ -144,7 +145,31 @@ public:
         g.setColour(rulerBackground); g.fillRect(header,0,getWidth()-header,ruler);
         const double beat = 60.0/engine.tempo.load(), bar=beat*4;
         const int startBeat=(int)std::floor(scrollSeconds/beat), endBeat=(int)std::ceil(xToSeconds((float)getWidth())/beat);
-        if(snapGrid.format==ui::TimeFormat::barsBeats)
+        const auto timeline=engine.tempoView();
+        if(snapGrid.format==ui::TimeFormat::barsBeats&&!timeline.isConstant())
+        {   // Tempo map: bars follow the signature changes and every line is placed in time.
+            const double lastSeconds=xToSeconds((float)getWidth());
+            for(int b=timeline.barAt(timeline.beatsAt(scrollSeconds)).bar,guard=0;guard<4000;++b,++guard)
+            {
+                const auto signature=timeline.signatureAtBar(b);const double start=timeline.barStart(b),unit=signature.unitBeats();
+                if(timeline.secondsAt(start)>lastSeconds)break;
+                for(int k=0;k<signature.numerator;++k)
+                {
+                    const double from=start+k*unit,t0=timeline.secondsAt(from),beatPx=(timeline.secondsAt(from+unit)-t0)*pixelsPerSecond;const auto x=secondsToX(t0);
+                    if(x>=header)
+                    {
+                        const bool isBar=k==0;
+                        g.setColour(isBar ? gridBar.withAlpha(.65f) : gridBeat); g.drawVerticalLine((int)x,ruler,(float)getHeight());
+                        g.setColour(isBar ? ink : muted); g.drawVerticalLine((int)x,isBar?11.0f:20.0f,(float)ruler);
+                        if(isBar)text(g,juce::String(b+1),{(int)x+5,11,55,ruler-11},11,ink);
+                        else if(beatPx>36)text(g,juce::String(k+1),{(int)x+4,16,22,14},9,muted);
+                    }
+                    if(beatPx>32)for(double sub=.25;sub<unit-1.0e-9;sub+=.25)
+                    { const int sx=(int)secondsToX(timeline.secondsAt(from+sub));if(sx<header)continue;g.setColour(gridBeat.withAlpha(.45f));g.drawVerticalLine(sx,ruler,(float)getHeight());g.setColour(muted.withAlpha(.6f));g.drawVerticalLine(sx,26,(float)ruler); }
+                }
+            }
+        }
+        else if(snapGrid.format==ui::TimeFormat::barsBeats)
         {
         for (int b=startBeat; b<=endBeat; ++b)
         {
@@ -165,7 +190,7 @@ public:
             {
                 const auto x=secondsToX(t);if(x<header)continue;
                 g.setColour(gridBar.withAlpha(.65f));g.drawVerticalLine((int)x,ruler,(float)getHeight());g.setColour(ink);g.drawVerticalLine((int)x,11.0f,(float)ruler);
-                text(g,ui::SnapGrid::formatTime(t,snapGrid.format,engine.tempo.load(),engine.currentSampleRate()),{(int)x+5,11,110,ruler-11},10,ink);
+                text(g,ui::SnapGrid::formatTime(t,snapGrid.format,engine.tempoView(),engine.currentSampleRate()),{(int)x+5,11,110,ruler-11},10,ink);
             }
         }
         const float loopX=secondsToX(engine.loopStart),loopW=secondsToX(engine.loopEnd)-loopX;
@@ -199,7 +224,7 @@ public:
                 else
                 {
                     chip(g,ui::rulerFormatName(t.data.rulerFormat),{48,y+29,header-58,23},false,accent);
-                    if(dirtyArea.getRight()>header){juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(header,y,getWidth()-header,lane);ui::paintRulerTrack(g,t.data,timelineView(i),engine.tempo.load(),engine.currentSampleRate());}
+                    if(dirtyArea.getRight()>header){juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(header,y,getWidth()-header,lane);ui::paintRulerTrack(g,t.data,timelineView(i),engine.tempoView(),engine.currentSampleRate());}
                 }
                 g.setColour(line);g.drawHorizontalLine(y+lane-1,0,(float)getWidth());continue;
             }
@@ -400,7 +425,7 @@ public:
         else if(tool==7&&selectedClip>=0){dragClip=-1;if(beforeEdit)beforeEdit();auto& c=t.clips[(size_t)selectedClip];c.muted=!c.muted;if(changed)changed();}
         else if(tool==6){dragClip=-1;zoomAt((float)e.x,e.mods.isAltDown()?1.0/1.6:1.6);}
         else if(tool==9){dragClip=-1;playTool=true;engine.seek(xToSeconds((float)e.x));engine.play();}
-        else if(tool==8&&t.isMidi){if(beforeEdit)beforeEdit();MidiNote n;n.startBeats=snapped(xToSeconds((float)e.x))*engine.tempo/60;n.pitch=60;n.lengthBeats=1;t.notes.push_back(n);if(changed)changed();if(openPiano)openPiano();}
+        else if(tool==8&&t.isMidi){if(beforeEdit)beforeEdit();MidiNote n;n.startBeats=engine.tempoView().isConstant()?snapped(xToSeconds((float)e.x))*engine.tempo/60:engine.tempoView().beatsAt(snapped(xToSeconds((float)e.x)));n.pitch=60;n.lengthBeats=1;t.notes.push_back(n);if(changed)changed();if(openPiano)openPiano();}
         else if(selectedClip<0)engine.seek(snapped(xToSeconds((float)e.x)));
         repaint();
     }
@@ -789,7 +814,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     juce::MidiKeyboardComponent keyboard;
     juce::TooltipWindow tooltips;
     std::unique_ptr<juce::FileChooser> chooser;
-    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow;
+    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow, tempoWindow;
     std::unique_ptr<ui::MixConsoleWindow> mixConsoleWindow;
     std::unique_ptr<ui::AddTrackWindow> addTrackWindow;
     std::unique_ptr<UtilityWindow> exportWindow, conversionWindow, historyWindow;
@@ -879,7 +904,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         float gain, pan, low, mid, high; bool mute, solo, armed, monitor;int inputLeft,inputRight;
         juce::String output; struct Send { juce::String target; float level; bool pre, on; }; std::array<Send,Track::sendCount> sends;
     };
-    struct Snapshot { std::vector<TrackState> tracks; double tempo, loopStart, loopEnd; float master; bool looping; juce::String action,activeMarker; juce::Time time; };
+    struct Snapshot { std::vector<TrackState> tracks; domain::TempoMap tempoMap; double tempo, loopStart, loopEnd; float master; bool looping; juce::String action,activeMarker; juce::Time time; };
     std::deque<Snapshot> undoStack, redoStack;
 
     Impl(MainComponent& o, AudioEngine& e, PluginManager& p)
@@ -1292,7 +1317,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
 
     Snapshot snapshot()
     {
-        const juce::ScopedLock lock(engine.modelLock);Snapshot s;s.tempo=engine.tempo;s.master=engine.masterGain;s.loopStart=engine.loopStart;s.loopEnd=engine.loopEnd;s.looping=engine.looping;s.activeMarker=engine.activeMarkerTrack;
+        const juce::ScopedLock lock(engine.modelLock);Snapshot s;s.tempo=engine.tempo;s.tempoMap=engine.tempoMap;s.master=engine.masterGain;s.loopStart=engine.loopStart;s.loopEnd=engine.loopEnd;s.looping=engine.looping;s.activeMarker=engine.activeMarkerTrack;
         for(auto& t:engine.tracks)
         {
             TrackState state{t,t->name,t->colour,t->clips,t->notes,t->data,t->gain,t->pan,t->lowGainDb,t->midGainDb,t->highGainDb,t->mute,t->solo,t->armed,t->monitor,t->inputLeft,t->inputRight,t->output,{}};
@@ -1303,7 +1328,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     }
     void restore(const Snapshot& s)
     {
-        const juce::ScopedLock lock(engine.modelLock);engine.panic();engine.tracks.clear();for(auto& a:s.tracks){auto& t=*a.track;t.name=a.name;t.colour=a.colour;t.clips=a.clips;t.notes=a.notes;t.data=a.data;t.gain=a.gain;t.pan=a.pan;t.lowGainDb=a.low;t.midGainDb=a.mid;t.highGainDb=a.high;t.mute=a.mute;t.solo=a.solo;t.armed=a.armed;t.monitor=a.monitor;t.inputLeft=a.inputLeft;t.inputRight=a.inputRight;t.output=a.output;for(size_t k=0;k<a.sends.size();++k){t.sends[k].target=a.sends[k].target;t.sends[k].levelDb=a.sends[k].level;t.sends[k].preFader=a.sends[k].pre;t.sends[k].enabled=a.sends[k].on;}engine.tracks.push_back(a.track);}engine.tempo=s.tempo;engine.masterGain=s.master;engine.loopStart=s.loopStart;engine.loopEnd=s.loopEnd;engine.looping=s.looping;engine.activeMarkerTrack=s.activeMarker;selected=juce::jlimit(0,juce::jmax(0,(int)engine.tracks.size()-1),selected);arrangement.selectedClip=-1;arrangement.selectedMarker.clear();piano.clearSelection();markDirty();owner.resized();refresh();
+        const juce::ScopedLock lock(engine.modelLock);engine.panic();engine.tracks.clear();for(auto& a:s.tracks){auto& t=*a.track;t.name=a.name;t.colour=a.colour;t.clips=a.clips;t.notes=a.notes;t.data=a.data;t.gain=a.gain;t.pan=a.pan;t.lowGainDb=a.low;t.midGainDb=a.mid;t.highGainDb=a.high;t.mute=a.mute;t.solo=a.solo;t.armed=a.armed;t.monitor=a.monitor;t.inputLeft=a.inputLeft;t.inputRight=a.inputRight;t.output=a.output;for(size_t k=0;k<a.sends.size();++k){t.sends[k].target=a.sends[k].target;t.sends[k].levelDb=a.sends[k].level;t.sends[k].preFader=a.sends[k].pre;t.sends[k].enabled=a.sends[k].on;}engine.tracks.push_back(a.track);}engine.tempo=s.tempo;engine.tempoMap=s.tempoMap;engine.masterGain=s.master;engine.loopStart=s.loopStart;engine.loopEnd=s.loopEnd;engine.looping=s.looping;engine.activeMarkerTrack=s.activeMarker;selected=juce::jlimit(0,juce::jmax(0,(int)engine.tracks.size()-1),selected);arrangement.selectedClip=-1;arrangement.selectedMarker.clear();piano.clearSelection();markDirty();owner.resized();refresh();
     }
     // Each undo step stores the state before an edit plus the edit's name and time (Historial de ediciones).
     void pushUndo(const juce::String& action={}){auto s=snapshot();s.action=action.isEmpty()?i18n::tr("Edición"):action;s.time=juce::Time::getCurrentTime();undoStack.push_back(std::move(s));if(undoStack.size()>100)undoStack.pop_front();redoStack.clear();}
@@ -1446,7 +1471,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     void copyRangeToClipboard()
     {
         const audio::TimeRange r{arrangement.rangeStart,arrangement.rangeEnd};rangeClipboard.clear();
-        for(int i:arrangement.rangeTracks())if(i>=0&&i<(int)engine.tracks.size()){const auto& t=*engine.tracks[(size_t)i];rangeClipboard.push_back(audio::copyRange(t.clips,t.notes,r,engine.tempo.load()));}
+        for(int i:arrangement.rangeTracks())if(i>=0&&i<(int)engine.tracks.size()){const auto& t=*engine.tracks[(size_t)i];rangeClipboard.push_back(audio::copyRange(t.clips,t.notes,r,engine.tempoView()));}
         rangeClipboardStart=r.start;rangeClipboardLength=r.length();clipboard.reset();
     }
     void pasteRangeClipboard(bool atOrigin)
@@ -1454,7 +1479,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         const auto v=arrangement.visibleTracks();auto it=std::find(v.begin(),v.end(),selected);if(it==v.end()){error(i18n::tr("Selecciona una pista para pegar."));return;}
         const double at=atOrigin?rangeClipboardStart:engine.positionSeconds.load();int row=(int)std::distance(v.begin(),it);
         pushUndo(i18n::tr("Pegar rango"));
-        {const juce::ScopedLock lock(engine.modelLock);for(const auto& content:rangeClipboard){if(row>=(int)v.size())break;auto& t=*engine.tracks[(size_t)v[(size_t)row++]];audio::pasteContent(t.clips,t.notes,content,at,engine.tempo.load());}}
+        {const juce::ScopedLock lock(engine.modelLock);for(const auto& content:rangeClipboard){if(row>=(int)v.size())break;auto& t=*engine.tracks[(size_t)v[(size_t)row++]];audio::pasteContent(t.clips,t.notes,content,at,engine.tempoView());}}
         arrangement.setRange(at,at+rangeClipboardLength,(int)std::distance(v.begin(),it),juce::jmin((int)v.size()-1,(int)std::distance(v.begin(),it)+(int)rangeClipboard.size()-1));
         markDirty();refresh();
     }
@@ -1463,7 +1488,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         const audio::TimeRange r{arrangement.rangeStart,arrangement.rangeEnd};const auto v=arrangement.visibleTracks();const auto tracks=arrangement.rangeTracks();
         pushUndo(copy?i18n::tr("Copiar rango"):i18n::tr("Mover rango"));
         {
-            const juce::ScopedLock lock(engine.modelLock);const double bpm=engine.tempo.load();std::vector<audio::RangeContent> contents;
+            const juce::ScopedLock lock(engine.modelLock);const auto bpm=engine.tempoView();std::vector<audio::RangeContent> contents;
             for(int i:tracks)contents.push_back(audio::copyRange(engine.tracks[(size_t)i]->clips,engine.tracks[(size_t)i]->notes,r,bpm));
             if(!copy)for(int i:tracks)audio::deleteRange(engine.tracks[(size_t)i]->clips,engine.tracks[(size_t)i]->notes,r,bpm);
             for(size_t k=0;k<tracks.size();++k){const int row=arrangement.rangeFirstRow+(int)k+rows;if(row<0||row>=(int)v.size())continue;auto& t=*engine.tracks[(size_t)v[(size_t)row]];audio::pasteContent(t.clips,t.notes,contents[k],r.start+delta,bpm);}
@@ -1472,14 +1497,14 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         markDirty();arrangement.repaint();refresh();
     }
     // Range edits on every track the range covers, as one undo step.
-    void rangeEdit(const juce::String& name,const std::function<void(std::vector<AudioClip>&,std::vector<MidiNote>&,audio::TimeRange,double)>& op,bool needsLength=true)
+    void rangeEdit(const juce::String& name,const std::function<void(std::vector<AudioClip>&,std::vector<MidiNote>&,audio::TimeRange,const domain::TempoView&)>& op,bool needsLength=true)
     {
         if(!arrangement.hasRange){error(i18n::tr("Selecciona un rango con la herramienta Selección de rango (2)."));return;}
         const audio::TimeRange r{arrangement.rangeStart,arrangement.rangeEnd};
         if(needsLength&&r.length()<=1e-9){error(i18n::tr("El rango está vacío."));return;}
         const auto tracks=arrangement.rangeTracks();if(tracks.empty())return;
         pushUndo(name);
-        {const juce::ScopedLock lock(engine.modelLock);for(int i:tracks)if(i>=0&&i<(int)engine.tracks.size()){auto& t=*engine.tracks[(size_t)i];op(t.clips,t.notes,r,engine.tempo.load());}}
+        {const juce::ScopedLock lock(engine.modelLock);for(int i:tracks)if(i>=0&&i<(int)engine.tracks.size()){auto& t=*engine.tracks[(size_t)i];op(t.clips,t.notes,r,engine.tempoView());}}
         arrangement.selectedClip=-1;markDirty();arrangement.repaint();refresh();
     }
     juce::PopupMenu rangeMenu()
@@ -1555,16 +1580,16 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     }
     void showLoopDialog()
     {
-        auto* a=new juce::AlertWindow(i18n::tr("Región de ciclo"),i18n::tr("Posiciones en compases; 1 equivale al inicio."),juce::MessageBoxIconType::NoIcon);double bar=240.0/engine.tempo;
-        a->addTextEditor("start",juce::String(engine.loopStart/bar+1,2),i18n::tr("Inicio"));a->addTextEditor("end",juce::String(engine.loopEnd/bar+1,2),i18n::tr("Final"));a->addButton(i18n::tr("Aplicar"),1);a->addButton(i18n::tr("Cancelar"),0);
-        a->enterModalState(true,juce::ModalCallbackFunction::create([safe=juce::Component::SafePointer<MainComponent>(&owner),a](int result){if(!safe||result!=1)return;auto& self=*safe->ui;double bar=240.0/self.engine.tempo;double start=juce::jmax(0.0,(a->getTextEditorContents("start").getDoubleValue()-1)*bar);double end=(a->getTextEditorContents("end").getDoubleValue()-1)*bar;if(end>start+.01){self.engine.loopStart=start;self.engine.loopEnd=end;self.markDirty();}}),true);
+        auto* a=new juce::AlertWindow(i18n::tr("Región de ciclo"),i18n::tr("Posiciones en compases; 1 equivale al inicio."),juce::MessageBoxIconType::NoIcon);
+        a->addTextEditor("start",juce::String(barsAt(engine.loopStart),2),i18n::tr("Inicio"));a->addTextEditor("end",juce::String(barsAt(engine.loopEnd),2),i18n::tr("Final"));a->addButton(i18n::tr("Aplicar"),1);a->addButton(i18n::tr("Cancelar"),0);
+        a->enterModalState(true,juce::ModalCallbackFunction::create([safe=juce::Component::SafePointer<MainComponent>(&owner),a](int result){if(!safe||result!=1)return;auto& self=*safe->ui;double start=juce::jmax(0.0,self.secondsAtBars(a->getTextEditorContents("start").getDoubleValue()));double end=self.secondsAtBars(a->getTextEditorContents("end").getDoubleValue());if(end>start+.01){self.engine.loopStart=start;self.engine.loopEnd=end;self.markDirty();}}),true);
     }
     void error(const juce::String& message){notice=message;juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,"Silente",message,i18n::tr("Entendido"),&owner);}
     void syncInspector()
     {
         syncing=true;auto t=currentTrack();
-        if(t&&t->kind==TrackKind::marker)markerInspector.showTrack(t->id,t->name,t->colour,t->data,arrangement.selectedMarker,engine.activeMarkerTrack==t->id,(int)arrangement.snapGrid.format,engine.tempo.load(),engine.currentSampleRate());
-        markerInfo.showMarker(t?t->id:juce::String(),selectedMarkerPtr(),(int)arrangement.snapGrid.format,engine.tempo.load(),engine.currentSampleRate());
+        if(t&&t->kind==TrackKind::marker)markerInspector.showTrack(t->id,t->name,t->colour,t->data,arrangement.selectedMarker,engine.activeMarkerTrack==t->id,(int)arrangement.snapGrid.format,engine.tempoView(),engine.currentSampleRate());
+        markerInfo.showMarker(t?t->id:juce::String(),selectedMarkerPtr(),(int)arrangement.snapGrid.format,engine.tempoView(),engine.currentSampleRate());
         markerInfo.setVisible(showInfoLine&&selectedMarkerPtr()!=nullptr);for(auto* c:std::initializer_list<juce::Component*>{&gain,&pan,&low,&mid,&high,&mute,&solo,&arm,&monitor})c->setEnabled(t!=nullptr);
         if(t){const bool signal=t->hasAudioChannel();for(auto* c:std::initializer_list<juce::Component*>{&gain,&pan,&low,&mid,&high,&mute,&solo})c->setEnabled(signal);arm.setEnabled(t->hasEvents());monitor.setEnabled(t->hasEvents());}
         if(t){if(!gain.isMouseButtonDown())gain.setValue(juce::Decibels::gainToDecibels(t->gain.load(),-60.0f),juce::dontSendNotification);if(!pan.isMouseButtonDown())pan.setValue(t->pan*100,juce::dontSendNotification);if(!low.isMouseButtonDown())low.setValue(t->lowGainDb,juce::dontSendNotification);if(!mid.isMouseButtonDown())mid.setValue(t->midGainDb,juce::dontSendNotification);if(!high.isMouseButtonDown())high.setValue(t->highGainDb,juce::dontSendNotification);mute.setToggleState(t->mute,juce::dontSendNotification);solo.setToggleState(t->solo,juce::dontSendNotification);arm.setToggleState(t->armed,juce::dontSendNotification);monitor.setToggleState(t->monitor,juce::dontSendNotification);}
@@ -1590,7 +1615,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             if(stopAfterPunchOut){const double until=engine.loopEnd.load()+(usePostRoll?postRollBars*barSeconds():0.0);if(engine.positionSeconds.load()>=until)engine.pause();else engine.stopAt=until;}
         }scan.setButtonText(plugins.isScanning()?i18n::tr("Detener búsqueda"):i18n::tr("Buscar plugins"));
         double time=engine.positionSeconds;const int mins=(int)time/60,secs=(int)time%60,ms=(int)(time*1000)%1000;transportTime.setText(juce::String(mins).paddedLeft('0',2)+":"+juce::String(secs).paddedLeft('0',2)+"."+juce::String(ms).paddedLeft('0',3),juce::dontSendNotification);
-        {const auto countIn=engine.countInSamples.load();status.setText(countIn>0?i18n::tr("Precuenta… ")+juce::String((int)std::ceil(countIn/engine.currentSampleRate()*engine.tempo.load()/60.0)):notice,juce::dontSendNotification);}rightRack.tick();trackColour.setEnabled(currentTrack()!=nullptr);if(channelWindow)if(auto* panel=dynamic_cast<ChannelPanel*>(channelWindow->getContentComponent()))panel->refresh();
+        {const auto countIn=engine.countInSamples.load();status.setText(countIn>0?i18n::tr("Precuenta… ")+juce::String((int)std::ceil(countIn/engine.currentSampleRate()*engine.tempo.load()/60.0)):notice,juce::dontSendNotification);}rightRack.tick();trackColour.setEnabled(currentTrack()!=nullptr);if(channelWindow)if(auto* panel=dynamic_cast<ChannelPanel*>(channelWindow->getContentComponent()))panel->refresh();if(tempoWindow&&tempoWindow->isVisible())if(auto* panel=dynamic_cast<ui::TempoMapPanel*>(tempoWindow->getContentComponent()))panel->setMap(engine.tempoMap,engine.tempoView().bpm);
         const double view=juce::jmax(1.0,(arrangement.getWidth()-Arrangement::header)/arrangement.pixelsPerSecond);timelineScroll.setRangeLimits(0,juce::jmax(engine.duration()+8,arrangement.scrollSeconds+view));timelineScroll.setCurrentRange(arrangement.scrollSeconds,view,juce::dontSendNotification);
         {bool anyMute=false,anySolo=false;for(auto& t:engine.tracks){anyMute|=t->mute.load();anySolo|=t->solo.load();}allMuteOff.setToggleState(anyMute,juce::dontSendNotification);allSoloOff.setToggleState(anySolo,juce::dontSendNotification);}
         if(channelTab)channelTab->setTrack(selected);
@@ -1626,7 +1651,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     {   // Everything the window draws, except the playback position and the meters.
         juce::uint64 h=1469598103934665603ull;const auto mix=[&h](double v){juce::uint64 bits;std::memcpy(&bits,&v,sizeof bits);h=(h^bits)*1099511628211ull;};
         mix(engine.tracks.size());mix(selected);mix(arrangement.selectedClip);mix(arrangement.tool);mix(dirty);mix(undoStack.size());mix(redoStack.size());
-        mix(engine.looping.load());mix(engine.loopStart.load());mix(engine.loopEnd.load());mix(engine.punchIn.load());mix(engine.punchOut.load());mix(engine.tempo.load());
+        mix(engine.looping.load());mix(engine.loopStart.load());mix(engine.loopEnd.load());mix(engine.punchIn.load());mix(engine.punchOut.load());mix(engine.tempo.load());for(const auto& e:engine.tempoMap.tempos){mix(e.beat);mix(e.bpm);mix(e.ramp);}for(const auto& e:engine.tempoMap.signatures){mix(e.bar);mix(e.numerator*64+e.denominator);}
         mix(engine.metronome.load());mix(engine.recording.load());mix(engine.playing.load());mix(engine.capturing.load());mix(engine.recordBitDepth.load());
         mix(arrangement.scrollSeconds);mix(arrangement.pixelsPerSecond);mix(arrangement.lane);mix(arrangement.waveZoom);mix(arrangement.firstTrack);
         mix(arrangement.hasRange);mix(arrangement.rangeStart);mix(arrangement.rangeEnd);mix(arrangement.rangeFirstRow);mix(arrangement.rangeLastRow);
@@ -1838,14 +1863,18 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
                 const double beats=engine.positionSeconds.load()*engine.tempo.load()/60.0;const int b=(int)std::floor(beats);
                 const double sixteenths=(beats-b)*4.0;const int six=(int)std::floor(sixteenths),ticks=(int)std::floor((sixteenths-six)*120.0);
                 const juce::Rectangle<int> box(cx-300,ty+10,150,26);g.setColour(bg);g.fillRoundedRectangle(box.toFloat(),3);
-                text(g,juce::String(b/4+1)+".  "+juce::String(b%4+1)+".  "+juce::String(six+1)+".  "+juce::String(ticks).paddedLeft('0',3),box.reduced(10,0),13,ink,juce::Justification::centredRight);
+                const auto timeline=engine.tempoView();
+                if(timeline.isConstant())text(g,juce::String(b/4+1)+".  "+juce::String(b%4+1)+".  "+juce::String(six+1)+".  "+juce::String(ticks).paddedLeft('0',3),box.reduced(10,0),13,ink,juce::Justification::centredRight);
+                else{auto parts=juce::StringArray::fromTokens(ui::SnapGrid::formatTime(engine.positionSeconds.load(),ui::TimeFormat::barsBeats,timeline,engine.currentSampleRate()),". ","");parts.removeEmptyStrings();
+                     if(parts.size()==4)text(g,parts[0]+".  "+parts[1]+".  "+parts[2]+".  "+parts[3].paddedLeft('0',3),box.reduced(10,0),13,ink,juce::Justification::centredRight);}
             }
-            text(g,"BPM",{cx+383,ty+13,34,25},10,muted);text(g,"4 / 4",{cx+468,ty+13,44,25},12,ink);
-            const double bar=240.0/engine.tempo.load();
+            {const auto timeline=engine.tempoView();const auto signature=timeline.barAt(timeline.beatsAt(engine.positionSeconds.load())).signature;text(g,"BPM",{cx+383,ty+13,34,25},10,muted);text(g,juce::String(signature.numerator)+" / "+juce::String(signature.denominator),{cx+468,ty+13,44,25},12,ink);}
             // Left and right locators, as the boxes at the left of Cubase's transport bar.
-            for(int k=0;k<2;++k){const juce::Rectangle<int> box(44+k*136,ty+10,130,26);g.setColour(bg);g.fillRoundedRectangle(box.toFloat(),3);text(g,(k==0?"L   ":"R   ")+juce::String((k==0?engine.loopStart.load():engine.loopEnd.load())/bar+1,2),box.reduced(10,0),12,k==0?ink:ink,juce::Justification::centredLeft);}
+            for(int k=0;k<2;++k){const juce::Rectangle<int> box(44+k*136,ty+10,130,26);g.setColour(bg);g.fillRoundedRectangle(box.toFloat(),3);text(g,(k==0?"L   ":"R   ")+juce::String(barsAt(k==0?engine.loopStart.load():engine.loopEnd.load()),2),box.reduced(10,0),12,k==0?ink:ink,juce::Justification::centredLeft);}
             {   // Beat lights: the bar's beats, the first one accented, lit while the transport runs.
-                const double beats=engine.positionSeconds.load()*engine.tempo.load()/60.0;const int current=(int)std::floor(beats)%4;const float fade=1.0f-(float)(beats-std::floor(beats));
+                const double beats=engine.positionSeconds.load()*engine.tempo.load()/60.0;int current=(int)std::floor(beats)%4;float fade=1.0f-(float)(beats-std::floor(beats));
+                if(const auto timeline=engine.tempoView();!timeline.isConstant())
+                {const auto at=timeline.barAt(timeline.beatsAt(engine.positionSeconds.load()));const double counted=at.beatInBar/at.signature.unitBeats();current=(int)std::floor(counted)%4;fade=1.0f-(float)(counted-std::floor(counted));}
                 if(w/2+570<w)for(int b=0;b<4;++b){const bool lit=engine.playing.load()&&b==current;auto colour=b==0?coral:mint;g.setColour(lit?colour.withAlpha(.35f+.65f*fade):raised);g.fillEllipse((float)(w/2+518)+b*12.0f,(float)ty+22.0f,b==0?8.0f:7.0f,b==0?8.0f:7.0f);} }
         }
         text(g,engine.recording?i18n::tr("● REC"):engine.playing?i18n::tr("● PLAY"):i18n::tr("● LISTO"),{w-112,h-24,100,23},10,engine.recording?coral:engine.playing?mint:muted,juce::Justification::centredRight);
@@ -1946,7 +1975,26 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     std::optional<std::pair<AudioClip,int>> clipboard; // copied event and its source track
     std::shared_ptr<Track> selectedTrackPtr(){return currentTrack();}
     AudioClip* selectedClipPtr(){auto t=currentTrack();if(!t||!juce::isPositiveAndBelow(arrangement.selectedClip,(int)t->clips.size()))return nullptr;return &t->clips[(size_t)arrangement.selectedClip];}
-    double barSeconds()const{return 240.0/juce::jlimit(20.0,400.0,engine.tempo.load());}
+    // Length of the bar at the project cursor (pre/post-roll, nudge by bars, locator ranges).
+    double barSeconds()const
+    {
+        const auto timeline=engine.tempoView();if(timeline.isConstant())return 240.0/timeline.bpm;
+        const auto at=timeline.barAt(timeline.beatsAt(engine.positionSeconds.load()));const double start=timeline.beatsAt(engine.positionSeconds.load())-at.beatInBar;
+        return timeline.secondsAt(start+at.signature.barBeats())-timeline.secondsAt(start);
+    }
+    // Bar number (1-based, fractional) shown for a time, and back: cycle dialog and locator boxes.
+    double barsAt(double seconds)const
+    {
+        const auto timeline=engine.tempoView();if(timeline.isConstant())return seconds/(240.0/engine.tempo.load())+1;
+        const auto at=timeline.barAt(timeline.beatsAt(seconds));return at.bar+1+at.beatInBar/at.signature.barBeats();
+    }
+    double secondsAtBars(double bars)const
+    {
+        const auto timeline=engine.tempoView();if(timeline.isConstant())return (bars-1)*(240.0/engine.tempo.load());
+        return timeline.secondsAt(timeline.beatsFromBarsBeats(bars,1,1,0));
+    }
+    // Tempo at the project cursor (grid nudge steps).
+    double cursorBpm()const{const auto timeline=engine.tempoView();return timeline.bpmAt(timeline.beatsAt(engine.positionSeconds.load()));}
     void selectVisible(int offset,bool absolute)
     {
         const auto v=arrangement.visibleTracks();if(v.empty())return;
@@ -1970,7 +2018,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         auto* a=new juce::AlertWindow(title,{},juce::MessageBoxIconType::NoIcon);a->addTextEditor("v",value,label);a->addButton(i18n::tr("Aplicar"),1,juce::KeyPress(juce::KeyPress::returnKey));a->addButton(i18n::tr("Cancelar"),0,juce::KeyPress(juce::KeyPress::escapeKey));
         a->enterModalState(true,juce::ModalCallbackFunction::create([a,apply](int result){if(result==1)apply(a->getTextEditorContents("v"));}),true);
     }
-    double parseBars(const juce::String& text)const{auto parts=juce::StringArray::fromTokens(text.replace(",","."),". :",""); parts.removeEmptyStrings();const double bar=parts.size()>0?parts[0].getDoubleValue():1,beat=parts.size()>1?parts[1].getDoubleValue():1,six=parts.size()>2?parts[2].getDoubleValue():1;return juce::jmax(0.0,((bar-1)*4+(beat-1)+(six-1)/4.0)*60.0/engine.tempo.load());}
+    double parseBars(const juce::String& text)const{auto parts=juce::StringArray::fromTokens(text.replace(",","."),". :",""); parts.removeEmptyStrings();const double bar=parts.size()>0?parts[0].getDoubleValue():1,beat=parts.size()>1?parts[1].getDoubleValue():1,six=parts.size()>2?parts[2].getDoubleValue():1;const auto timeline=engine.tempoView();if(!timeline.isConstant())return juce::jmax(0.0,timeline.secondsAt(timeline.beatsFromBarsBeats(bar,beat,six,0)));return juce::jmax(0.0,((bar-1)*4+(beat-1)+(six-1)/4.0)*60.0/engine.tempo.load());}
     void registerKeyActions()
     {
         auto& k=keyActions;
@@ -1995,7 +2043,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["locatorsToSelection"]=[this]{if(auto* c=selectedClipPtr()){pushUndo();engine.loopStart=c->startSeconds;engine.loopEnd=c->startSeconds+c->durationSeconds;markDirty();notice=i18n::tr("Localizadores en el evento seleccionado.");refresh();}};
         k["loopSelection"]=[this]{if(auto* c=selectedClipPtr()){engine.loopStart=c->startSeconds;engine.loopEnd=c->startSeconds+c->durationSeconds;engine.looping=true;engine.seek(c->startSeconds);if(!engine.playing)engine.play();refresh();}};
         k["enterLeft"]=[this]{showLoopDialog();};k["enterRight"]=[this]{showLoopDialog();};
-        k["enterPosition"]=[this]{askValue(i18n::tr("Posición del cursor del proyecto"),i18n::tr("Compás. Tiempo. Semicorchea"),ui::SnapGrid::formatTime(engine.positionSeconds.load(),ui::TimeFormat::barsBeats,engine.tempo.load(),engine.currentSampleRate()).upToLastOccurrenceOf(".",false,false),[this](const juce::String& v){engine.seek(parseBars(v));refresh();});};
+        k["enterPosition"]=[this]{askValue(i18n::tr("Posición del cursor del proyecto"),i18n::tr("Compás. Tiempo. Semicorchea"),ui::SnapGrid::formatTime(engine.positionSeconds.load(),ui::TimeFormat::barsBeats,engine.tempoView(),engine.currentSampleRate()).upToLastOccurrenceOf(".",false,false),[this](const juce::String& v){engine.seek(parseBars(v));refresh();});};
         k["enterTempo"]=[this]{askValue(i18n::tr("Introducir tempo"),"BPM",juce::String(engine.tempo.load(),3),[this](const juce::String& v){const double bpm=v.replace(",",".").getDoubleValue();if(bpm>=20&&bpm<=300){pushUndo();engine.tempo=bpm;markDirty();refresh();}});};
         k["tapTempo"]=[this]{showTapTempo();};
         k["quantize"]=[this]{if(pianoVisible&&currentTrack()&&currentTrack()->isMidi)piano.quantizeNotes();};
@@ -2006,17 +2054,17 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         // Empujar bordes del rango (⌥← ⌥→ inicio, ⌥⇧← ⌥⇧→ final) by the grid value.
         const auto trim=[this](bool start,double sign)
         {
-            if(!arrangement.hasRange)return;const double unit=arrangement.snapGrid.unitSeconds(engine.tempo.load(),arrangement.pixelsPerSecond);
+            if(!arrangement.hasRange)return;const double unit=arrangement.snapGrid.unitSeconds(cursorBpm(),arrangement.pixelsPerSecond);
             if(start)arrangement.rangeStart=juce::jlimit(0.0,arrangement.rangeEnd,arrangement.rangeStart+sign*unit);
             else arrangement.rangeEnd=juce::jmax(arrangement.rangeStart,arrangement.rangeEnd+sign*unit);
             arrangement.repaint();owner.repaint();
         };
         k["nudgeStartLeft"]=[trim]{trim(true,-1);};k["nudgeStartRight"]=[trim]{trim(true,1);};k["nudgeEndLeft"]=[trim]{trim(false,-1);};k["nudgeEndRight"]=[trim]{trim(false,1);};
-        k["splitRange"]=[this]{rangeEdit(i18n::tr("Dividir rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::splitRange(c,r);},false);};
+        k["splitRange"]=[this]{rangeEdit(i18n::tr("Dividir rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,const domain::TempoView&){audio::splitRange(c,r);},false);};
         k["deleteTime"]=[this]{rangeEdit(i18n::tr("Suprimir intervalo de tiempo"),audio::deleteTime);};
         k["insertSilence"]=[this]{rangeEdit(i18n::tr("Insertar silencio"),audio::insertSilence);};
-        k["truncateRange"]=[this]{rangeEdit(i18n::tr("Truncar"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::truncate(c,r);});};
-        k["adjustFades"]=[this]{rangeEdit(i18n::tr("Ajustar fundidos al rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,double){audio::adjustFadesToRange(c,r);});};k["repeat"]=[this]{arrangement.duplicateSelected();};
+        k["truncateRange"]=[this]{rangeEdit(i18n::tr("Truncar"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,const domain::TempoView&){audio::truncate(c,r);});};
+        k["adjustFades"]=[this]{rangeEdit(i18n::tr("Ajustar fundidos al rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,const domain::TempoView&){audio::adjustFadesToRange(c,r);});};k["repeat"]=[this]{arrangement.duplicateSelected();};
         k["splitAtCursor"]=[this]{arrangement.splitSelected();};
         k["copy"]=[this]{if(rangeActive()){copyRangeToClipboard();notice=i18n::tr("Rango copiado.");return;}if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);rangeClipboard.clear();notice=i18n::tr("Evento copiado.");}};
         k["cut"]=[this]{if(rangeActive()){copyRangeToClipboard();rangeEdit(i18n::tr("Cortar rango"),audio::deleteRange);notice=i18n::tr("Rango cortado.");return;}if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);rangeClipboard.clear();arrangement.deleteSelected();notice=i18n::tr("Evento cortado.");}};
@@ -2052,10 +2100,10 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         {
             if(rangeActive())
             {   // ⌘← ⌘→ with a range: the range moves, its content stays.
-                const double unit=arrangement.snapGrid.unitSeconds(engine.tempo.load(),arrangement.pixelsPerSecond),len=arrangement.rangeEnd-arrangement.rangeStart;
+                const double unit=arrangement.snapGrid.unitSeconds(cursorBpm(),arrangement.pixelsPerSecond),len=arrangement.rangeEnd-arrangement.rangeStart;
                 arrangement.rangeStart=juce::jmax(0.0,arrangement.rangeStart+sign*unit);arrangement.rangeEnd=arrangement.rangeStart+len;arrangement.repaint();owner.repaint();return;
             }
-            if(auto* c=selectedClipPtr()){pushUndo();const double unit=arrangement.snapGrid.unitSeconds(engine.tempo.load(),arrangement.pixelsPerSecond);const juce::ScopedLock lock(engine.modelLock);c->startSeconds=juce::jmax(0.0,c->startSeconds+sign*unit);markDirty();refresh();}
+            if(auto* c=selectedClipPtr()){pushUndo();const double unit=arrangement.snapGrid.unitSeconds(cursorBpm(),arrangement.pixelsPerSecond);const juce::ScopedLock lock(engine.modelLock);c->startSeconds=juce::jmax(0.0,c->startSeconds+sign*unit);markDirty();refresh();}
         };
         k["nudgeLeft"]=[nudge]{nudge(-1);};k["nudgeRight"]=[nudge]{nudge(1);};
         k["zoomIn"]=[this]{arrangement.zoom(1.25);};k["zoomOut"]=[this]{arrangement.zoom(1/1.25);};
@@ -2089,6 +2137,18 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             tapWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Calculadora de tempo"),panel,420,330);tapWindow->setLookAndFeel(&look);
         }
         tapWindow->setVisible(true);tapWindow->toFront(true);if(auto* c=tapWindow->getContentComponent())c->grabKeyboardFocus();
+    }
+    void showTempoMap()
+    {
+        if(!tempoWindow)
+        {
+            auto* panel=new ui::TempoMapPanel();
+            panel->onChange=[this](const domain::TempoMap& map,const juce::String& action)
+            {pushUndo(action);{const juce::ScopedLock lock(engine.modelLock);engine.tempoMap=map;}markDirty();refresh();arrangement.repaint();piano.repaint();};
+            tempoWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Mapa de tempo y de compás"),panel,560,460);tempoWindow->setLookAndFeel(&look);
+        }
+        if(auto* panel=dynamic_cast<ui::TempoMapPanel*>(tempoWindow->getContentComponent()))panel->setMap(engine.tempoMap,engine.tempoView().bpm);
+        tempoWindow->setVisible(true);tempoWindow->toFront(true);
     }
     void toggleMetronome(){engine.metronome=!engine.metronome.load();click.setToggleState(engine.metronome.load(),juce::dontSendNotification);notice=engine.metronome.load()?i18n::tr("Metrónomo activado"):i18n::tr("Metrónomo desactivado");markDirty();}
     void settingsDialog()
@@ -2161,6 +2221,7 @@ float MainComponent::projectXForTime(double seconds)const{return ui->arrangement
 bool MainComponent::runCommand(const juce::String& id){if(auto a=ui->keyActions.find(id);a!=ui->keyActions.end()){a->second();return true;}return false;}
 void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}
 void MainComponent::showTapTempo(){ui->showTapTempo();}
+void MainComponent::showTempoMap(){ui->showTempoMap();}
 bool MainComponent::metronomeOn()const{return ui->engine.metronome.load();}
 void MainComponent::addAudioTrack(){addTrack(TrackKind::audio);}
 void MainComponent::addTrack(TrackKind kind){if(kind==TrackKind::marker&&std::count_if(ui->engine.tracks.begin(),ui->engine.tracks.end(),[](const auto& track){return track->kind==TrackKind::marker;})>=10){ui->notice=i18n::tr("El proyecto admite hasta diez pistas de marcador.");ui->refresh();return;}ui->pushUndo(i18n::tr("Añadir pista"));ui->engine.addTrack(kind);ui->select((int)ui->engine.tracks.size()-1);ui->markDirty();ui->refresh();}

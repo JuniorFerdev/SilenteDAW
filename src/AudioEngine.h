@@ -7,6 +7,7 @@
 #include "audio/DeviceSettings.h"
 #include "audio/Metronome.h"
 #include "domain/MidiNote.h"
+#include "domain/TempoMap.h"
 #include "domain/TrackData.h"
 #include <functional>
 #include <memory>
@@ -107,6 +108,11 @@ public:
     std::vector<std::shared_ptr<Track>> tracks;
     std::atomic<bool> playing { false }, recording { false }, metronome { false }, looping { false };
     std::atomic<double> positionSeconds { 0.0 }, tempo { 120.0 }, loopStart { 0.0 }, loopEnd { 8.0 };
+    // Tempo and signature changes after the start; `tempo` stays the tempo at beat 0. Edited on the
+    // message thread under modelLock; the audio thread reads it only while it holds the try-lock.
+    domain::TempoMap tempoMap;
+    // Conversions beats <-> seconds <-> bars. Message thread, or the audio thread under modelLock.
+    domain::TempoView tempoView() const noexcept { return { juce::jlimit(domain::minimumBpm, domain::maximumBpm, tempo.load()), &tempoMap }; }
     std::atomic<float> masterGain { 0.8f }, masterPeakL { 0.0f }, masterPeakR { 0.0f };
     std::atomic<int> audioUnderruns { 0 }, clippedSamples { 0 }, deviceCallbacks { 0 };
     // Audio load (Cubase: «Carga de audio»): time spent rendering a device block / its duration.

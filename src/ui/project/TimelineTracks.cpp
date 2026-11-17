@@ -48,10 +48,18 @@ juce::String rulerFormatName(int format)
 }
 juce::String timelinePosition(double seconds,int format,double tempo,double rate)
 {
+    return timelinePosition(seconds,format,domain::TempoView{juce::jlimit(domain::minimumBpm,domain::maximumBpm,tempo),nullptr},rate);
+}
+std::optional<double> parseTimelinePosition(const juce::String& input,int format,double tempo,double rate)
+{
+    return parseTimelinePosition(input,format,domain::TempoView{juce::jlimit(domain::minimumBpm,domain::maximumBpm,tempo),nullptr},rate);
+}
+juce::String timelinePosition(double seconds,int format,const domain::TempoView& tempo,double rate)
+{
     if(format==4)return juce::String((juce::int64)std::llround(juce::jmax(0.0,seconds)*60));
     return SnapGrid::formatTime(seconds,(TimeFormat)juce::jlimit(0,3,format),tempo,rate);
 }
-std::optional<double> parseTimelinePosition(const juce::String& input,int format,double tempo,double rate)
+std::optional<double> parseTimelinePosition(const juce::String& input,int format,const domain::TempoView& tempo,double rate)
 {
     auto s=input.trim();if(s.isEmpty()||s.containsAnyOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-"))return {};
     if(!s.containsOnly("0123456789.,: \t"))return {};
@@ -62,8 +70,10 @@ std::optional<double> parseTimelinePosition(const juce::String& input,int format
     {
         if(values.size()>4)return {};
         const double bar=values[0].getDoubleValue(),beat=values.size()>1?values[1].getDoubleValue():1,six=values.size()>2?values[2].getDoubleValue():1,tick=values.size()>3?values[3].getDoubleValue():0;
-        if(bar<1||beat<1||beat>4||six<1||six>4||tick<0||tick>=120)return {};
-        seconds=((bar-1)*4+(beat-1)+(six-1)/4+tick/480)*60/juce::jlimit(20.0,400.0,tempo);
+        // Beats count in the unit of the bar's signature (eighths in 6/8): up to its numerator.
+        const auto signature=tempo.signatureAtBar((int)std::floor(bar-1));
+        if(bar<1||beat<1||beat>signature.numerator||six<1||six>4||tick<0||tick>=120)return {};
+        seconds=tempo.secondsAt(tempo.beatsFromBarsBeats(bar,beat,six,tick));
     }
     else if(format==3||format==4)
     {if(!s.containsOnly("0123456789"))return {};seconds=s.getDoubleValue()/(format==3?juce::jmax(1.0,rate):60);}
@@ -77,9 +87,21 @@ std::optional<double> parseTimelinePosition(const juce::String& input,int format
     }
     return std::isfinite(seconds)&&seconds>=0?std::optional<double>(seconds):std::nullopt;
 }
-void paintRulerTrack(juce::Graphics& g,const domain::TrackData& data,const TimelineView& view,double tempo,double rate)
+void paintRulerTrack(juce::Graphics& g,const domain::TrackData& data,const TimelineView& view,const domain::TempoView& tempo,double rate)
 {
-    g.setColour(panel.brighter(.06f));g.fillRect(view.lane);const double beat=60/juce::jlimit(20.0,400.0,tempo);
+    g.setColour(panel.brighter(.06f));g.fillRect(view.lane);const double beat=60/tempo.bpm;
+    if(data.rulerFormat==0&&!tempo.isConstant())
+    {   // Musical ruler with the tempo map: labels on beat multiples placed in time.
+        const double secondsPerBeat=60/tempo.bpmAt(tempo.beatsAt(view.scroll+data.rulerOffset));double stepBeats=1;while(stepBeats*secondsPerBeat*view.scale<70)stepBeats*=2;
+        const double last=view.scroll+view.lane.getWidth()/view.scale+data.rulerOffset;
+        for(double b=std::floor(tempo.beatsAt(juce::jmax(0.0,view.scroll+data.rulerOffset))/stepBeats)*stepBeats;tempo.secondsAt(b)<last;b+=stepBeats)
+        {
+            const double at=tempo.secondsAt(b);const int x=(int)view.x(at-data.rulerOffset);if(x<view.lane.getX())continue;
+            g.setColour(muted);g.drawVerticalLine(x,(float)view.lane.getY()+4,(float)view.lane.getBottom()-4);
+            text(g,timelinePosition(at,data.rulerFormat,tempo,rate),{x+4,view.lane.getY()+5,120,20},10,ink);
+        }
+        return;
+    }
     double step=data.rulerFormat==0?beat:1.0;while(step*view.scale<70)step*=2;
     const double from=std::floor((view.scroll+data.rulerOffset)/step)*step;
     for(double at=from;at<view.scroll+view.lane.getWidth()/view.scale+data.rulerOffset;at+=step)

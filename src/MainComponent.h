@@ -48,6 +48,7 @@ public:
     float projectXForTime(double seconds) const; // Event-display geometry at the current horizontal zoom.
     void showMetronomeSettings();
     void showTapTempo();
+    void showTempoMap(); // «Mapa de tempo y de compás» window (tempo and signature events)
     bool metronomeOn() const;
     void addAudioTrack();
     void addMidiTrack();

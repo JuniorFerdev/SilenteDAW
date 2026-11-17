@@ -23,7 +23,6 @@ AudioClip slice(const AudioClip& c, double from, double to)
     clampFades(part);
     return part;
 }
-double beats(double seconds, double bpm) { return seconds * bpm / 60.0; }
 }
 
 void splitAt(std::vector<AudioClip>& clips, double t)
@@ -50,31 +49,31 @@ void splitRange(std::vector<AudioClip>& clips, TimeRange r)
     splitAt(clips, r.end);
 }
 
-void deleteRange(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, TimeRange r, double bpm)
+void deleteRange(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, TimeRange r, const domain::TempoView& tempo)
 {
     if (r.length() <= edge) return;
     splitRange(clips, r);
     clips.erase(std::remove_if(clips.begin(), clips.end(), [&](const AudioClip& c) { return c.startSeconds >= r.start - edge && endOf(c) <= r.end + edge; }), clips.end());
-    const double s = beats(r.start, bpm), e = beats(r.end, bpm);
+    const double s = tempo.beatsAt(r.start), e = tempo.beatsAt(r.end);
     notes.erase(std::remove_if(notes.begin(), notes.end(), [&](const MidiNote& n) { return n.startBeats >= s - edge && n.startBeats < e - edge; }), notes.end());
     for (auto& n : notes) if (n.startBeats < s && n.startBeats + n.lengthBeats > s) n.lengthBeats = s - n.startBeats;
 }
 
-void deleteTime(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, TimeRange r, double bpm)
+void deleteTime(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, TimeRange r, const domain::TempoView& tempo)
 {
     if (r.length() <= edge) return;
-    deleteRange(clips, notes, r, bpm);
+    deleteRange(clips, notes, r, tempo);
     for (auto& c : clips) if (c.startSeconds >= r.end - edge) c.startSeconds -= r.length();
-    const double e = beats(r.end, bpm), len = beats(r.length(), bpm);
+    const double e = tempo.beatsAt(r.end), len = tempo.beatsBetween(r.start, r.end);
     for (auto& n : notes) if (n.startBeats >= e - edge) n.startBeats -= len;
 }
 
-void insertSilence(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, TimeRange r, double bpm)
+void insertSilence(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, TimeRange r, const domain::TempoView& tempo)
 {
     if (r.length() <= edge) return;
     splitAt(clips, r.start);
     for (auto& c : clips) if (c.startSeconds >= r.start - edge) c.startSeconds += r.length();
-    const double s = beats(r.start, bpm), len = beats(r.length(), bpm);
+    const double s = tempo.beatsAt(r.start), len = tempo.beatsBetween(r.start, r.end);
     for (auto& n : notes) if (n.startBeats >= s - edge) n.startBeats += len;
 }
 
@@ -88,7 +87,7 @@ void truncate(std::vector<AudioClip>& clips, TimeRange r)
     }
 }
 
-void duplicateRange(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, TimeRange r, double bpm)
+void duplicateRange(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, TimeRange r, const domain::TempoView& tempo)
 {
     if (r.length() <= edge) return;
     std::vector<AudioClip> copies;
@@ -102,7 +101,7 @@ void duplicateRange(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes,
         copies.push_back(std::move(copy));
     }
     for (auto& c : copies) clips.push_back(std::move(c)); // on top of what was there
-    const double s = beats(r.start, bpm), e = beats(r.end, bpm), len = beats(r.length(), bpm);
+    const double s = tempo.beatsAt(r.start), e = tempo.beatsAt(r.end), len = tempo.beatsBetween(r.start, r.end);
     std::vector<MidiNote> extra;
     for (const auto& n : notes)
         if (n.startBeats >= s - edge && n.startBeats < e - edge)
@@ -114,7 +113,7 @@ void duplicateRange(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes,
     notes.insert(notes.end(), extra.begin(), extra.end());
 }
 
-RangeContent copyRange(const std::vector<AudioClip>& clips, const std::vector<MidiNote>& notes, TimeRange r, double bpm)
+RangeContent copyRange(const std::vector<AudioClip>& clips, const std::vector<MidiNote>& notes, TimeRange r, const domain::TempoView& tempo)
 {
     RangeContent content;
     for (const auto& c : clips)
@@ -125,7 +124,7 @@ RangeContent copyRange(const std::vector<AudioClip>& clips, const std::vector<Mi
         part.startSeconds -= r.start;
         content.clips.push_back(std::move(part));
     }
-    const double s = beats(r.start, bpm), e = beats(r.end, bpm);
+    const double s = tempo.beatsAt(r.start), e = tempo.beatsAt(r.end);
     for (const auto& n : notes)
         if (n.startBeats >= s - edge && n.startBeats < e - edge)
         {
@@ -135,10 +134,10 @@ RangeContent copyRange(const std::vector<AudioClip>& clips, const std::vector<Mi
     return content;
 }
 
-void pasteContent(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, const RangeContent& content, double at, double bpm)
+void pasteContent(std::vector<AudioClip>& clips, std::vector<MidiNote>& notes, const RangeContent& content, double at, const domain::TempoView& tempo)
 {
     for (auto c : content.clips) { c.id = juce::Uuid().toString(); c.startSeconds += at; clips.push_back(std::move(c)); }
-    for (auto n : content.notes) { n.id = juce::Uuid().toString(); n.startBeats += beats(at, bpm); notes.push_back(n); }
+    for (auto n : content.notes) { n.id = juce::Uuid().toString(); n.startBeats += tempo.beatsAt(at); notes.push_back(n); }
 }
 
 void adjustFadesToRange(std::vector<AudioClip>& clips, TimeRange r)

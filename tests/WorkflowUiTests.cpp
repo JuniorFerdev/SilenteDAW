@@ -17,6 +17,7 @@
 #include "../src/ui/project/ChannelTab.h"
 #include "../src/app/KeyCommands.h"
 #include "../src/ui/midi/PianoRoll.h"
+#include "../src/ui/tempo/TempoMapPanel.h"
 #include <cmath>
 #include <iostream>
 
@@ -51,7 +52,7 @@ public:
         runSettingsUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});keyCommandChecks();
         runMarkerUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runAddTrackUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
-        pianoRollChecks();
+        pianoRollChecks();tempoMapChecks();
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {
@@ -82,6 +83,35 @@ private:
     String failures,report;PluginDescription apple,vst,instrument;std::shared_ptr<Track> track;std::shared_ptr<PluginSlot> first;
     double deadline=0;int stage=0;
     void expect(bool result,const String& name){std::cout<<(result?"PASS: ":"FAIL: ")<<name.toStdString()<<std::endl;if(!result)failures+=name+"\n";else report+="PASS: "+name+"\n";}
+    void tempoMapChecks()
+    {   // Estudio › Mapa de tempo y de compás: add, edit, refuse, remove; one undo step each.
+        engine.clear();engine.tempo=120;view.showTempoMap();
+        ui::TempoMapPanel* panel=nullptr;
+        for(int n=0;n<Desktop::getInstance().getNumComponents()&&!panel;++n)panel=dynamic_cast<ui::TempoMapPanel*>(find(*Desktop::getInstance().getComponent(n),"tempo-map-panel"));
+        expect(panel!=nullptr&&panel->isShowing(),"tempo map window opens");
+        if(!panel)return;
+        const auto before=view.editHistory().size();
+        panel->kind.setSelectedId(1,dontSendNotification);panel->position.setText("3. 1. 1. 0");panel->bpm.setText("90");panel->ramp.setToggleState(false,dontSendNotification);
+        if(auto* add=dynamic_cast<TextButton*>(find(*panel,"tempo-map-add")))add->onClick();
+        expect(engine.tempoMap.tempos.size()==1&&engine.tempoMap.tempos[0].beat==8.0&&engine.tempoMap.tempos[0].bpm==90.0,"tempo map: Add puts 90 BPM at bar 3");
+        expect(view.editHistory().size()==before+1,"tempo map: an edit is one undo step");
+        panel->kind.setSelectedId(2,dontSendNotification);panel->position.setText("2");panel->numerator.setText("3");panel->denominator.setSelectedId(4,dontSendNotification);
+        expect(panel->addFromFields().isEmpty()&&engine.tempoMap.signatures.size()==1&&engine.tempoMap.signatures[0].bar==1&&engine.tempoMap.signatures[0].numerator==3,"tempo map: 3/4 from bar 2");
+        expect(std::abs(engine.tempoView().secondsAt(12.0)-(4.0+4.0*60.0/90.0))<1e-9,"tempo map: time after the jump");
+        expect(ui::SnapGrid::formatTime(engine.tempoView().secondsAt(7.0),ui::TimeFormat::barsBeats,engine.tempoView(),48000)=="3. 1. 1. 0","tempo map: Compases+Tiempos follow 3/4");
+        panel->selectRow(1);
+        expect(panel->rowCount()==2&&panel->kind.getSelectedId()==1&&panel->bpm.getText().getDoubleValue()==90.0,"tempo map: selecting a row fills the fields");
+        panel->bpm.setText("100");panel->ramp.setToggleState(true,dontSendNotification);
+        expect(panel->updateSelected().isEmpty()&&engine.tempoMap.tempos.size()==1&&engine.tempoMap.tempos[0].bpm==100.0&&engine.tempoMap.tempos[0].ramp,"tempo map: Update makes a 100 BPM ramp");
+        panel->position.setText("1. 1. 1. 0");expect(panel->addFromFields().isNotEmpty()&&engine.tempoMap.tempos.size()==1,"tempo map: a point at the project start is refused");
+        panel->position.setText("5");panel->bpm.setText("999");expect(panel->addFromFields().isNotEmpty()&&engine.tempoMap.tempos.size()==1,"tempo map: BPM out of range is refused");
+        panel->selectRow(0);
+        expect(panel->removeSelected().isEmpty()&&engine.tempoMap.signatures.empty()&&engine.tempoMap.tempos.size()==1,"tempo map: Remove deletes the signature");
+        view.runCommand("undo");expect(engine.tempoMap.signatures.size()==1&&panel->rowCount()==2,"tempo map: undo restores it (and the window)");
+        view.runCommand("redo");expect(engine.tempoMap.signatures.empty(),"tempo map: redo removes it again");
+        if(auto* window=panel->findParentComponentOfClass<DocumentWindow>())window->setVisible(false);
+        engine.clear();
+    }
     void pianoRollChecks()
     {
         engine.clear();engine.addMidiTrack("Piano roll test");
