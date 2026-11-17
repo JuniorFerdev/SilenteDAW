@@ -203,6 +203,7 @@ std::vector<KeyCommand> build()
     add("zoomInVertical", "Ampliar zoom vertical", "Zoom In Vertically", 'H', S);
     add("zoomOutVertical", "Reducir zoom vertical", "Zoom Out Vertically", 'G', S);
     add("zoomSelection", "Zoom a la selección", "Zoom to Selection", 'S', A);
+    add("expandTrack", "Expandir pista seleccionada", "Expand Selected Track", 0);
     return list;
 }
 

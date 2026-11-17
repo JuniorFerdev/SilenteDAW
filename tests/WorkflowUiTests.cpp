@@ -67,6 +67,7 @@ public:
             expect(!view.openProjectFile(output.getChildFile("open-route.silente"))&&routed==File(),"open: a .silente is not routed to the import");
             view.cubaseImportOverride=nullptr;
         }
+        waveAndHeightChecks();
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {
@@ -97,6 +98,50 @@ private:
     String failures,report;PluginDescription apple,vst,instrument;std::shared_ptr<Track> track;std::shared_ptr<PluginSlot> first;
     double deadline=0;int stage=0;
     void expect(bool result,const String& name){std::cout<<(result?"PASS: ":"FAIL: ")<<name.toStdString()<<std::endl;if(!result)failures+=name+"\n";else report+="PASS: "+name+"\n";}
+    void waveAndHeightChecks()
+    {   // Ondas visibles tras guardar y abrir, y altura de pistas como Cubase (arrastrar el borde inferior, ⌘ para todas, menú de zoom).
+        engine.clear();view.runCommand("trackZoomRows1");
+        auto* arrangement=find(view,"arrangement");auto* slider=dynamic_cast<Slider*>(find(view,"track-height"));
+        if(!arrangement||!slider||!find(view,"track-zoom-menu")){expect(false,"track height: arrangement, slider and zoom menu button exist");return;}
+        {
+            auto wave=engine.addAudioTrack("Onda");AudioClip clip;clip.sourceRate=48000;clip.durationSeconds=4.0;clip.audio=std::make_shared<AudioBuffer<float>>(1,48000*4);
+            for(int i=0;i<48000*4;++i)clip.audio->setSample(0,i,0.8f*std::sin(i*0.05f));
+            wave->clips.push_back(clip);
+            const auto file=output.getChildFile("wave-roundtrip.silente");
+            const bool saved=engine.saveProject(file).wasOk();engine.clear();const bool loaded=saved&&engine.loadProject(file).wasOk();
+            expect(loaded&&engine.tracks.size()==1&&engine.tracks[0]->clips.size()==1&&engine.tracks[0]->clips[0].audio&&engine.tracks[0]->clips[0].audio->getNumSamples()>0,"waveform: a saved and reopened clip has its audio loaded");
+            view.runCommand("goStart");view.runCommand("trackZoomRows1");
+            const auto image=arrangement->createComponentSnapshot(arrangement->getLocalBounds());
+            const int x0=(int)view.projectXForTime(0.0),top=30+8; // first row under the 30 px ruler; the event starts 8 px below it
+            const auto body=image.getPixelAt(x0+3,top+42);int differing=0;
+            for(int x=x0+10;x<x0+210;++x)for(int y=top+23;y<top+27;++y)if(image.getPixelAt(x,y)!=body)++differing; // rows 23-26 of the event: below the 15 px title; the old 22 px title with 10 px of wave never drew there
+            expect(differing>150,"waveform: an audio event at the default track height draws wave pixels below its title ("+String(differing)+" px)");
+            capture(*arrangement,output.getChildFile("waveform-visible.png"));
+        }
+        engine.clear();for(const char* name:{"A","B","C"})engine.addAudioTrack(name);
+        view.runCommand("trackZoomRows1");view.runCommand("goStart");
+        const auto bottomOf=[&](int rowTop,int height){return rowTop+height;};
+        arrangement->mouseDown(mouse(*arrangement,100.0f,(float)bottomOf(30,60)));arrangement->mouseDrag(mouse(*arrangement,100.0f,(float)bottomOf(30,60)+30,true));arrangement->mouseUp(mouse(*arrangement,100.0f,(float)bottomOf(30,60)+30,true));
+        expect(view.trackHeightOf(0)==90&&view.trackHeightOf(1)==60&&view.trackHeightOf(2)==60&&slider->getValue()==60.0,"track height: dragging the lower edge of one track changes only that track");
+        expect(MainComponent::settingsFolder().getChildFile("layout.xml").loadFileAsString().contains(engine.tracks[0]->id+":90"),"track height: the per-track height is saved in the layout");
+        arrangement->mouseDown(mouse(*arrangement,100.0f,120.0f,false,ModifierKeys::commandModifier));arrangement->mouseDrag(mouse(*arrangement,100.0f,100.0f,true,ModifierKeys::commandModifier));arrangement->mouseUp(mouse(*arrangement,100.0f,100.0f,true,ModifierKeys::commandModifier));
+        expect(view.trackHeightOf(0)==70&&view.trackHeightOf(1)==70&&view.trackHeightOf(2)==70&&slider->getValue()==70.0,"track height: Cmd + dragging the lower edge changes every track");
+        arrangement->mouseDown(mouse(*arrangement,100.0f,100.0f));arrangement->mouseDrag(mouse(*arrangement,100.0f,900.0f,true));arrangement->mouseUp(mouse(*arrangement,100.0f,900.0f,true));
+        expect(view.trackHeightOf(0)==240,"track height: the drag stops at the maximum height");
+        arrangement->mouseDown(mouse(*arrangement,100.0f,270.0f));arrangement->mouseDrag(mouse(*arrangement,100.0f,-500.0f,true));arrangement->mouseUp(mouse(*arrangement,100.0f,-500.0f,true));
+        expect(view.trackHeightOf(0)==40,"track height: the drag stops at the minimum height");
+        for(int rows=1;rows<=4;++rows){view.runCommand("trackZoomRows"+String(rows));expect(view.trackHeightOf(0)==60*rows&&view.trackHeightOf(2)==60*rows&&slider->getValue()==60.0*rows,"track zoom: "+String(rows)+" row(s) sets every track to "+String(60*rows)+" px");}
+        view.runCommand("trackZoomMinimum");expect(view.trackHeightOf(1)==40,"track zoom: minimum");
+        const int avail=arrangement->getHeight()-30;
+        const auto fit=[&](int count){return jlimit(40,240,avail/count);};
+        view.runCommand("trackZoomFull");expect(view.trackHeightOf(0)==fit(3)&&view.trackHeightOf(2)==fit(3),"track zoom: full makes every track fit the window");
+        view.runCommand("trackZoomFour");expect(view.trackHeightOf(0)==fit(4),"track zoom: 4 tracks");
+        view.runCommand("trackZoomEight");expect(view.trackHeightOf(0)==fit(8),"track zoom: 8 tracks");
+        view.runCommand("trackZoomRows1");arrangement->mouseDown(mouse(*arrangement,228.0f,30.0f+60.0f+30.0f));arrangement->mouseUp(mouse(*arrangement,228.0f,30.0f+60.0f+30.0f));
+        view.runCommand("expandTrack");
+        expect(view.trackHeightOf(1)==jlimit(40,240,avail)&&view.trackHeightOf(0)==60,"Edit > Expand selected track: the selected track takes the window height");
+        view.runCommand("trackZoomRows1");engine.clear();
+    }
     void tempoMapChecks()
     {   // Estudio › Mapa de tempo y de compás: add, edit, refuse, remove; one undo step each.
         engine.clear();engine.tempo=120;view.showTempoMap();

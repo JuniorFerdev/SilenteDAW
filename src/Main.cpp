@@ -327,7 +327,7 @@ private:
             // Edición: the same actions as the Cubase key commands.
             menu.addItem(60,i18n::tr("Deshacer  ⌘Z"));menu.addItem(61,i18n::tr("Rehacer  ⇧⌘Z"));menu.addSeparator();
             menu.addItem(62,i18n::tr("Cortar  ⌘X"));menu.addItem(63,i18n::tr("Copiar  ⌘C"));menu.addItem(64,i18n::tr("Pegar  ⌘V"));menu.addItem(65,i18n::tr("Pegar al origen  ⌥V"));
-            menu.addItem(66,i18n::tr("Duplicar  ⌘D"));menu.addItem(67,i18n::tr("Suprimir"));menu.addItem(68,i18n::tr("Dividir en el cursor  ⌥X"));
+            menu.addItem(66,i18n::tr("Duplicar  ⌘D"));menu.addItem(78,i18n::tr("Expandir pista seleccionada"));menu.addItem(67,i18n::tr("Suprimir"));menu.addItem(68,i18n::tr("Dividir en el cursor  ⌥X"));
             if (window) menu.addSubMenu(i18n::tr("Rango"), window->content().rangeMenu());
             menu.addSeparator();
             menu.addItem(28,i18n::tr("Ajustes…"));
@@ -375,7 +375,7 @@ private:
             case 50: case 51: case 52: case 53: case 54: setInterfaceScale(interfaceScales[item-50]); break;
             case 60: c.runCommand("undo"); break; case 61: c.runCommand("redo"); break; case 62: c.runCommand("cut"); break; case 63: c.runCommand("copy"); break;
             case 64: c.runCommand("paste"); break; case 65: c.runCommand("pasteOrigin"); break; case 66: c.runCommand("duplicate"); break; case 67: c.runCommand("delete"); break;
-            case 68: c.runCommand("splitAtCursor"); break; case 69: c.showKeyCommands(); break; case 70: c.runCommand("history"); break;
+            case 68: c.runCommand("splitAtCursor"); break; case 78: c.runCommand("expandTrack"); break; case 69: c.showKeyCommands(); break; case 70: c.runCommand("history"); break;
             case 41: i18n::setLanguage(i18n::Language::english);break;
             case 30: juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, i18n::tr("Silente 0.1 · Audio Workstation"), i18n::tr("Un espacio para escuchar, crear y mezclar.\n\nC++20 · Core Audio · JUCE\nVST3 y Audio Units · macOS Apple Silicon\n\nPrimera versión de desarrollo. Consulta las limitaciones y las pruebas en el proyecto de Visual Studio Code.\n\nJUCE bajo AGPLv3. VST es una marca de Steinberg Media Technologies GmbH.")); break;
             case 31: juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, i18n::tr("Tu primera sesión"), i18n::tr("1. Importa WAV, AIFF, FLAC, MP3 o MIDI desde Archivo, o arrastra audio a la sesión.\n2. Espacio reproduce y pausa. Ajusta volumen, paneo, Mute y Solo por canal.\n3. Usa el mezclador o selecciona una pista MIDI para editar sus notas.\n4. Explora tus plugins y añádelos al canal seleccionado.\n5. Guarda el proyecto .silente y exporta tu mezcla WAV.\n\nLa sesión inicial está vacía. Puedes abrir la sesión de ejemplo desde Medios.")); break;

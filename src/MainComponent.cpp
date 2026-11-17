@@ -90,9 +90,9 @@ public:
     int trackDragIndex=-1,dropTarget=-1;bool trackDragging=false;domain::DropZone dropZone=domain::DropZone::before;
     void updateDrop(int y)
     {
-        const auto v=visibleTracks();const int row=y<ruler?firstTrack:(y-ruler)/lane+firstTrack;
+        const auto v=visibleTracks();const int row=y<ruler?firstTrack:rowAt(y);
         if(row<0||row>=(int)v.size()){dropTarget=-1;dropZone=domain::DropZone::after;return;}
-        dropTarget=v[(size_t)row];const float f=(float)((y-ruler)-(row-firstTrack)*lane)/(float)lane;
+        dropTarget=v[(size_t)row];const float f=(float)(y-topOfRow(row))/(float)laneOf(dropTarget);
         const bool folder=engine.tracks[(size_t)dropTarget]->kind==TrackKind::folder;
         dropZone=folder&&f>.25f&&f<.75f?domain::DropZone::into:f<.5f?domain::DropZone::before:domain::DropZone::after;
     }
@@ -100,8 +100,8 @@ public:
     {
         if(!trackDragging)return;
         const auto v=visibleTracks();g.setColour(accent);
-        if(dropTarget<0){const int y=ruler+((int)v.size()-firstTrack)*lane;g.fillRect(0,y-1,getWidth(),3);return;}
-        const int y=ruler+visualRow(dropTarget)*lane,x=indentOf(dropTarget);
+        if(dropTarget<0){const int y=topOfRow((int)v.size());g.fillRect(0,y-1,getWidth(),3);return;}
+        const int y=trackTop(dropTarget),x=indentOf(dropTarget),lane=laneOf(dropTarget);
         if(dropZone==domain::DropZone::into){g.drawRect(x,y,header-x,lane,2);g.setColour(accent.withAlpha(.12f));g.fillRect(x,y,header-x,lane);return;}
         g.fillRect(x,dropZone==domain::DropZone::before?y-1:y+lane-2,getWidth()-x,3);
     }
@@ -115,7 +115,6 @@ public:
     bool insideRange(double at,int row)const{return hasRange&&at>=rangeStart&&at<=rangeEnd&&row>=rangeFirstRow&&row<=rangeLastRow&&rangeEnd>rangeStart;}
     // Selección de rango (herramienta 2, manual pp. 295–305): a time span over consecutive rows.
     bool hasRange=false,rangeDragging=false;double rangeStart=0,rangeEnd=0,rangeAnchor=0;int rangeFirstRow=0,rangeLastRow=0,rangeAnchorRow=0;
-    int rowAt(int y)const{return (y-ruler)/lane+firstTrack;}
     std::vector<int> rangeTracks()const{auto v=visibleTracks();std::vector<int> out;for(int r=rangeFirstRow;r<=rangeLastRow;++r)if(r>=0&&r<(int)v.size())out.push_back(v[(size_t)r]);return out;}
     void updateRange(double at,int row)
     {
@@ -137,7 +136,7 @@ public:
     int markerEdge=0;
     double markerDragFrom=0,cycleDrawFrom=-1;
     bool markerDragUndo=false,cycleRename=false;
-    ui::TimelineView timelineView(int index) const {return {{header,ruler+visualRow(index)*lane,getWidth()-header,lane},pixelsPerSecond,scrollSeconds};}
+    ui::TimelineView timelineView(int index) const {return {{header,trackTop(index),getWidth()-header,laneOf(index)},pixelsPerSecond,scrollSeconds};}
     ui::SnapGrid snapGrid;
     bool& snap = snapGrid.enabled;
     int tool = 1; // 1 select, 3 scissors, 5 erase, 8 draw MIDI
@@ -163,9 +162,56 @@ public:
     std::function<void(const juce::String&)> contextAction;
     std::function<void(const juce::String&,const juce::String&,juce::Rectangle<int>)> paintEventColour;
     std::vector<int> visibleTracks() const { return filter.visible(engine.tracks); }
+    // Event title strip: slim on short tracks so the waveform keeps most of the event (it was 10 px at 60 px lanes).
+    static float eventTitleHeight(int rowLane) {return rowLane>=90?22.0f:15.0f;}
+    // Shows the first event when none is in the visible window (imported or opened sessions often start after bar 1).
+    void revealFirstEvent()
+    {
+        double first=-1.0;
+        for(const auto& t:engine.tracks)for(const auto& c:t->clips)if(first<0.0||c.startSeconds<first)first=c.startSeconds;
+        if(first>=0.0&&first>scrollSeconds+(getWidth()-header)/pixelsPerSecond*.9)scrollSeconds=juce::jmax(0.0,first-1.0);
+    }
+    // Per-track heights (Cubase: drag the lower edge of a track): `lane` is the default, `laneOverride` holds the tracks resized on their own.
+    std::map<juce::String,int> laneOverride;
+    int laneOf(int i) const {if(i<0||i>=(int)engine.tracks.size())return lane;const auto it=laneOverride.find(engine.tracks[(size_t)i]->id);return it==laneOverride.end()?lane:it->second;}
+    void setAllLanes(int value){lane=juce::jlimit(minLane,maxLane,value);laneOverride.clear();}
+    void setLaneOf(int i,int value){if(i>=0&&i<(int)engine.tracks.size())laneOverride[engine.tracks[(size_t)i]->id]=juce::jlimit(minLane,maxLane,value);}
+    // y of the top of row `row` of the visible-track list (rows before firstTrack are above the ruler; rows past the end use the default height).
+    int topOfRow(int row) const
+    {
+        const auto v=visibleTracks();const auto h=[&](int r){return r>=0&&r<(int)v.size()?laneOf(v[(size_t)r]):lane;};int y=ruler;
+        if(row>=firstTrack)for(int r=firstTrack;r<row;++r)y+=h(r);else for(int r=row;r<firstTrack;++r)y-=h(r);
+        return y;
+    }
+    int trackTop(int i) const {const int vr=visualRow(i);return vr<-900?-999*lane:topOfRow(vr+firstTrack);}
+    // Visible-list row under y (rows beyond the last track keep counting with the default height).
+    int rowAt(int y) const
+    {
+        const auto v=visibleTracks();int top=ruler,r=firstTrack;
+        for(;r<(int)v.size();++r){const int h=laneOf(v[(size_t)r]);if(y<top+h)return r;top+=h;}
+        return r+(y-top)/lane;
+    }
     int visualRow(int i) const {auto v=visibleTracks();auto it=std::find(v.begin(),v.end(),i);return it==v.end()?-999:(int)std::distance(v.begin(),it)-firstTrack;}
-    int trackAt(int y) const { auto v=visibleTracks();int n=(y-ruler)/lane+firstTrack;return y>=ruler&&n>=0&&n<(int)v.size()?v[(size_t)n]:-1; }
-    void setTool(int value){tool=value;setMouseCursor(value==3||value==8?juce::MouseCursor::CrosshairCursor:value==6?juce::MouseCursor::CrosshairCursor:value==9?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor);repaint();}
+    int trackAt(int y) const { auto v=visibleTracks();const int n=rowAt(y);return y>=ruler&&n>=0&&n<(int)v.size()?v[(size_t)n]:-1; }
+    juce::MouseCursor toolCursor() const {return tool==3||tool==8||tool==6?juce::MouseCursor::CrosshairCursor:tool==9?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor;}
+    void setTool(int value){tool=value;setMouseCursor(toolCursor());repaint();}
+    // Track height by dragging the lower edge of a track in the list (manual p. 222): ⌘/Ctrl changes every track.
+    int edgeDrag=-1,edgeDownY=0,edgeStartLane=0;bool edgeAll=false,heightSnap=false;
+    std::function<void()> heightsChanged,heightsDone;
+    int edgeAt(int y) const
+    {
+        if(y<ruler)return -1;const auto v=visibleTracks();int bottom=ruler;
+        for(int r=firstTrack;r<(int)v.size();++r){bottom+=laneOf(v[(size_t)r]);if(bottom>getHeight()+4)break;if(std::abs(y-bottom)<=3)return v[(size_t)r];}
+        return -1;
+    }
+    void dragEdge(int y)
+    {
+        int h=edgeStartLane+(y-edgeDownY);if(heightSnap)h=juce::roundToInt(h/20.0)*20;h=juce::jlimit(minLane,maxLane,h);
+        if(edgeAll)setAllLanes(h);else setLaneOf(edgeDrag,h);
+        if(heightsChanged)heightsChanged();repaint();
+    }
+    void mouseMove(const juce::MouseEvent& e) override {setMouseCursor(e.x<header&&edgeAt(e.y)>=0?juce::MouseCursor::UpDownResizeCursor:toolCursor());}
+    void mouseExit(const juce::MouseEvent&) override {setMouseCursor(toolCursor());}
     void zoom(double factor) { pixelsPerSecond = juce::jlimit(12.0, 480.0, pixelsPerSecond*factor); repaint(); }
     void paint(juce::Graphics& g) override
     {
@@ -234,10 +280,10 @@ public:
         if(filter.filtering()){g.setColour(accent.withAlpha(.35f));g.fillRoundedRectangle(filterButton().toFloat(),3);}
         drawToolIcon(g,ToolIcon::filter,filterButton().toFloat().reduced(4),filter.filtering()?ink:muted);
         drawToolIcon(g,ToolIcon::search,searchButton().toFloat().reduced(4),muted);
-        auto visible=visibleTracks();const auto dirtyArea=g.getClipBounds();
+        auto visible=visibleTracks();const auto dirtyArea=g.getClipBounds();int paintY=ruler;
         for (int rowIndex=firstTrack;rowIndex<(int)visible.size();++rowIndex)
         {
-            int i=visible[(size_t)rowIndex];const int y=ruler+(rowIndex-firstTrack)*lane; if (y>getHeight()) break;
+            int i=visible[(size_t)rowIndex];const int lane=laneOf(i),y=paintY;paintY+=lane; if (y>getHeight()) break;
             if(!dirtyArea.intersects(juce::Rectangle<int>(0,y,getWidth(),lane)))continue; // only rows in the area being repainted
             auto& t=*engine.tracks[(size_t)i]; const auto colour=t.colour;
             g.setColour(i==selectedTrack ? selectedTrackColour() : panel); g.fillRect(0,y,header,lane);
@@ -288,7 +334,7 @@ public:
             else text(g,t.name,{98,y+4,lane>=56?header-108:header-184,22},13,headerInk);
             if(t.kind!=TrackKind::folder)
             {
-                const auto v=volumeRect(y,indent);const float db=juce::Decibels::gainToDecibels(t.gain.load(),-100.0f);const float p=volumeProportion(db);
+                const auto v=volumeRect(y,indent,lane);const float db=juce::Decibels::gainToDecibels(t.gain.load(),-100.0f);const float p=volumeProportion(db);
                 g.setColour(chosen?activeInk.withAlpha(.5f):muted);juce::Path tri;tri.addTriangle((float)v.getX()-14,(float)v.getBottom()-2,(float)v.getX()-4,(float)v.getBottom()-2,(float)v.getX()-4,(float)v.getY()+3);g.fillPath(tri);
                 g.setColour(chosen?activeInk.withAlpha(.35f):raised);g.fillRoundedRectangle(v.toFloat().withSizeKeepingCentre((float)v.getWidth(),3.0f),1.5f);
                 g.setColour(chosen?activeInk:ink.withAlpha(.85f));g.fillRoundedRectangle(v.toFloat().withWidth((float)v.getWidth()*p).withSizeKeepingCentre((float)v.getWidth()*p,3.0f).withX((float)v.getX()),1.5f);
@@ -319,9 +365,10 @@ public:
                 const juce::Graphics::ScopedSaveState faded(g);if(clip.muted)g.setOpacity(.35f); // muted events look switched off
                 g.setColour(selected ? tone.brighter(.12f) : tone.withAlpha(.82f));g.fillRoundedRectangle(r,2);
                 g.setColour(selected ? ink : tone.brighter(.3f));g.drawRoundedRectangle(r.reduced(.5f),2,selected?1.5f:1);
-                g.setColour(tone.brighter(.1f));g.fillRoundedRectangle(r.withHeight(22),2);
-                text(g,clip.name,r.withHeight(22).reduced(9,0).toNearestInt(),11,eventInk);
-                drawWave(g,clip,r.withTrimmedTop(24).reduced(2,5),eventInk);
+                const float titleHeight=eventTitleHeight(lane);
+                g.setColour(tone.brighter(.1f));g.fillRoundedRectangle(r.withHeight(titleHeight),2);
+                text(g,clip.name,r.withHeight(titleHeight).reduced(9,0).toNearestInt(),titleHeight<20.0f?10.0f:11.0f,eventInk);
+                drawWave(g,clip,r.withTrimmedTop(titleHeight+1).reduced(2,2),eventInk);
                 if(clip.audio)drawFades(g,clip,r,selected);
                 if(clip.crossfade&&clip.fadeIn>0.0)
                 {   // Crossfade: the two fade lines across the overlap.
@@ -330,21 +377,21 @@ public:
                 }
                 if(selected) { g.setColour(ink.withAlpha(.65f));g.fillRoundedRectangle(r.getRight()-5,r.getCentreY()-8,2,16,1); }
             }
-            drawRecording(g,t,y);
+            drawRecording(g,t,y,lane);
         }
         if(hasRange)
         {   // Range highlight over its rows (a zero-length range is the range cursor).
             const float x0=secondsToX(rangeStart),x1=juce::jmax(x0+1.0f,secondsToX(rangeEnd));
             for(int row=juce::jmax(rangeFirstRow,firstTrack);row<=rangeLastRow;++row)
             {
-                const float y=(float)(ruler+(row-firstTrack)*lane);if(y>getHeight())break;
+                const float y=(float)topOfRow(row);if(y>getHeight())break;const int lane=row<(int)visible.size()?laneOf(visible[(size_t)row]):this->lane;
                 const juce::Rectangle<float> area(juce::jmax((float)header,x0),y,x1-juce::jmax((float)header,x0),(float)lane);if(area.getWidth()<=0)continue;
                 g.setColour(ink.withAlpha(.16f));g.fillRect(area);g.setColour(accent);g.drawVerticalLine((int)x0,y,y+lane);g.drawVerticalLine((int)x1,y,y+lane);
             }
             if(rangeMoving&&(std::abs(moveDelta)>1e-9||moveRows!=0))
             {   // Where the content will land.
                 const float gx=secondsToX(rangeStart+moveDelta),gw=juce::jmax(1.0f,(float)((rangeEnd-rangeStart)*pixelsPerSecond));
-                const float gy=(float)(ruler+(rangeFirstRow+moveRows-firstTrack)*lane),gh=(float)((rangeLastRow-rangeFirstRow+1)*lane);
+                const float gy=(float)topOfRow(rangeFirstRow+moveRows),gh=(float)(topOfRow(rangeLastRow+1)-topOfRow(rangeFirstRow));
                 g.setColour(accent.withAlpha(.18f));g.fillRect(gx,gy,gw,gh);g.setColour(accent);g.drawRect(gx,gy,gw,gh,1.5f);
             }
         }
@@ -360,6 +407,7 @@ public:
     void mouseDown(const juce::MouseEvent& e) override
     {
         grabKeyboardFocus();markerDragTrack.clear();cycleDrawFrom=-1;markerDragUndo=false; dragClip=-1; rulerDragging=false; locatorDrag=0; const int i=trackAt(e.y);
+        if(e.x<header&&!e.mods.isPopupMenu()){const int edge=edgeAt(e.y);if(edge>=0){edgeDrag=edge;edgeDownY=e.y;edgeStartLane=laneOf(edge);edgeAll=e.mods.isCommandDown()||e.mods.isCtrlDown();setMouseCursor(juce::MouseCursor::UpDownResizeCursor);return;}}
         if(e.y<ruler)
         {
             if(e.mods.isPopupMenu()&&e.x>=header){if(rulerMenu)rulerMenu();return;}
@@ -390,13 +438,13 @@ public:
         }
         if(e.mods.isPopupMenu()&&e.x<header&&i<0){if(addTracks)addTracks();return;}
         const juce::ScopedLock lock(engine.modelLock); if(i<0||i>=(int)engine.tracks.size())return;
-        selectedTrack=i; selectedClip=-1; if(selectTrack)selectTrack(i); auto& t=*engine.tracks[(size_t)i];
+        selectedTrack=i; selectedClip=-1; if(selectTrack)selectTrack(i); auto& t=*engine.tracks[(size_t)i];const int lane=laneOf(i);
         if(t.kind==TrackKind::marker||t.kind==TrackKind::ruler)
         {
-            const int dy=e.y-(ruler+visualRow(i)*lane);
+            const int dy=e.y-(trackTop(i));
             if(e.x<header)
             {
-                if(e.x<strip){if(editColour)editColour(i,localAreaToGlobal(juce::Rectangle<int>{0,ruler+visualRow(i)*lane,strip,lane}));return;}
+                if(e.x<strip){if(editColour)editColour(i,localAreaToGlobal(juce::Rectangle<int>{0,trackTop(i),strip,lane}));return;}
                 if(t.kind==TrackKind::ruler){if(dy>=28&&markerAction)markerAction(t.id,{},-7);return;}
                 if(e.x>=header-30&&dy<27){if(markerAction)markerAction(t.id,{},-6);return;}
                 if(dy>=28&&markerAction)
@@ -425,13 +473,13 @@ public:
         selectedMarker.clear();
         if(e.x<header)
         {
-            const int dy=e.y-(ruler+visualRow(i)*lane),indent=indentOf(i),hx=e.x-indent; // hx: header coordinates after the folder indent
-            if(hx>=0&&hx<strip && !e.mods.isPopupMenu()) { if(editColour)editColour(i,localAreaToGlobal(juce::Rectangle<int>{indent,ruler+visualRow(i)*lane,strip,lane}));repaint();return; }
+            const int dy=e.y-(trackTop(i)),indent=indentOf(i),hx=e.x-indent; // hx: header coordinates after the folder indent
+            if(hx>=0&&hx<strip && !e.mods.isPopupMenu()) { if(editColour)editColour(i,localAreaToGlobal(juce::Rectangle<int>{indent,trackTop(i),strip,lane}));repaint();return; }
             bool control=false;
             if(!e.mods.isPopupMenu()&&hx>=0)
             {
-                const auto v=volumeRect(ruler+visualRow(i)*lane,indent).expanded(6,4);
-                if(t.kind!=TrackKind::folder&&v.contains(juce::Point<int>(hx,e.y))){if(beforeEdit)beforeEdit();volumeDrag=i;if(e.getNumberOfClicks()>1)t.gain=1.0f;else setVolumeFrom(t,hx,indent);if(changed)changed();repaint();return;}
+                const auto v=volumeRect(trackTop(i),indent,lane).expanded(6,4);
+                if(t.kind!=TrackKind::folder&&v.contains(juce::Point<int>(hx,e.y))){if(beforeEdit)beforeEdit();volumeDrag=i;if(e.getNumberOfClicks()>1)t.gain=1.0f;else setVolumeFrom(t,hx,indent,lane);if(changed)changed();repaint();return;}
                 if(dy>=5&&dy<25)
                 {
                     if(hx>=46&&hx<68){if(beforeEdit)beforeEdit();t.mute=!t.mute;if(changed)changed();control=true;}
@@ -488,6 +536,7 @@ public:
     }
     void mouseDrag(const juce::MouseEvent& e) override
     {
+        if(edgeDrag>=0){dragEdge(e.y);return;}
         if(markerDragTrack.isNotEmpty())
         {
             if(cycleDrawFrom>=0)return;
@@ -509,7 +558,7 @@ public:
             const int rows=(int)visibleTracks().size();moveRows=juce::jlimit(-rangeFirstRow,juce::jmax(0,rows-1-rangeLastRow),rowAt(e.y)-moveFromRow);
             setMouseCursor(e.mods.isAltDown()?juce::MouseCursor::CopyingCursor:juce::MouseCursor::DraggingHandCursor);repaint();return;
         }
-        if(volumeDrag>=0&&volumeDrag<(int)engine.tracks.size()){const int indent=indentOf(volumeDrag);setVolumeFrom(*engine.tracks[(size_t)volumeDrag],e.x-indent,indent);if(changed)changed();repaint();return;}
+        if(volumeDrag>=0&&volumeDrag<(int)engine.tracks.size()){const int indent=indentOf(volumeDrag);setVolumeFrom(*engine.tracks[(size_t)volumeDrag],e.x-indent,indent,laneOf(volumeDrag));if(changed)changed();repaint();return;}
         if(trackDragIndex>=0)
         {
             if(!trackDragging&&e.getDistanceFromDragStart()<5)return;
@@ -543,6 +592,7 @@ public:
     }
     void mouseUp(const juce::MouseEvent& e) override
     {
+        if(edgeDrag>=0){dragEdge(e.y);edgeDrag=-1;if(heightsDone)heightsDone();return;}
         if(cycleDrawFrom>=0&&markerDragTrack.isNotEmpty())
         {
             const double at=snapped(xToSeconds(e.position.x)),from=juce::jmin(cycleDrawFrom,at),to=juce::jmax(cycleDrawFrom,at);
@@ -564,7 +614,7 @@ public:
     juce::Rectangle<float> fadeOutHandle(const AudioClip& c,juce::Rectangle<float> r)const{return {juce::jlimit(r.getX(),juce::jmax(r.getX(),r.getRight()-10.0f),r.getRight()-(float)(c.fadeOut*pixelsPerSecond)-5.0f),r.getY()+23.0f,10.0f,8.0f};}
     juce::Rectangle<float> volumeHandle(juce::Rectangle<float> r)const{return {r.getX()+4.0f,r.getBottom()-14.0f,10.0f,10.0f};}
     // Cubase draws the take being recorded as a red event that grows with its waveform.
-    void drawRecording(juce::Graphics& g,const Track& t,int y)
+    void drawRecording(juce::Graphics& g,const Track& t,int y,int lane)
     {
         if(!engine.recording.load()||!t.armed.load()||!t.hasEvents())return;
         const double start=engine.recordLapStart.load();if(start<0.0)return;
@@ -572,10 +622,10 @@ public:
         const double length=(double)(engine.recordCaptured.load()-offset)/rate;
         const juce::Rectangle<float> r(secondsToX(start),(float)y+8,juce::jmax(2.0f,(float)(length*pixelsPerSecond)),lane-16.0f);
         g.setColour(coral.withAlpha(.55f));g.fillRoundedRectangle(r,2);g.setColour(coral);g.drawRoundedRectangle(r.reduced(.5f),2,1.2f);
-        text(g,i18n::tr("Grabando…"),r.withHeight(22).reduced(8,0).toNearestInt(),11,eventInk);
+        text(g,i18n::tr("Grabando…"),r.withHeight(eventTitleHeight(lane)).reduced(8,0).toNearestInt(),11,eventInk);
         const float* minMax=nullptr;int count=0,samplesPerPeak=1;
         if(!engine.recordingOverview(t,minMax,count,samplesPerPeak)||!minMax||count<=0||samplesPerPeak<=0)return;
-        const auto w=r.withTrimmedTop(24).reduced(0,5);const float half=w.getHeight()*.5f,scale=w.getHeight()*.48f*waveZoom;
+        const auto w=r.withTrimmedTop(eventTitleHeight(lane)+1).reduced(0,2);const float half=w.getHeight()*.5f,scale=w.getHeight()*.48f*waveZoom;
         const double peaksPerPixel=rate/samplesPerPeak/pixelsPerSecond;const int first=(int)(offset/samplesPerPeak);
         g.setColour(eventInk.withAlpha(.85f));
         const auto dirty=g.getClipBounds();
@@ -645,7 +695,7 @@ public:
     void glueSelected(){editEvents([](std::vector<AudioClip>& c,int i){return audio::glueEvents(c,i);});}
     void crossfadeSelected(){editEvents([](std::vector<AudioClip>& c,int i){return audio::crossfadeEvents(c,i);});}
     int volumeDrag=-1;
-    void setVolumeFrom(Track& t,int x,int indent=0){const auto v=volumeRect(0,indent);const float db=volumeFromProportion((float)(x-v.getX())/(float)v.getWidth());t.gain=db<=-60.0f?0.0f:juce::Decibels::decibelsToGain(db);}
+    void setVolumeFrom(Track& t,int x,int indent,int rowLane){const auto v=volumeRect(0,indent,rowLane);const float db=volumeFromProportion((float)(x-v.getX())/(float)v.getWidth());t.gain=db<=-60.0f?0.0f:juce::Decibels::decibelsToGain(db);}
     void mouseDoubleClick(const juce::MouseEvent& e) override
     {
         const juce::ScopedLock lock(engine.modelLock);const int i=trackAt(e.y);if(i<0||i>=(int)engine.tracks.size())return;
@@ -687,16 +737,16 @@ private:
     static juce::Colour selectedTrackColour() { return silente::ui::theme::selectedTrack; }
     int locatorDrag=0; bool rulerDragging=false;
     int dragClip=-1; bool resizing=false,dragOver=false;juce::Point<float> dragStart;AudioClip dragOrigin;
-    juce::Rectangle<float> clipRect(int i,const AudioClip& c)const {return {secondsToX(c.startSeconds),(float)(ruler+visualRow(i)*lane+8),juce::jmax(4.0f,(float)(c.durationSeconds*pixelsPerSecond)),lane-16.0f};}
+    juce::Rectangle<float> clipRect(int i,const AudioClip& c)const {return {secondsToX(c.startSeconds),(float)(trackTop(i)+8),juce::jmax(4.0f,(float)(c.durationSeconds*pixelsPerSecond)),laneOf(i)-16.0f};}
     // Track list buttons as in Cubase: grey when off, filled with their colour and dark text when on.
     static constexpr int strip = 40;
     // Header volume slider (header coordinates, i.e. after the folder indent); on small tracks it
     // stays at the same absolute place, so it moves left by the indent.
-    juce::Rectangle<int> volumeRect(int y,int indent=0)const { return lane>=56?juce::Rectangle<int>{46,y+35,44,14}:juce::Rectangle<int>{header-80-indent,y+8,67,14}; }
+    juce::Rectangle<int> volumeRect(int y,int indent,int rowLane)const { return rowLane>=56?juce::Rectangle<int>{46,y+35,44,14}:juce::Rectangle<int>{header-80-indent,y+8,67,14}; }
     // Folder lane (Cubase: folder parts): one thin band per contained track with events, showing
     // where its audio events and MIDI notes are. Display only; the parts are not edited here.
     void paintFolderParts(juce::Graphics& g,int folderIndex,int y)
-    {
+    {const int lane=laneOf(folderIndex);
         const auto order=trackOrderOf(engine.tracks);const int end=domain::subtreeEnd(order,folderIndex);
         std::vector<int> content;for(int k=folderIndex+1;k<end;++k)if(engine.tracks[(size_t)k]->hasEvents())content.push_back(k);
         if(content.empty())return;
@@ -757,7 +807,7 @@ private:
         m.addSubMenu(i18n::tr("Mover a la carpeta"),folders,!folderIds.empty());
         m.addSeparator();m.addItem(2,i18n::tr("Eliminar pista"));m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this),i,id,folderIds](int r){if(!safe)return;
             if(r>=5&&r<=7){if(safe->moveTrack)safe->moveTrack({r==5?app::TrackMove::up:r==6?app::TrackMove::down:app::TrackMove::outOfFolder,id});return;}
-            if(r>=100&&r<100+(int)folderIds.size()){if(safe->moveTrack)safe->moveTrack({app::TrackMove::intoFolder,id,folderIds[(size_t)(r-100)]});return;}if(r==4){if(safe->addTracks)safe->addTracks();return;}if(r==3){if(safe->editColour)safe->editColour(i,safe->localAreaToGlobal(juce::Rectangle<int>{0,ruler+safe->visualRow(i)*safe->lane,25,safe->lane}));return;}if(r==2){if(safe->beforeEdit)safe->beforeEdit();safe->engine.removeTrack(i);safe->selectedTrack=juce::jmax(0,i-1);if(safe->selectTrack)safe->selectTrack(safe->selectedTrack);if(safe->changed)safe->changed();safe->repaint();}if(r==1){auto* alert=new juce::AlertWindow(i18n::tr("Nombre de la pista"),"",juce::MessageBoxIconType::NoIcon);alert->addTextEditor("name",safe->engine.tracks[(size_t)i]->name);alert->addButton(i18n::tr("Guardar"),1,juce::KeyPress(juce::KeyPress::returnKey));alert->addButton(i18n::tr("Cancelar"),0,juce::KeyPress(juce::KeyPress::escapeKey));alert->enterModalState(true,juce::ModalCallbackFunction::create([safe,alert,i](int result){if(safe&&result==1){const juce::ScopedLock lock(safe->engine.modelLock);if(i<(int)safe->engine.tracks.size()){if(safe->beforeEdit)safe->beforeEdit();safe->engine.tracks[(size_t)i]->name=alert->getTextEditorContents("name");if(safe->changed)safe->changed();}}}),true);}});
+            if(r>=100&&r<100+(int)folderIds.size()){if(safe->moveTrack)safe->moveTrack({app::TrackMove::intoFolder,id,folderIds[(size_t)(r-100)]});return;}if(r==4){if(safe->addTracks)safe->addTracks();return;}if(r==3){if(safe->editColour)safe->editColour(i,safe->localAreaToGlobal(juce::Rectangle<int>{0,safe->trackTop(i),25,safe->laneOf(i)}));return;}if(r==2){if(safe->beforeEdit)safe->beforeEdit();safe->engine.removeTrack(i);safe->selectedTrack=juce::jmax(0,i-1);if(safe->selectTrack)safe->selectTrack(safe->selectedTrack);if(safe->changed)safe->changed();safe->repaint();}if(r==1){auto* alert=new juce::AlertWindow(i18n::tr("Nombre de la pista"),"",juce::MessageBoxIconType::NoIcon);alert->addTextEditor("name",safe->engine.tracks[(size_t)i]->name);alert->addButton(i18n::tr("Guardar"),1,juce::KeyPress(juce::KeyPress::returnKey));alert->addButton(i18n::tr("Cancelar"),0,juce::KeyPress(juce::KeyPress::escapeKey));alert->enterModalState(true,juce::ModalCallbackFunction::create([safe,alert,i](int result){if(safe&&result==1){const juce::ScopedLock lock(safe->engine.modelLock);if(i<(int)safe->engine.tracks.size()){if(safe->beforeEdit)safe->beforeEdit();safe->engine.tracks[(size_t)i]->name=alert->getTextEditorContents("name");if(safe->changed)safe->changed();}}}),true);}});
     }
 };
 
@@ -946,6 +996,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     // Waveform zoom (top) and track height (bottom) at the right edge of the event display, and
     // the draggable borders of the zones; sizes are kept in layout.xml.
     juce::Slider waveZoomSlider{juce::Slider::LinearVertical,juce::Slider::NoTextBox},trackHeightSlider{juce::Slider::LinearVertical,juce::Slider::NoTextBox};
+    juce::TextButton trackZoomButton{juce::String::fromUTF8("▾")};
     ui::ZoneSplitter channelSplit{true},inspectorSplit{true},rightSplit{true},lowerSplit{false};
     int channelWidth=132,inspectorWidth=196,rightWidth=0,lowerHeight=0,dragBase=0;
     juce::TextButton allMuteOff{"M"},allSoloOff{"S"},hubButton,mixConsoleButton,zoneChannelButton,zoneLeftButton,zoneLowerButton,zoneRightButton,layoutButton;
@@ -962,19 +1013,69 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         showStatusLine=xml->getBoolAttribute("statusLine",showStatusLine);showInfoLine=xml->getBoolAttribute("infoLine",showInfoLine);showTransport=xml->getBoolAttribute("transport",showTransport);
         channelWidth=juce::jlimit(110,320,xml->getIntAttribute("channelWidth",channelWidth));inspectorWidth=juce::jlimit(170,420,xml->getIntAttribute("inspectorWidth",inspectorWidth));
         rightWidth=xml->getIntAttribute("rightWidth",0);lowerHeight=xml->getIntAttribute("lowerHeight",0);
-        arrangement.lane=juce::jlimit(Arrangement::minLane,Arrangement::maxLane,xml->getIntAttribute("trackHeight",arrangement.lane));
+        arrangement.setAllLanes(xml->getIntAttribute("trackHeight",arrangement.lane));arrangement.heightSnap=xml->getBoolAttribute("heightSnap",false);
+        for(const auto& entry:juce::StringArray::fromTokens(xml->getStringAttribute("trackHeights"),";",""))
+            if(const int colon=entry.indexOfChar(':');colon>0&&entry.substring(colon+1).getIntValue()>0)arrangement.laneOverride[entry.substring(0,colon)]=juce::jlimit(Arrangement::minLane,Arrangement::maxLane,entry.substring(colon+1).getIntValue());
         arrangement.waveZoom=(float)juce::jlimit(1.0,16.0,xml->getDoubleAttribute("waveZoom",1.0));
     }
     void setTrackHeight(int value)
     {   // Keeps the top visible track in place while the rows grow or shrink.
-        arrangement.lane=juce::jlimit(Arrangement::minLane,Arrangement::maxLane,value);trackHeightSlider.setValue(arrangement.lane,juce::dontSendNotification);arrangement.repaint();
+        arrangement.setAllLanes(value);trackHeightSlider.setValue(arrangement.lane,juce::dontSendNotification);arrangement.repaint();
+    }
+    // Zoom menu next to the vertical zoom (manual p. 224). Every preset sets all tracks to the same height.
+    enum TrackZoom {zoomRows=1,zoomFitAll,zoomFitFour,zoomFitEight,zoomFitCount,zoomMinimum,zoomRowsAsk,zoomHeightSnap,expandSelected};
+    void fitTracks(int count)
+    {
+        const auto v=arrangement.visibleTracks();const int n=juce::jmax(1,count),avail=juce::jmax(Arrangement::minLane,arrangement.getHeight()-Arrangement::ruler);
+        setTrackHeight(avail/n);const auto it=std::find(v.begin(),v.end(),selected);const int at=it==v.end()?0:(int)std::distance(v.begin(),it);
+        arrangement.firstTrack=count>=(int)v.size()?0:juce::jlimit(0,juce::jmax(0,(int)v.size()-n),at-(n-1)/2);
+    }
+    void trackZoom(int preset,int n=0)
+    {
+        switch(preset)
+        {
+            case zoomRows:setTrackHeight(60*juce::jlimit(1,4,n));break;
+            case zoomFitAll:fitTracks((int)arrangement.visibleTracks().size());arrangement.firstTrack=0;break;
+            case zoomFitFour:fitTracks(4);break;
+            case zoomFitEight:fitTracks(8);break;
+            case zoomFitCount:fitTracks(juce::jmax(1,n));break;
+            case zoomMinimum:setTrackHeight(Arrangement::minLane);break;
+            case zoomHeightSnap:arrangement.heightSnap=!arrangement.heightSnap;break;
+            case expandSelected:
+            {   // Edit > Expand selected track: this track takes the height of the window (it alone).
+                const auto v=arrangement.visibleTracks();const auto it=std::find(v.begin(),v.end(),selected);if(it==v.end())return;
+                arrangement.setLaneOf(selected,juce::jmin(Arrangement::maxLane,juce::jmax(Arrangement::minLane,arrangement.getHeight()-Arrangement::ruler)));
+                arrangement.firstTrack=(int)std::distance(v.begin(),it);break;
+            }
+            default:return;
+        }
+        arrangement.repaint();saveLayout();
+    }
+    void trackZoomMenu()
+    {
+        juce::PopupMenu m;
+        m.addItem(zoomRows*100+1,i18n::tr("Zoom en las pistas: 1 fila"));m.addItem(zoomRows*100+2,i18n::tr("Zoom en las pistas: 2 filas"));
+        m.addItem(zoomRows*100+3,i18n::tr("Zoom en las pistas: 3 filas"));m.addItem(zoomRows*100+4,i18n::tr("Zoom en las pistas: 4 filas"));
+        m.addItem(zoomRowsAsk,i18n::tr("Zoom en las pistas: N filas…"));m.addSeparator();
+        m.addItem(zoomFitAll,i18n::tr("Zoom completo en la pista"));m.addItem(zoomFitFour,i18n::tr("Zoom en 4 pistas"));m.addItem(zoomFitEight,i18n::tr("Zoom en 8 pistas"));
+        m.addItem(zoomFitCount,i18n::tr("Zoom en N pistas…"));m.addItem(zoomMinimum,i18n::tr("Zoom mínimo en pistas"));m.addSeparator();
+        m.addItem(zoomHeightSnap,i18n::tr("Ajustar alturas de pista"),true,arrangement.heightSnap);
+        m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&trackZoomButton),[this](int id)
+        {
+            if(id>=zoomRows*100)trackZoom(zoomRows,id-zoomRows*100);
+            else if(id==zoomRowsAsk)askValue(i18n::tr("Zoom en las pistas"),i18n::tr("Filas (1–4)"),"2",[this](const juce::String& v){trackZoom(zoomRows,v.getIntValue());});
+            else if(id==zoomFitCount)askValue(i18n::tr("Zoom en N pistas"),i18n::tr("Pistas"),"6",[this](const juce::String& v){trackZoom(zoomFitCount,v.getIntValue());});
+            else if(id>0)trackZoom(id);
+        });
     }
     void saveLayout()
     {
         juce::XmlElement xml("PROJECTWINDOW");xml.setAttribute("channel",showChannel);xml.setAttribute("left",showLeft);xml.setAttribute("lower",showLower);xml.setAttribute("right",showRight);
         xml.setAttribute("statusLine",showStatusLine);xml.setAttribute("infoLine",showInfoLine);xml.setAttribute("transport",showTransport);
         xml.setAttribute("channelWidth",channelWidth);xml.setAttribute("inspectorWidth",inspectorWidth);xml.setAttribute("rightWidth",rightWidth);xml.setAttribute("lowerHeight",lowerHeight);
-        xml.setAttribute("trackHeight",arrangement.lane);xml.setAttribute("waveZoom",(double)arrangement.waveZoom);
+        xml.setAttribute("trackHeight",arrangement.lane);xml.setAttribute("heightSnap",arrangement.heightSnap);
+        {juce::String heights;for(const auto& o:arrangement.laneOverride)heights<<o.first<<":"<<o.second<<";";xml.setAttribute("trackHeights",heights);}
+        xml.setAttribute("waveZoom",(double)arrangement.waveZoom);
         layoutFile().getParentDirectory().createDirectory();xml.writeTo(layoutFile());
     }
     void toggleZone(bool& flag){flag=!flag;saveLayout();owner.resized();owner.repaint();}
@@ -1041,12 +1142,14 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         timelineScroll.addListener(this);
         owner.addAndMakeVisible(clickOptions);owner.addAndMakeVisible(tapButton);
         loadLayout();loadTransport();registerKeyActions();
-        for(auto* c:std::initializer_list<juce::Component*>{&waveZoomSlider,&trackHeightSlider,&channelSplit,&inspectorSplit,&rightSplit,&lowerSplit})owner.addAndMakeVisible(c);
+        for(auto* c:std::initializer_list<juce::Component*>{&waveZoomSlider,&trackHeightSlider,&trackZoomButton,&channelSplit,&inspectorSplit,&rightSplit,&lowerSplit})owner.addAndMakeVisible(c);
         waveZoomSlider.setRange(1.0,16.0,0.01);waveZoomSlider.setSkewFactorFromMidPoint(4.0);waveZoomSlider.setValue(arrangement.waveZoom,juce::dontSendNotification);
         waveZoomSlider.setTooltip(i18n::tr("Zoom de forma de onda"));waveZoomSlider.setComponentID("wave-zoom");waveZoomSlider.setDoubleClickReturnValue(true,1.0);
         waveZoomSlider.onValueChange=[this]{arrangement.waveZoom=(float)waveZoomSlider.getValue();arrangement.repaint();};waveZoomSlider.onDragEnd=[this]{saveLayout();};
         trackHeightSlider.setRange(Arrangement::minLane,Arrangement::maxLane,1.0);trackHeightSlider.setValue(arrangement.lane,juce::dontSendNotification);
         trackHeightSlider.setTooltip(i18n::tr("Altura de pistas  ⇧H / ⇧G"));trackHeightSlider.setComponentID("track-height");trackHeightSlider.setDoubleClickReturnValue(true,60.0);
+        trackZoomButton.setComponentID("track-zoom-menu");trackZoomButton.setTooltip(i18n::tr("Zoom de pistas"));trackZoomButton.onClick=[this]{trackZoomMenu();};
+        arrangement.heightsChanged=[this]{trackHeightSlider.setValue(arrangement.lane,juce::dontSendNotification);};arrangement.heightsDone=[this]{saveLayout();};
         trackHeightSlider.onValueChange=[this]{setTrackHeight((int)trackHeightSlider.getValue());};trackHeightSlider.onDragEnd=[this]{saveLayout();};
         const auto splitter=[this](ui::ZoneSplitter& z,int& size,int sign,std::function<int()> current,int lo,std::function<int()> hi)
         {
@@ -1417,7 +1520,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             for(const auto& marker:track->data.markers)if(action==-3||marker.cycle)
             {ids.push_back(marker.id);menu.addItem((int)ids.size(),juce::String(marker.number)+"  "+marker.description,true,arrangement.selectedMarker==marker.id);}
             if(ids.empty())return;
-            menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(arrangement.localAreaToGlobal(juce::Rectangle<int>{118,Arrangement::ruler+arrangement.visualRow(selected)*arrangement.lane+29,125,23})),
+            menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(arrangement.localAreaToGlobal(juce::Rectangle<int>{118,arrangement.trackTop(selected)+29,125,23})),
                 [safe=juce::Component::SafePointer<MainComponent>(&owner),trackId,ids,action](int result)
                 {if(safe&&juce::isPositiveAndBelow(result-1,(int)ids.size()))safe->ui->timelineAction(trackId,ids[(size_t)result-1],action==-3?1:action==-4?2:3);});return;
         }
@@ -1781,7 +1884,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         mix(engine.tracks.size());mix(selected);mix(arrangement.selectedClip);mix(arrangement.tool);mix(dirty);mix(undoStack.size());mix(redoStack.size());
         mix(engine.looping.load());mix(engine.loopStart.load());mix(engine.loopEnd.load());mix(engine.punchIn.load());mix(engine.punchOut.load());mix(engine.tempo.load());for(const auto& e:engine.tempoMap.tempos){mix(e.beat);mix(e.bpm);mix(e.ramp);}for(const auto& e:engine.tempoMap.signatures){mix(e.bar);mix(e.numerator*64+e.denominator);}
         mix(engine.metronome.load());mix(engine.recording.load());mix(engine.playing.load());mix(engine.capturing.load());mix(engine.recordBitDepth.load());
-        mix(arrangement.scrollSeconds);mix(arrangement.pixelsPerSecond);mix(arrangement.lane);mix(arrangement.waveZoom);mix(arrangement.firstTrack);
+        mix(arrangement.scrollSeconds);mix(arrangement.pixelsPerSecond);mix(arrangement.lane);for(const auto& o:arrangement.laneOverride)mix(o.second);mix(arrangement.waveZoom);mix(arrangement.firstTrack);
         mix(arrangement.hasRange);mix(arrangement.rangeStart);mix(arrangement.rangeEnd);mix(arrangement.rangeFirstRow);mix(arrangement.rangeLastRow);
         mix((double)notice.hashCode64());mix(owner.getWidth());mix(owner.getHeight());
         mix(engine.currentSampleRate());mix(engine.currentBlockSize());
@@ -1824,6 +1927,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         auto timeline=centreRect;auto zoomStrip=timeline.removeFromRight(16);timelineScroll.setBounds(timeline.removeFromBottom(12).withTrimmedLeft(Arrangement::header));arrangement.setBounds(timeline);
         waveZoomSlider.setBounds(zoomStrip.getX(),zoomStrip.getY()+Arrangement::ruler,16,juce::jmin(90,zoomStrip.getHeight()/2-Arrangement::ruler));
         trackHeightSlider.setBounds(zoomStrip.getX(),zoomStrip.getBottom()-12-juce::jmin(110,zoomStrip.getHeight()/2),16,juce::jmin(110,zoomStrip.getHeight()/2));
+        trackZoomButton.setBounds(zoomStrip.getX(),trackHeightSlider.getY()-18,16,16);
         channelSplit.setBounds(channelRect.getRight()-3,channelRect.getY(),6,channelRect.getHeight());channelSplit.setVisible(showChannel);
         inspectorSplit.setBounds(inspectorRect.getRight()-3,inspectorRect.getY(),6,inspectorRect.getHeight());inspectorSplit.setVisible(showLeft);
         rightSplit.setBounds(browserRect.getX()-3,browserRect.getY(),6,browserRect.getHeight());rightSplit.setVisible(showRight);
@@ -2022,7 +2126,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     }
     void open()
     {
-        confirmDiscard([this]{chooser=std::make_unique<juce::FileChooser>(i18n::tr("Abrir proyecto de Silente o Cubase"),juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),"*.silente;*.json;*.cpr",true);chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe=juce::Component::SafePointer<MainComponent>(&owner)](const juce::FileChooser& fc){if(!safe||fc.getResult()==juce::File())return;auto& self=*safe->ui;if(self.routeCpr(fc.getResult()))return;self.plugins.closeEditors();self.stopTransport();auto r=self.engine.loadProject(fc.getResult());if(r.failed()){self.error(r.getErrorMessage());return;}self.dirty=false;self.undoStack.clear();self.redoStack.clear();self.selected=0;self.arrangement.selectedClip=-1;self.arrangement.scrollSeconds=0;self.arrangement.firstTrack=0;self.notice=i18n::tr("Sesión abierta: ")+fc.getResult().getFileName();self.refresh();if(self.engine.lastWarning.isNotEmpty())self.error(self.engine.lastWarning);});});
+        confirmDiscard([this]{chooser=std::make_unique<juce::FileChooser>(i18n::tr("Abrir proyecto de Silente o Cubase"),juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),"*.silente;*.json;*.cpr",true);chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe=juce::Component::SafePointer<MainComponent>(&owner)](const juce::FileChooser& fc){if(!safe||fc.getResult()==juce::File())return;auto& self=*safe->ui;if(self.routeCpr(fc.getResult()))return;self.plugins.closeEditors();self.stopTransport();auto r=self.engine.loadProject(fc.getResult());if(r.failed()){self.error(r.getErrorMessage());return;}self.dirty=false;self.undoStack.clear();self.redoStack.clear();self.selected=0;self.arrangement.selectedClip=-1;self.arrangement.scrollSeconds=0;self.arrangement.firstTrack=0;self.arrangement.revealFirstEvent();self.notice=i18n::tr("Sesión abierta: ")+fc.getResult().getFileName();self.refresh();if(self.engine.lastWarning.isNotEmpty())self.error(self.engine.lastWarning);});});
     }
     void importPaths(const juce::StringArray& input,int trackIndex=-1,double at=0)
     {
@@ -2104,7 +2208,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             if(result.failed()){if(result.getErrorMessage()!="cancel")self.error(result.getErrorMessage());return;}
             self.plugins.closeEditors();self.stopTransport();
             const auto summary=io::cpr::apply(self.engine,*prepared);
-            self.undoStack.clear();self.redoStack.clear();self.selected=0;self.arrangement.selectedClip=-1;self.arrangement.scrollSeconds=0;self.arrangement.firstTrack=0;
+            self.undoStack.clear();self.redoStack.clear();self.selected=0;self.arrangement.selectedClip=-1;self.arrangement.scrollSeconds=0;self.arrangement.firstTrack=0;self.arrangement.revealFirstEvent();
             self.engine.projectName=destination.getFileNameWithoutExtension();
             auto saved=self.engine.saveProject(destination);
             const auto reportFile=io::cpr::reportFileFor(destination);
@@ -2227,6 +2331,9 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["autoScroll"]=[this]{autoScroll=!autoScroll;saveTransport();notice=autoScroll?i18n::tr("Desplazamiento automático activado"):i18n::tr("Desplazamiento automático desactivado");refresh();};
         k["stationary"]=[this]{stationary=!stationary;if(stationary)autoScroll=true;saveTransport();refresh();};k["stop"]=[this]{stopTransport();};k["record"]=[this]{toggleRecord();};
         k["cycle"]=[this]{engine.looping=!engine.looping.load();markDirty();refresh();};
+        k["expandTrack"]=[this]{trackZoom(expandSelected);};
+        k["trackZoomRows1"]=[this]{trackZoom(zoomRows,1);};k["trackZoomRows2"]=[this]{trackZoom(zoomRows,2);};k["trackZoomRows3"]=[this]{trackZoom(zoomRows,3);};k["trackZoomRows4"]=[this]{trackZoom(zoomRows,4);};
+        k["trackZoomFull"]=[this]{trackZoom(zoomFitAll);};k["trackZoomFour"]=[this]{trackZoom(zoomFitFour);};k["trackZoomEight"]=[this]{trackZoom(zoomFitEight);};k["trackZoomMinimum"]=[this]{trackZoom(zoomMinimum);};
         k["zoomInVertical"]=[this]{setTrackHeight((int)std::lround(arrangement.lane*1.25));saveLayout();};k["zoomOutVertical"]=[this]{setTrackHeight((int)std::lround(arrangement.lane/1.25));saveLayout();};
         k["punchIn"]=[this]{engine.punchIn=!engine.punchIn.load();markDirty();refresh();};k["punchOut"]=[this]{engine.punchOut=!engine.punchOut.load();markDirty();refresh();};
         k["metronome"]=[this]{toggleMetronome();};
@@ -2448,6 +2555,7 @@ void MainComponent::audioMenuItem(int id){ui->audioMenuItem(id);}
 juce::PopupMenu MainComponent::rangeMenu(){return ui->rangeMenu();}
 void MainComponent::rangeMenuItem(int id){ui->rangeMenuItem(id);}
 juce::StringArray MainComponent::editHistory()const{juce::StringArray names;for(const auto& s:ui->undoStack)names.add(s.action);return names;}
+int MainComponent::trackHeightOf(int trackIndex)const{return ui->arrangement.laneOf(trackIndex);}
 float MainComponent::projectXForTime(double seconds)const{return ui->arrangement.secondsToX(seconds);}
 bool MainComponent::runCommand(const juce::String& id){if(auto a=ui->keyActions.find(id);a!=ui->keyActions.end()){a->second();return true;}return false;}
 void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}

@@ -1001,5 +1001,22 @@
   "Proyecto Cubase importado: ": "Cubase project imported: ",
   " eventos": " events",
   "Informe de importación de Cubase": "Cubase import report",
-  "Informe guardado en: ": "Report saved to: "
+  "Informe guardado en: ": "Report saved to: ",
+  "Zoom en las pistas: 1 fila": "Zoom tracks: 1 row",
+  "Zoom en las pistas: 2 filas": "Zoom tracks: 2 rows",
+  "Zoom en las pistas: 3 filas": "Zoom tracks: 3 rows",
+  "Zoom en las pistas: 4 filas": "Zoom tracks: 4 rows",
+  "Zoom en las pistas: N filas…": "Zoom tracks: N rows…",
+  "Zoom completo en la pista": "Zoom fully on track",
+  "Zoom en 4 pistas": "Zoom on 4 tracks",
+  "Zoom en 8 pistas": "Zoom on 8 tracks",
+  "Zoom en N pistas…": "Zoom on N tracks…",
+  "Zoom mínimo en pistas": "Minimum track zoom",
+  "Ajustar alturas de pista": "Snap track heights",
+  "Zoom en las pistas": "Zoom tracks",
+  "Filas (1–4)": "Rows (1–4)",
+  "Zoom en N pistas": "Zoom on N tracks",
+  "Pistas": "Tracks",
+  "Zoom de pistas": "Track zoom",
+  "Expandir pista seleccionada": "Expand selected track"
 }

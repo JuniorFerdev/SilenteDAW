@@ -361,3 +361,7 @@ Jerarquía en preorden en `src/domain/TrackTree.{h,cpp}` (mover, anidar, sacar d
 ## cpr-open01 — «Abrir proyecto» acepta .cpr (17-11-2026)
 
 «Abrir proyecto de Silente o Cubase» acepta .silente, .json y .cpr. Un .cpr entra en el mismo flujo que «Importar proyecto Cubase»: `routeCpr` → `chooseCubaseDestination` → `runCubaseImport`. Prueba en WorkflowUiTests mediante `openProjectFile` y `cubaseImportOverride`. Verificado: motor 56/56, io 6/6, flujo 0 FAIL / 1 SKIP, idiomas 1003. El selector nativo queda sin probar a mano y el flujo de punta a punta con un .cpr real no se ha ejercitado todavía.
+
+## wave-height01 — Ondas visibles y altura de pistas (17-11-2026)
+
+Las ondas no se veían por dos causas medidas: los eventos del .cpr empiezan hacia 25 s, fuera de la ventana inicial, y el título de 22 px dejaba unos 10 px de onda a 60 px de pista. Ahora el título mide 15 px (22 px desde 90 px de pista) y `Arrangement::revealFirstEvent` coloca la vista en el primer evento al abrir o importar. Altura por pista: arrastrar el borde inferior en la cabecera (⌘/Ctrl = todas), menú de zoom ▾ con los presets del manual (1–4 filas, N, completo, 4/8 pistas, mínimo, ajustar) y Edición › Expandir pista seleccionada. Alturas guardadas en `layout.xml` (`trackHeights`). Verificado: motor 56/56, io 6/6, flujo 284 PASS / 0 FAIL / 1 SKIP (VST3 opcional), idiomas 1020. Sin probar a mano: cursor, arrastre con ratón, menú ▾ y revealFirstEvent por la interfaz. Pendiente: 6 avisos -Wshadow por el `lane` local.
