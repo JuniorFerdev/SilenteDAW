@@ -17,4 +17,6 @@ double quantizeBeat(double beats, double grid, double strengthPercent);
 void quantizeNote(MidiNote& note, const QuantizeSettings& settings);
 // index < 0 quantizes every note; otherwise only that note. Returns how many notes changed.
 int quantizeNotes(std::vector<MidiNote>& notes, int index, const QuantizeSettings& settings);
+// Only the notes at `indices` (the editor selection); an empty list quantizes every note.
+int quantizeSelectedNotes(std::vector<MidiNote>& notes, const std::vector<int>& indices, const QuantizeSettings& settings);
 }

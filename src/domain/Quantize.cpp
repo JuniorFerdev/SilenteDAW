@@ -37,4 +37,17 @@ int quantizeNotes(std::vector<MidiNote>& notes, int index, const QuantizeSetting
     }
     return changed;
 }
+int quantizeSelectedNotes(std::vector<MidiNote>& notes, const std::vector<int>& indices, const QuantizeSettings& q)
+{
+    if (indices.empty()) return quantizeNotes(notes, -1, q);
+    int changed = 0;
+    for (int i : indices)
+    {
+        if (i < 0 || i >= (int) notes.size()) continue;
+        const auto before = notes[(size_t) i];
+        quantizeNote(notes[(size_t) i], q);
+        if (before.startBeats != notes[(size_t) i].startBeats || before.lengthBeats != notes[(size_t) i].lengthBeats) ++changed;
+    }
+    return changed;
+}
 }

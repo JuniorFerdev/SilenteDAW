@@ -106,7 +106,64 @@ private:
         expect(n.size()==1&&std::abs(n[0].startBeats-3.0)<1e-9&&undoSteps==before+1,"Piano roll: Quantize snaps the selected note to 1/4 with one undo step");
         roll->keyPressed(KeyPress(KeyPress::deleteKey));
         expect(notes().empty()&&undoSteps==before+2&&changes>=4,"Piano roll: Delete removes the selected note with one undo step");
-        roll->beforeEdit=savedBefore;roll->changed=savedChanged;roll->selected=-1;engine.clear();
+        pianoRollSelectionChecks(*roll,undoSteps,notes);
+        roll->beforeEdit=savedBefore;roll->changed=savedChanged;
+        pianoRollUndoCheck(*roll,notes);
+        roll->clearSelection();engine.clear();
+    }
+    // Multiple selection (subetapa 1 of the MIDI editor): marquee, Shift+click, Cmd+A, group move,
+    // resize, quantize and delete, each gesture with at most one undo step.
+    template<typename Notes> void pianoRollSelectionChecks(ui::PianoRoll& roll,int& undoSteps,const Notes& notes)
+    {
+        const auto x=[&](double beat){return 52.f+(float)(beat*roll.pixelsPerBeat);};
+        const auto y=[&](int pitch){return 24.f+(float)((roll.topPitch-pitch)*12)+5.f;};
+        const auto setNotes=[&](std::initializer_list<std::pair<int,double>> list){const ScopedLock lock(engine.modelLock);auto& n=engine.tracks[0]->notes;n.clear();for(auto [p,b]:list){MidiNote m;m.pitch=p;m.startBeats=b;m.lengthBeats=1;n.push_back(m);}};
+        setNotes({{60,0.0},{62,1.0},{64,2.0},{72,4.0}});roll.clearSelection();
+        auto n=notes();const auto id=[&](int i){return n[(size_t)i].id;};
+        int before=undoSteps;
+        roll.mouseDown(mouse(roll,x(0.5),y(66)-3.f));roll.mouseDrag(mouse(roll,x(2.5),y(61)+1.f,true));roll.mouseUp(mouse(roll,x(2.5),y(61)+1.f));
+        expect(roll.selection.size()==2&&roll.selection.contains(id(1))&&roll.selection.contains(id(2))&&undoSteps==before,"Piano roll: marquee over beats 0.5-2.5 and pitches 61-66 selects exactly two notes without an undo step");
+        roll.mouseDown(mouse(roll,x(0.5),y(60),false,ModifierKeys::shiftModifier));roll.mouseUp(mouse(roll,x(0.5),y(60)));
+        const bool added=roll.selection.size()==3&&roll.selection.contains(id(0));
+        roll.mouseDown(mouse(roll,x(2.5),y(64),false,ModifierKeys::shiftModifier));roll.mouseUp(mouse(roll,x(2.5),y(64)));
+        const bool removed=roll.selection.size()==2&&!roll.selection.contains(id(2));
+        roll.mouseDown(mouse(roll,x(2.5),y(64),false,ModifierKeys::shiftModifier));roll.mouseUp(mouse(roll,x(2.5),y(64)));
+        expect(added&&removed&&roll.selection.size()==3&&undoSteps==before&&notes()[0].startBeats==0.0,"Piano roll: Shift+click adds and removes notes from the selection without editing");
+        roll.mouseDown(mouse(roll,x(1.5),y(62)));roll.mouseDrag(mouse(roll,x(2.5),y(62)-12.f,true));roll.mouseUp(mouse(roll,x(2.5),y(62)-12.f));
+        n=notes();
+        expect(undoSteps==before+1&&n[0].pitch==61&&n[1].pitch==63&&n[2].pitch==65&&n[0].startBeats==1.0&&n[1].startBeats==2.0&&n[2].startBeats==3.0&&n[3].pitch==72&&n[3].startBeats==4.0&&roll.selection.size()==3,
+               "Piano roll: dragging one selected note moves the group +1 beat and +1 semitone, unselected note intact, one undo step");
+        roll.mouseDown(mouse(roll,x(2.0)-3.f,y(61)));roll.mouseDrag(mouse(roll,x(2.0)-3.f+32.f,y(61),true));roll.mouseUp(mouse(roll,x(2.0)-3.f+32.f,y(61)));
+        n=notes();
+        expect(undoSteps==before+2&&n[0].lengthBeats==1.5&&n[1].lengthBeats==1.5&&n[2].lengthBeats==1.5&&n[3].lengthBeats==1.0&&n[0].startBeats==1.0,"Piano roll: dragging the right edge resizes the whole selection by +0.5 beat with one undo step");
+        roll.mouseDown(mouse(roll,x(4.5),y(72)));roll.mouseUp(mouse(roll,x(4.5),y(72)));
+        const bool single=roll.selection.size()==1&&roll.selection.contains(id(3))&&undoSteps==before+2;
+        roll.keyPressed(KeyPress('a',ModifierKeys::commandModifier,0));const bool all=roll.selection.size()==4;
+        roll.keyPressed(KeyPress('a',ModifierKeys::commandModifier|ModifierKeys::shiftModifier,0));
+        expect(single&&all&&roll.selection.empty()&&undoSteps==before+2,"Piano roll: plain click selects only that note (no undo step), Cmd+A selects all, Cmd+Shift+A deselects");
+        {const ScopedLock lock(engine.modelLock);engine.tracks[0]->notes[0].startBeats=1.2;engine.tracks[0]->notes[3].startBeats=4.3;}
+        roll.quantizeSettings={};roll.quantizeSettings.division=4;
+        roll.mouseDown(mouse(roll,x(4.6),y(72)));roll.mouseUp(mouse(roll,x(4.6),y(72)));roll.quantizeNotes();n=notes();
+        expect(undoSteps==before+3&&n[3].startBeats==4.0&&n[0].startBeats==1.2,"Piano roll: Quantize acts only on the selected note, leaving the others, with one undo step");
+        roll.mouseDown(mouse(roll,x(1.5),y(61)));roll.mouseUp(mouse(roll,x(1.5),y(61)));
+        roll.mouseDown(mouse(roll,x(3.5),y(65),false,ModifierKeys::shiftModifier));roll.mouseUp(mouse(roll,x(3.5),y(65)));
+        roll.keyPressed(KeyPress(KeyPress::deleteKey));n=notes();
+        expect(undoSteps==before+4&&n.size()==2&&n[0].pitch==63&&n[1].pitch==72&&roll.selection.empty()&&roll.selected==-1,"Piano roll: Delete removes the two selected notes with one undo step");
+    }
+    // Real history: one group move is undone in one step and redone in one step.
+    template<typename Notes> void pianoRollUndoCheck(ui::PianoRoll& roll,const Notes& notes)
+    {
+        {const ScopedLock lock(engine.modelLock);auto& n=engine.tracks[0]->notes;n.clear();for(int p:{60,64,67}){MidiNote m;m.pitch=p;m.startBeats=1;n.push_back(m);}}
+        view.runCommand("selectTrack1");roll.track=0;roll.clearSelection();roll.selectAll();
+        const auto x=[&](double beat){return 52.f+(float)(beat*roll.pixelsPerBeat);};const float y64=24.f+(float)((roll.topPitch-64)*12)+5.f;
+        const auto historyBefore=view.editHistory();
+        roll.mouseDown(mouse(roll,x(1.5),y64));roll.mouseDrag(mouse(roll,x(3.0),y64,true));roll.mouseDrag(mouse(roll,x(3.5),y64,true));roll.mouseUp(mouse(roll,x(3.5),y64));
+        const auto moved=notes();
+        view.runCommand("undo");const auto undone=notes();
+        view.runCommand("redo");const auto redone=notes();
+        const auto starts=[](const std::vector<MidiNote>& v,double b){if(v.size()!=3)return false;for(auto& m:v)if(m.startBeats!=b)return false;return true;};
+        expect(starts(moved,3.0)&&starts(undone,1.0)&&starts(redone,3.0)&&roll.selection.empty(),"Piano roll: a multi-step group drag is one undo step; Undo restores all three notes and Redo reapplies it");
+        ignoreUnused(historyBefore);
     }
     void keyCommandChecks()
     {

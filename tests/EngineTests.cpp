@@ -6,6 +6,7 @@
 #include "../src/audio/RangeEdit.h"
 #include "../src/AudioEngine.h"
 #include "../src/domain/Quantize.h"
+#include "../src/domain/NoteEdit.h"
 #include "../src/persistence/TrackDataJson.h"
 #include "../src/plugins/PluginSelection.h"
 #include "../src/app/TrackCreation.h"
@@ -1062,6 +1063,50 @@ int runEngineTests(const juce::File& outputDir)
         q.quantizeLength = true;require(quantizeNotes(notes, -1, q) == 3, "index -1 quantizes all notes");
         near(notes[0].startBeats, 0.25, 1e-12, "all: first note");near(notes[2].startBeats, 2.0, 1e-12, "all: third note");near(notes[1].lengthBeats, 1.0, 1e-12, "length 0.9 snaps to 1.0");
         MidiNote tiny;tiny.lengthBeats = 0.05;quantizeNote(tiny, q);near(tiny.lengthBeats, 0.25, 1e-12, "quantized length is never below one grid step");
+    });
+
+    suite.run("MIDI note selection: region, move/resize/erase groups and quantize selection", [&]
+    {
+        using namespace domain;
+        std::vector<MidiNote> notes(4);
+        notes[0].pitch = 60; notes[0].startBeats = 0.0; notes[0].lengthBeats = 1.0;
+        notes[1].pitch = 64; notes[1].startBeats = 1.0; notes[1].lengthBeats = 0.5;
+        notes[2].pitch = 67; notes[2].startBeats = 2.0; notes[2].lengthBeats = 1.0;
+        notes[3].pitch = 72; notes[3].startBeats = 4.0; notes[3].lengthBeats = 1.0;
+        auto region = notesInRegion(notes, 0.5, 2.1, 62, 70);
+        require(region.size() == 2 && region.contains(notes[1].id) && region.contains(notes[2].id), "region selects notes intersecting beats 0.5-2.1 and pitches 62-70");
+        require(notesInRegion(notes, 2.1, 0.5, 70, 62).size() == 2, "region accepts reversed corners");
+        require(notesInRegion(notes, 1.0, 1.0, 0, 127).size() == 0 && notesInRegion(notes, 0.99, 1.01, 0, 127).size() == 2, "region edges: touching end excluded, overlap included");
+        NoteSelection sel; sel.add(notes[0].id);
+        require(sel.toggle(notes[2].id) && ! sel.toggle(notes[0].id) && sel.size() == 1, "toggle adds and removes");
+        sel.add(notes[0].id); sel.add(notes[1].id);
+        const auto idx = selectedIndices(notes, sel);
+        require(idx.size() == 3 && idx[0] == 0 && idx[2] == 2, "selected indices follow model order");
+        auto target = notes;
+        require(moveNotes(notes, target, idx, 1, 1.1, 2, 0.25), "move group changes notes");
+        near(target[1].startBeats, 2.0, 0, "anchor lands exactly on grid");near(target[0].startBeats, 1.0, 1e-12, "group keeps interval (first)");near(target[2].startBeats, 3.0, 1e-12, "group keeps interval (third)");
+        require(target[0].pitch == 62 && target[1].pitch == 66 && target[2].pitch == 69 && target[3].pitch == 72 && target[3].startBeats == 4.0, "pitches move together; unselected note untouched");
+        target = notes; moveNotes(notes, target, idx, 1, -5.0, 100, 0.25);
+        near(target[0].startBeats, 0.0, 0, "group clamped at beat 0");near(target[2].startBeats, 2.0, 1e-12, "clamp keeps intervals");
+        require(target[2].pitch == 127 && target[0].pitch == 120, "group clamped at pitch 127 keeping intervals");
+        require(! moveNotes(notes, target, idx, 1, 0.0, 0, 0.25) || target[1].startBeats == 1.0, "zero move restores originals");
+        target = notes; require(! moveNotes(notes, target, idx, 1, 0.05, 0, 0.25), "sub-grid move with snap does not change anything");
+        target = notes; resizeNotes(notes, target, idx, 0, 0.4, 0.25);
+        near(target[0].lengthBeats, 1.5, 0, "anchor length snapped to 1.5");near(target[1].lengthBeats, 1.0, 1e-12, "same length change for the group");near(target[2].lengthBeats, 1.5, 1e-12, "third note +0.5");
+        require(target[0].startBeats == 0.0 && target[1].pitch == 64, "resize keeps start and pitch");
+        target = notes; resizeNotes(notes, target, idx, 0, -3.0, 0.25);
+        near(target[0].lengthBeats, 0.0625, 0, "anchor never below minimum");near(target[1].lengthBeats, 0.0625, 0, "group notes never below minimum");
+        std::vector<MidiNote> single(1); single[0].startBeats = 2.0; auto one = single;
+        moveNotes(single, one, {0}, 0, 1.13, 2, 0.25);
+        require(one[0].startBeats == 3.25 && one[0].pitch == 62, "single note move equals previous rule max(0, snap(start+delta))");
+        one = single; resizeNotes(single, one, {0}, 0, 0.5, 0.25);
+        require(one[0].lengthBeats == 1.5, "single note resize equals previous rule max(1/16, snap(len+delta))");
+        std::vector<MidiNote> q = notes; q[0].startBeats = 0.3; q[3].startBeats = 4.3;
+        QuantizeSettings qs; qs.division = 4;
+        require(quantizeSelectedNotes(q, {0, 1}, qs) == 1 && q[0].startBeats == 0.0 && q[3].startBeats == 4.3, "quantize acts only on the selection");
+        require(quantizeSelectedNotes(q, {}, qs) == 1 && q[3].startBeats == 4.0, "empty selection quantizes all");
+        auto erased = notes; require(eraseNotes(erased, sel) == 3 && erased.size() == 1 && erased[0].id == notes[3].id, "erase removes exactly the selection");
+        require(selectAllNotes(notes).size() == 4, "select all");
     });
 
     auto* report = new juce::DynamicObject();
