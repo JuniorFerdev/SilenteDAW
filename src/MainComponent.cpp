@@ -1906,6 +1906,15 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         if(engine.recording){error(i18n::tr("Detén la grabación antes de exportar."));return;}
         exportWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Exportar mezcla de audio"),new ui::ExportDialog(engine,selected),820,520);exportWindow->setLookAndFeel(&look);
     }
+    void exportMidiChooser(bool selectedOnly)
+    {
+        // Archivo > Exportar > MIDI: all MIDI/instrument tracks, or only the selected one.
+        if(engine.recording){error(i18n::tr("Detén la grabación antes de exportar."));return;}
+        const int index=selectedOnly?selected:-1;
+        if(selectedOnly){const juce::ScopedLock lock(engine.modelLock);if(!juce::isPositiveAndBelow(index,(int)engine.tracks.size())||!engine.tracks[(size_t)index]->isMidi){error(i18n::tr("Selecciona una pista MIDI o de instrumento para exportar."));return;}}
+        chooser=std::make_unique<juce::FileChooser>(i18n::tr("Exportar MIDI"),juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(juce::File::createLegalFileName(engine.projectName)+".mid"),"*.mid",true);
+        chooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::warnAboutOverwriting,[safe=juce::Component::SafePointer<MainComponent>(&owner),index](const juce::FileChooser& fc){if(!safe)return;auto& self=*safe->ui;auto f=fc.getResult();if(f==juce::File())return;if(!f.hasFileExtension("mid;midi"))f=f.withFileExtension("mid");auto r=self.engine.exportMidi(f,index);if(r.failed()){self.error(r.getErrorMessage());return;}self.notice=i18n::tr("MIDI exportado: ")+f.getFileName();self.refresh();});
+    }
     void showConversion(bool video)
     {
         if(!conversionWindow){conversionWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Conversión de formatos"),new ui::ConversionPanel(engine.formatManager),860,540);conversionWindow->setLookAndFeel(&look);}
@@ -2065,6 +2074,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["addTrack"]=[this]{if(addTrackButton.onClick)addTrackButton.onClick();};
         k["new"]=[this]{owner.newProject();};k["openProject"]=[this]{open();};k["save"]=[this]{save();};
         k["saveAs"]=[this]{engine.projectFile=juce::File();save();};k["import"]=[this]{owner.importFiles();};
+        k["exportMidi"]=[this]{exportMidiChooser(false);};k["exportMidiSelected"]=[this]{exportMidiChooser(true);};
     }
     void showMetronomeSettings()
     {

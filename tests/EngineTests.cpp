@@ -960,6 +960,58 @@ int runEngineTests(const juce::File& outputDir)
         near(peak(data, 1), 0, 0.00001, "Export pan");
     });
 
+    suite.run("MIDI export roundtrip keeps notes, positions, lengths and velocities", [&]
+    {
+        AudioEngine source; setup(source); source.tempo = 93.0;
+        auto a = source.addMidiTrack(juce::String::fromUTF8("Piano ñ")); auto b = source.addMidiTrack("Bajo");
+        const double starts[] { 0.0, 0.25, 1.5, 2.3333333, 7.0 }, lengths[] { 1.0, 0.125, 0.75, 0.5, 2.0 };
+        const int pitches[] { 60, 64, 67, 0, 127 }, vels[] { 100, 1, 87, 127, 64 };
+        for (int i = 0; i < 5; ++i) { MidiNote n; n.pitch = pitches[i]; n.velocity = vels[i]; n.startBeats = starts[i]; n.lengthBeats = lengths[i]; a->notes.push_back(n); }
+        MidiNote m; m.pitch = 36; m.velocity = 90; m.startBeats = 4.0; m.lengthBeats = 1.5; b->notes.push_back(m);
+        const auto file = dir.getChildFile("export.mid"); requireOk(source.exportMidi(file));
+        AudioEngine back; setup(back); requireOk(back.importMidi(file));
+        near(back.tempo.load(), 93.0, 0.01, "MIDI tempo");
+        require(back.tracks.size() == 2, "MIDI track count");
+        require(back.tracks[0]->name == juce::String::fromUTF8("Piano ñ") && back.tracks[1]->name == "Bajo", "MIDI track names");
+        auto notes = back.tracks[0]->notes; std::sort(notes.begin(), notes.end(), [](const MidiNote& x, const MidiNote& y) { return x.startBeats < y.startBeats; });
+        require(notes.size() == 5, "MIDI note count");
+        for (int i = 0; i < 5; ++i)
+        {
+            const auto what = "MIDI note " + juce::String(i);
+            near(notes[(size_t) i].startBeats, std::round(starts[i] * 960.0) / 960.0, 1e-6, what + " start");
+            near(notes[(size_t) i].lengthBeats, std::round(lengths[i] * 960.0) / 960.0, 1e-6, what + " length");
+            require(notes[(size_t) i].pitch == pitches[i] && notes[(size_t) i].velocity == vels[i], what + " pitch/velocity");
+        }
+        require(back.tracks[1]->notes.size() == 1 && back.tracks[1]->notes[0].pitch == 36 && back.tracks[1]->notes[0].velocity == 90, "Second track");
+        near(back.tracks[1]->notes[0].startBeats, 4.0, 1e-6, "Second track start");
+        const auto one = dir.getChildFile("export-one.mid"); requireOk(source.exportMidi(one, 1));
+        AudioEngine single; setup(single); requireOk(single.importMidi(one));
+        require(single.tracks.size() == 1 && single.tracks[0]->name == "Bajo", "Single-track MIDI export");
+        AudioEngine empty; setup(empty);
+        require(empty.exportMidi(dir.getChildFile("empty.mid")).failed(), "Empty project must not write MIDI");
+    });
+
+    suite.run("export between locators has the exact length and matches the full mix", [&]
+    {
+        juce::AudioBuffer<float> sweep(1, 96000);
+        for (int i = 0; i < sweep.getNumSamples(); ++i) sweep.setSample(0, i, 0.5f * std::sin(0.0003f * (float) i * (float) i * 0.02f + 0.01f * (float) i));
+        const auto source = writeWav(dir, "sweep.wav", rate, sweep);
+        AudioEngine engine; setup(engine); importFixture(engine, source);
+        const auto full = dir.getChildFile("range-full.wav"), part = dir.getChildFile("range-part.wav");
+        requireOk(engine.exportMix(full, rate, 32));
+        requireOk(engine.exportMix(part, rate, 32, 0.5, 1.25));
+        std::unique_ptr<juce::AudioFormatReader> rf(engine.formatManager.createReaderFor(full)), rp(engine.formatManager.createReaderFor(part));
+        require(rf != nullptr && rp != nullptr, "Range export not readable");
+        require(rp->lengthInSamples == 36000, "Range length " + juce::String(rp->lengthInSamples) + " != 36000");
+        juce::AudioBuffer<float> a(2, 36000), b(2, 36000);
+        require(rf->read(&a, 0, 36000, 24000, true, true) && rp->read(&b, 0, 36000, 0, true, true), "Cannot decode range exports");
+        float worst = 0.0f, level = 0.0f;
+        for (int c = 0; c < 2; ++c) for (int i = 0; i < 36000; ++i) { worst = juce::jmax(worst, std::abs(a.getSample(c, i) - b.getSample(c, i))); level = juce::jmax(level, std::abs(b.getSample(c, i))); }
+        require(level > 0.1f, "Range export is silent");
+        near(worst, 0.0, 1e-6, "Range samples differ from the full mix");
+        require(engine.exportMix(dir.getChildFile("bad.wav"), rate, 32, -1.0, 1.0).failed(), "Negative range accepted");
+    });
+
     suite.run("plugin latency compensation aligns dry and delayed impulses", [&]
     {
         AudioEngine engine; setup(engine);

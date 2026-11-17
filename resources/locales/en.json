@@ -871,5 +871,14 @@
   "Transposición": "Transpose",
   "Acorde": "Chord",
   "Video": "Video",
-  "Estéreo": "Stereo"
+  "Estéreo": "Stereo",
+  "No hay notas MIDI para exportar.": "There are no MIDI notes to export.",
+  "No se pudo finalizar el archivo MIDI.": "The MIDI file could not be finalised.",
+  "El rango de localizadores no es válido.": "The locator range is not valid.",
+  "Selecciona una pista MIDI o de instrumento para exportar.": "Select a MIDI or instrument track to export.",
+  "Exportar MIDI": "Export MIDI",
+  "MIDI exportado: ": "MIDI exported: ",
+  "Exportar MIDI…": "Export MIDI…",
+  "Exportar MIDI de la pista seleccionada…": "Export selected track as MIDI…",
+  "Solo entre localizadores izquierdo y derecho": "Only between left and right locators"
 }

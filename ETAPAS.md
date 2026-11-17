@@ -329,3 +329,7 @@ El piano roll pasó de MainComponent.cpp a `src/ui/midi/PianoRoll.{h,cpp}` (`sil
 ## cuantizar01 — Cuantización MIDI y prueba del piano roll (16-11-2026)
 
 Prueba de interacción del piano roll en WorkflowUiTests (crear, mover, longitud, borrar, deshacer). `src/domain/Quantize.{h,cpp}`: función pura (rejilla 1/4–1/32 con tresillos, fuerza 0–100 %, longitud opcional). Comando Q (`quantize`) sobre la nota seleccionada o todas, con un paso de deshacer. Verificado: motor 44/44, io 6/6, flujo 203 PASS sin FAIL (conteo de SKIP no confirmado), idiomas 873. Pendiente: diálogo de ajustes (rejilla/fuerza/longitud; hoy fijo en 1/16, 100 %), selección múltiple de notas y prueba del atajo Q con teclado real.
+
+## exportar01 — Exportar MIDI y mezcla por rango (16-11-2026)
+
+`AudioEngine::exportMidi` (SMF formato 1, 960 PPQ, pista de tempo y una pista por pista MIDI) con comandos `exportMidi` y `exportMidiSelected` e ítems en Archivo. `renderMix`, `exportMix` y `ExportJob` aceptan un rango en segundos; el diálogo de exportación tiene la casilla «Solo entre localizadores izquierdo y derecho» (desactivada por defecto). Verificado: motor 46/46 (MIDI ida y vuelta sin pérdida; WAV por rango de 36000 muestras exactas e idéntico al tramo de la mezcla completa), io 6/6, flujo 407 PASS / 0 FAIL / 1 SKIP (VST3 opcional), idiomas 882. Pendiente: submenú Archivo > Exportar, revisión manual del diálogo y selector, CC/marcadores/cambios de tempo en el MIDI, rango con plugins con latencia y con MP3/M4A/FLAC.

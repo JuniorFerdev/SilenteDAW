@@ -838,6 +838,51 @@ juce::Result AudioEngine::importMidi(const juce::File& file)
     lastWarning = i18n::tr("MIDI importado como notas; los cambios de tempo se convierten a tiempos absolutos. CC, SysEx y cambios de programa no se conservan.");
     return juce::Result::ok();
 }
+juce::Result AudioEngine::exportMidi(const juce::File& file, int trackIndex)
+{
+    juce::MidiFile midi;
+    midi.setTicksPerQuarterNote(midiExportPpq);
+    int written = 0;
+    {
+        const juce::ScopedLock lock(modelLock);
+        juce::MidiMessageSequence conductor;
+        conductor.addEvent(juce::MidiMessage::tempoMetaEvent(juce::roundToInt(60000000.0 / juce::jlimit(20.0, 400.0, tempo.load()))), 0.0);
+        conductor.addEvent(juce::MidiMessage::timeSignatureMetaEvent(4, 4), 0.0);
+        conductor.addEvent(juce::MidiMessage::endOfTrack(), 0.0);
+        midi.addTrack(conductor);
+        for (int t = 0; t < static_cast<int>(tracks.size()); ++t)
+        {
+            if (trackIndex >= 0 && t != trackIndex) continue;
+            const auto& track = *tracks[static_cast<size_t>(t)];
+            if (!track.isMidi || track.notes.empty()) continue;
+            juce::MidiMessageSequence sequence;
+            sequence.addEvent(juce::MidiMessage::textMetaEvent(3, track.name), 0.0);
+            double last = 0.0;
+            for (const auto& note : track.notes)
+            {
+                const double on = std::round(juce::jmax(0.0, note.startBeats) * midiExportPpq);
+                const double off = on + juce::jmax(1.0, std::round(note.lengthBeats * midiExportPpq));
+                const auto pitch = juce::jlimit(0, 127, note.pitch);
+                sequence.addEvent(juce::MidiMessage::noteOn(1, pitch, static_cast<juce::uint8>(juce::jlimit(1, 127, note.velocity))), on);
+                sequence.addEvent(juce::MidiMessage::noteOff(1, pitch, 0.0f), off);
+                last = juce::jmax(last, off);
+            }
+            sequence.sort();
+            sequence.addEvent(juce::MidiMessage::endOfTrack(), last);
+            midi.addTrack(sequence);
+            ++written;
+        }
+    }
+    if (written == 0) return juce::Result::fail(i18n::tr("No hay notas MIDI para exportar."));
+    juce::TemporaryFile temporary(file);
+    {
+        std::unique_ptr<juce::OutputStream> stream(temporary.getFile().createOutputStream());
+        if (!stream) return juce::Result::fail(i18n::tr("No se puede escribir en la carpeta de destino."));
+        if (!midi.writeTo(*stream, 1)) return juce::Result::fail(i18n::tr("La escritura del archivo falló. Comprueba el espacio libre."));
+    }
+    if (!temporary.overwriteTargetFileWithTemporary()) return juce::Result::fail(i18n::tr("No se pudo finalizar el archivo MIDI."));
+    return juce::Result::ok();
+}
 double AudioEngine::duration() const
 {
     const juce::ScopedLock lock(modelLock);
@@ -1125,10 +1170,12 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
 }
 
 juce::Result AudioEngine::renderMix(double rate, const std::function<bool(const juce::AudioBuffer<float>&, int, int)>& sink,
-                                   const std::function<bool(double)>& progress)
+                                   const std::function<bool(double)>& progress, double rangeStart, double rangeEnd)
 {
     if (recording.load()) return juce::Result::fail(i18n::tr("Detén la grabación antes de exportar."));
-    const double length = duration();
+    const bool ranged = rangeEnd > rangeStart;
+    if (ranged && rangeStart < 0.0) return juce::Result::fail(i18n::tr("El rango de localizadores no es válido."));
+    const double length = ranged ? rangeEnd - rangeStart : duration();
     if (length <= 0.0) return juce::Result::fail(i18n::tr("El proyecto no contiene audio ni notas para exportar."));
     if (!std::isfinite(rate) || rate < 8000.0 || rate > 192000.0) return juce::Result::fail(i18n::tr("Frecuencia de exportación no válida."));
     if (length > 14400.0) return juce::Result::fail(i18n::tr("La exportación admite hasta cuatro horas por proyecto."));
@@ -1142,10 +1189,10 @@ juce::Result AudioEngine::renderMix(double rate, const std::function<bool(const 
         prepare(rate, 1024);
         exporting = true;
         for (auto& track : tracks) for (auto& slot : track->plugins) if (slot->processor) slot->processor->setNonRealtime(true);
-        positionSeconds = 0.0; panicRequested = true; chaseRequested = true; playing = true;
+        positionSeconds = ranged ? rangeStart : 0.0; panicRequested = true; chaseRequested = true; playing = true;
         juce::AudioBuffer<float> block(2, 1024);
         const int latency = pluginLatencySamples();
-        const juce::int64 total = static_cast<juce::int64>(std::ceil((length + 2.0) * rate)) + latency;
+        const juce::int64 total = static_cast<juce::int64>(std::ceil((ranged ? length : length + 2.0) * rate)) + latency;
         for (juce::int64 position = 0; position < total && success; position += 1024)
         {
             const int count = static_cast<int>(juce::jmin<juce::int64>(1024, total - position));
@@ -1167,7 +1214,7 @@ juce::Result AudioEngine::renderMix(double rate, const std::function<bool(const 
     if (!success) return juce::Result::fail(i18n::tr("La escritura del archivo falló. Comprueba el espacio libre."));
     return juce::Result::ok();
 }
-juce::Result AudioEngine::exportMix(const juce::File& file, double rate, int bitDepth)
+juce::Result AudioEngine::exportMix(const juce::File& file, double rate, int bitDepth, double rangeStart, double rangeEnd)
 {
     if (bitDepth != 16 && bitDepth != 24 && bitDepth != 32) return juce::Result::fail(i18n::tr("La profundidad WAV debe ser 16, 24 o 32 bits."));
     {
@@ -1181,7 +1228,7 @@ juce::Result AudioEngine::exportMix(const juce::File& file, double rate, int bit
     juce::WavAudioFormat wav;
     auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions().withSampleRate(rate).withNumChannels(2).withBitsPerSample(bitDepth));
     if (!writer) return juce::Result::fail(i18n::tr("No se pudo crear el archivo WAV."));
-    auto result = renderMix(rate, [&writer](const juce::AudioBuffer<float>& block, int start, int count) { return writer->writeFromAudioSampleBuffer(block, start, count); });
+    auto result = renderMix(rate, [&writer](const juce::AudioBuffer<float>& block, int start, int count) { return writer->writeFromAudioSampleBuffer(block, start, count); }, {}, rangeStart, rangeEnd);
     writer.reset();
     if (result.failed()) return result;
     if (!temporary.overwriteTargetFileWithTemporary()) return juce::Result::fail(i18n::tr("No se pudo finalizar el archivo WAV."));

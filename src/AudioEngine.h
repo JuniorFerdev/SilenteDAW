@@ -150,13 +150,18 @@ public:
     std::shared_ptr<Track> findTrack(const juce::String& id) const;
     juce::Result importAudio(const juce::File&, int trackIndex = -1, double startSeconds = 0.0);
     juce::Result importMidi(const juce::File&);
+    // Standard MIDI File (format 1, fixed PPQ): tempo track plus one track per MIDI/instrument
+    // track with notes; `trackIndex` < 0 exports all of them. Same beats<->ticks convention as importMidi.
+    static constexpr int midiExportPpq = 960;
+    juce::Result exportMidi(const juce::File&, int trackIndex = -1);
     juce::Result saveProject(const juce::File&);
     juce::Result loadProject(const juce::File&);
     // Offline render of the whole project (plugins in non-realtime mode, latency compensated).
     // `sink` receives each block; `progress` (0–1) may return false to cancel.
     juce::Result renderMix(double sampleRate, const std::function<bool(const juce::AudioBuffer<float>&, int start, int count)>& sink,
-                           const std::function<bool(double)>& progress = {});
-    juce::Result exportMix(const juce::File&, double sampleRate = 48000.0, int bitDepth = 24);
+                           const std::function<bool(double)>& progress = {},
+                           double rangeStart = 0.0, double rangeEnd = -1.0); // rangeEnd > rangeStart: only that span, no tail
+    juce::Result exportMix(const juce::File&, double sampleRate = 48000.0, int bitDepth = 24, double rangeStart = 0.0, double rangeEnd = -1.0);
     bool exportMix(const juce::File& file, juce::String& error);
     void createDemo();
     void clear();

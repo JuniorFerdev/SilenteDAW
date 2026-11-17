@@ -85,6 +85,8 @@ std::vector<KeyCommand> build()
     add("save", "Guardar", "Save", 'S', C);
     add("saveAs", "Guardar como", "Save As", 'S', C | S);
     add("import", "Importar archivo de audio", "Import Audio File", 'I', C | A);
+    add("exportMidi", "Exportar MIDI", "Export MIDI", 0);
+    add("exportMidiSelected", "Exportar MIDI de la pista seleccionada", "Export Selected Track as MIDI", 0);
     cat("Foco", "Focus");
     add("", "Siguiente", "Next", K::tabKey);
     add("", "Anterior", "Previous", K::tabKey, S);

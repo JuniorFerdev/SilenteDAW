@@ -21,6 +21,7 @@ private:
     theme::SilenteLookAndFeel look;
     FormatSelector format;
     juce::TextEditor name;
+    juce::ToggleButton rangeOnly;
     juce::TextButton chooseFolder, all, none, selectedOnly, exportButton;
     juce::Label folderLabel, nameLabel, status;
     juce::File folder;
