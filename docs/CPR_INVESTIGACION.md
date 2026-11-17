@@ -39,3 +39,10 @@ Cada campo leído se acepta por evidencia independiente, no por comparación con
 - **Pares de proyectos:** `sesion con el tom.cpr` vs `...pistas en limpio sin mix...` vs `-01`; `Auto Saves/` con versiones sucesivas: las diferencias entre versiones aíslan qué bytes codifican cada cambio (diferencial, como hicieron cpr2rpp y omeriko9).
 - **Proyecto vacío** `piloto-01/Sin título.cpr` como línea base.
 - Aceptación mínima por tramo: coincidencia con archivos y longitudes reales; lo que no se pueda confirmar se marca «no verificado» y no se importa en silencio.
+
+## Tramo 1: contenedor (herramienta `tools/cpr/cpr_dump.py`, solo lectura, 17-11-2026)
+- Verificado con bytes reales: cabecera `RIFF`+u32 BE+`NUND` (Cubase 12, piloto vacio) o `RIF2`+u64 BE+`NUND` (yo.cpr, sulphuric). Bloques = etiqueta(4)+tamano BE (u32 en RIFF, u64 en RIF2)+payload; alternan `ROOT` (nombre de seccion: Version/PAppVersion, Arrangement1/PArrangement, ComputerGuid, Devices, WindowLayouts, ProjectLayouts, Metadata) y `ARCH` (datos).
+- El tamano declarado = archivo - longitud de cabecera (12 en RIFF, 16 en RIF2), no archivo-8; en los tres archivos los 14 bloques consecutivos llegan exactamente al final.
+- Dentro de ARCH: cadenas con longitud u32 BE que incluye un NUL final; marcadores FFFFFFFE/FFFFFFFF antes de nombres de clase. Cada clase se nombra completa solo la primera vez; despues no se repite el nombre (referencias por indice, NO verificado).
+- Ejemplo: `MAudioEvent` @0x9d5d y `PAudioClip` @0x9db8 en sulphuric; el nombre "sulph-07" (con BOM UTF-8) @0x9dcd coincide con `Audio/sulph-07.wav` real.
+- Pendiente: semantica de campos (tramo 2).
