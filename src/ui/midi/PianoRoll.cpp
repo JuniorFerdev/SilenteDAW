@@ -34,6 +34,13 @@ void PianoRoll::mouseDrag(const juce::MouseEvent& e)
 void PianoRoll::mouseUp(const juce::MouseEvent&){if(previewPitch>=0){engine.keyboardState.noteOff(1,previewPitch,0);previewPitch=-1;}}
 void PianoRoll::mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& w){if(e.mods.isCommandDown())pixelsPerBeat=juce::jlimit(20.0,240.0,pixelsPerBeat*(w.deltaY>0?1.15:1/1.15));else if(e.mods.isShiftDown()||std::abs(w.deltaX)>.01)scrollBeats=juce::jmax(0.0,scrollBeats-(w.deltaX!=0?w.deltaX:w.deltaY)*8);else topPitch=juce::jlimit(24,127,topPitch+(w.deltaY>0?2:-2));repaint();}
 void PianoRoll::deleteSelected(){const juce::ScopedLock lock(engine.modelLock);if(!valid())return;auto& n=engine.tracks[(size_t)track]->notes;if(selected>=0&&selected<(int)n.size()){if(beforeEdit)beforeEdit();n.erase(n.begin()+selected);selected=-1;if(changed)changed();repaint();}}
+int PianoRoll::quantizeNotes()
+{
+    const juce::ScopedLock lock(engine.modelLock);if(!valid())return 0;auto& n=engine.tracks[(size_t)track]->notes;
+    const int index=selected>=0&&selected<(int)n.size()?selected:-1;auto copy=n;
+    if(domain::quantizeNotes(copy,index,quantizeSettings)==0)return 0;
+    if(beforeEdit)beforeEdit();n=std::move(copy);if(changed)changed();repaint();return 1;
+}
 bool PianoRoll::keyPressed(const juce::KeyPress& k){if(k==juce::KeyPress::deleteKey||k==juce::KeyPress::backspaceKey){deleteSelected();return true;}return false;}
 bool PianoRoll::valid()const{return track>=0&&track<(int)engine.tracks.size()&&engine.tracks[(size_t)track]->isMidi;}
 double PianoRoll::quantize(double b)const{return snap?std::round(b*4)/4:b;}

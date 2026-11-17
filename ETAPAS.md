@@ -325,3 +325,7 @@ El alcance pendiente es audio18 y diagnóstico Waves, actualmente en pausa por s
 ## refactor01 — Piano roll y modelo MIDI separados (16-11-2026)
 
 El piano roll pasó de MainComponent.cpp a `src/ui/midi/PianoRoll.{h,cpp}` (`silente::ui::PianoRoll`) y la nota a `src/domain/MidiNote.h` (`silente::domain::MidiNote`, con alias `silente::MidiNote` en AudioEngine.h). Extracción mecánica, sin cambio de comportamiento ni textos. Verificado: compila, motor 43/43, io 6/6, flujo 198 PASS / 0 FAIL / 1 SKIP (VST3 opcional), idiomas 873 PASS. Pendiente: no hay prueba automática de interacción del piano roll; la edición de notas aún no pasa por comandos de aplicación.
+
+## cuantizar01 — Cuantización MIDI y prueba del piano roll (16-11-2026)
+
+Prueba de interacción del piano roll en WorkflowUiTests (crear, mover, longitud, borrar, deshacer). `src/domain/Quantize.{h,cpp}`: función pura (rejilla 1/4–1/32 con tresillos, fuerza 0–100 %, longitud opcional). Comando Q (`quantize`) sobre la nota seleccionada o todas, con un paso de deshacer. Verificado: motor 44/44, io 6/6, flujo 203 PASS sin FAIL (conteo de SKIP no confirmado), idiomas 873. Pendiente: diálogo de ajustes (rejilla/fuerza/longitud; hoy fijo en 1/16, 100 %), selección múltiple de notas y prueba del atajo Q con teclado real.

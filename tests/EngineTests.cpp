@@ -5,6 +5,7 @@
 #include "../src/audio/FadeCurves.h"
 #include "../src/audio/RangeEdit.h"
 #include "../src/AudioEngine.h"
+#include "../src/domain/Quantize.h"
 #include "../src/persistence/TrackDataJson.h"
 #include "../src/plugins/PluginSelection.h"
 #include "../src/app/TrackCreation.h"
@@ -990,6 +991,25 @@ int runEngineTests(const juce::File& outputDir)
             const double expected = i == 10 ? 0.5 : i == 250 ? 1.0 : 0.0;
             near(audio.getSample(0, i), expected, 0.0003, "Export impulse sample " + juce::String(i));
         }
+    });
+
+    suite.run("MIDI quantize: exact grid positions, strength, triplets, length and selection", [&]
+    {
+        using namespace domain;
+        near(gridBeats(4, false), 1.0, 1e-12, "1/4 grid");near(gridBeats(8, false), 0.5, 1e-12, "1/8 grid");
+        near(gridBeats(16, false), 0.25, 1e-12, "1/16 grid");near(gridBeats(32, false), 0.125, 1e-12, "1/32 grid");near(gridBeats(8, true), 1.0 / 3.0, 1e-12, "1/8 triplet grid");
+        near(quantizeBeat(0.37, 1.0, 100), 0.0, 1e-12, "0.37 at 1/4 lands on 0");
+        near(quantizeBeat(0.37, 0.25, 100), 0.25, 1e-12, "0.37 at 1/16 lands on 0.25");
+        near(quantizeBeat(0.37, 0.25, 50), 0.31, 1e-12, "strength 50% is the midpoint");
+        near(quantizeBeat(0.37, 0.25, 0), 0.37, 1e-12, "strength 0% leaves the note");
+        near(quantizeBeat(0.70, 1.0 / 3.0, 100), 2.0 / 3.0, 1e-12, "0.70 at 1/8 triplet lands on 2/3");
+        std::vector<MidiNote> notes(3);notes[0].startBeats = 0.37;notes[1].startBeats = 1.2;notes[1].lengthBeats = 0.9;notes[2].startBeats = 2.1;
+        QuantizeSettings q;q.division = 16;
+        require(quantizeNotes(notes, 1, q) == 1, "only the indexed note changes");
+        near(notes[0].startBeats, 0.37, 0, "unselected note untouched");near(notes[1].startBeats, 1.25, 1e-12, "selected note quantized");near(notes[1].lengthBeats, 0.9, 0, "length untouched by default");
+        q.quantizeLength = true;require(quantizeNotes(notes, -1, q) == 3, "index -1 quantizes all notes");
+        near(notes[0].startBeats, 0.25, 1e-12, "all: first note");near(notes[2].startBeats, 2.0, 1e-12, "all: third note");near(notes[1].lengthBeats, 1.0, 1e-12, "length 0.9 snaps to 1.0");
+        MidiNote tiny;tiny.lengthBeats = 0.05;quantizeNote(tiny, q);near(tiny.lengthBeats, 0.25, 1e-12, "quantized length is never below one grid step");
     });
 
     auto* report = new juce::DynamicObject();

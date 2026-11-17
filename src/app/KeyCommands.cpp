@@ -115,7 +115,7 @@ std::vector<KeyCommand> build()
     add("", "Abrir marcadores", "Open Markers", 'M', C);
     add("", "Configuración", "Project Setup", 'S', S);
     cat("Cuantizar", "Quantize");
-    add("", "Cuantizar", "Quantize", 'Q');
+    add("quantize", "Cuantizar", "Quantize", 'Q');
     cat("Herramientas", "Tools");
     // Complete Tool category from Cubase 15.0.30's command catalog. A zero key
     // means unassigned, not the '0' key. A listed ID does not imply an action.

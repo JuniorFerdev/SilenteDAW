@@ -1,6 +1,7 @@
 #pragma once
 #include "../../AudioEngine.h"
 #include <juce_gui_basics/juce_gui_basics.h>
+#include "../../domain/Quantize.h"
 #include <functional>
 
 namespace silente::ui
@@ -19,7 +20,10 @@ public:
     void mouseDrag(const juce::MouseEvent& e)override;
     void mouseUp(const juce::MouseEvent&)override;
     void mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& w)override;
+    domain::QuantizeSettings quantizeSettings;
     void deleteSelected();
+    // Quantize command (Q): the selected note, or every note when none is selected.
+    int quantizeNotes();
     bool keyPressed(const juce::KeyPress& k)override;
 private:
     static constexpr int row=12;MidiNote original;juce::Point<float> dragStart;bool resize=false;int previewPitch=-1;

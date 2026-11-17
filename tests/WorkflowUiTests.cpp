@@ -16,6 +16,7 @@
 #include "../src/ui/project/FadeEditor.h"
 #include "../src/ui/project/ChannelTab.h"
 #include "../src/app/KeyCommands.h"
+#include "../src/ui/midi/PianoRoll.h"
 #include <cmath>
 #include <iostream>
 
@@ -50,6 +51,7 @@ public:
         runSettingsUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});keyCommandChecks();
         runMarkerUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runAddTrackUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
+        pianoRollChecks();
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {
@@ -80,6 +82,32 @@ private:
     String failures,report;PluginDescription apple,vst,instrument;std::shared_ptr<Track> track;std::shared_ptr<PluginSlot> first;
     double deadline=0;int stage=0;
     void expect(bool result,const String& name){std::cout<<(result?"PASS: ":"FAIL: ")<<name.toStdString()<<std::endl;if(!result)failures+=name+"\n";else report+="PASS: "+name+"\n";}
+    void pianoRollChecks()
+    {
+        engine.clear();engine.addMidiTrack("Piano roll test");
+        auto* roll=dynamic_cast<ui::PianoRoll*>(find(view,"piano-roll"));
+        expect(roll!=nullptr,"Piano roll component is reachable in the main view");if(!roll)return;
+        const auto savedBefore=roll->beforeEdit,savedChanged=roll->changed;int undoSteps=0,changes=0;
+        roll->beforeEdit=[&]{++undoSteps;};roll->changed=[&]{++changes;};roll->track=0;roll->selected=-1;roll->snap=true;roll->scrollBeats=0;
+        const auto notes=[&]()->std::vector<MidiNote>{const ScopedLock lock(engine.modelLock);return engine.tracks[0]->notes;};
+        const float y0=24.f+(roll->topPitch-60)*12+5.f;
+        roll->mouseDoubleClick(mouse(*roll,52.f+2*64.f+5.f,y0));
+        auto n=notes();
+        expect(n.size()==1&&n[0].pitch==60&&std::abs(n[0].startBeats-2.0)<1e-9&&std::abs(n[0].lengthBeats-1.0)<1e-9&&undoSteps==1,"Piano roll: double click creates one note (pitch 60, beat 2, length 1) with one undo step");
+        roll->mouseDown(mouse(*roll,52.f+2*64.f+10.f,y0));roll->mouseDrag(mouse(*roll,52.f+3*64.f+10.f,y0-24.f,true));roll->mouseUp(mouse(*roll,52.f+3*64.f+10.f,y0-24.f));
+        n=notes();
+        expect(n.size()==1&&std::abs(n[0].startBeats-3.0)<1e-9&&n[0].pitch==62&&std::abs(n[0].lengthBeats-1.0)<1e-9&&undoSteps==2,"Piano roll: dragging a note moves it +1 beat and +2 semitones with one undo step");
+        const float right=52.f+4*64.f;
+        roll->mouseDown(mouse(*roll,right-3.f,y0-24.f));roll->mouseDrag(mouse(*roll,right-3.f+32.f,y0-24.f,true));roll->mouseUp(mouse(*roll,right-3.f+32.f,y0-24.f));
+        n=notes();
+        expect(n.size()==1&&std::abs(n[0].lengthBeats-1.5)<1e-9&&std::abs(n[0].startBeats-3.0)<1e-9&&n[0].pitch==62&&undoSteps==3,"Piano roll: dragging the right edge changes length to 1.5 beats only");
+        roll->quantizeSettings={};roll->quantizeSettings.division=4;n[0].startBeats=3.3;{const ScopedLock lock(engine.modelLock);engine.tracks[0]->notes[0].startBeats=3.3;}
+        const int before=undoSteps;roll->quantizeNotes();n=notes();
+        expect(n.size()==1&&std::abs(n[0].startBeats-3.0)<1e-9&&undoSteps==before+1,"Piano roll: Quantize snaps the selected note to 1/4 with one undo step");
+        roll->keyPressed(KeyPress(KeyPress::deleteKey));
+        expect(notes().empty()&&undoSteps==before+2&&changes>=4,"Piano roll: Delete removes the selected note with one undo step");
+        roll->beforeEdit=savedBefore;roll->changed=savedChanged;roll->selected=-1;engine.clear();
+    }
     void keyCommandChecks()
     {
         const auto id=[](const KeyPress& k){auto* c=app::findKeyCommand(k);return c?c->id:String();};
