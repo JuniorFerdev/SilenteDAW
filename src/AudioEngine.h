@@ -170,6 +170,8 @@ public:
     juce::Result setSend(Track&, int slot, const juce::String& fxId);
     std::shared_ptr<Track> findTrack(const juce::String& id) const;
     juce::Result importAudio(const juce::File&, int trackIndex = -1, double startSeconds = 0.0);
+    // Decodifica un archivo completo en `clip` (máx. 2 canales). No toca el modelo: sirve en hilos de trabajo.
+    juce::Result readAudio(const juce::File&, AudioClip&);
     // Pool de medios (hilo de mensajes): una referencia por clip de audio, y reasignación de ruta.
     // relinkMedia lee el archivo nuevo antes de tomar el cerrojo y sustituye el audio de todos los
     // clips que usaban `fromPath`; no cambia nombre, posición ni recortes. Devuelve el nº de clips en `changed`.
@@ -242,7 +244,6 @@ private:
                        const float* const* input, int inputChannels);
     std::shared_ptr<Track> makeTrack(const juce::String&, bool midi);
     std::shared_ptr<Track> makeTrack(const juce::String&, TrackKind);
-    juce::Result readAudio(const juce::File&, AudioClip&);
     juce::var projectToJson(const juce::File& destination);
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioEngine)
 };

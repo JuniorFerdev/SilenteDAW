@@ -7,6 +7,7 @@
 #include "PluginManager.h"
 #include "ui/plugins/PluginEditorWindow.h"
 #include "diagnostics/NativeWindows.h"
+#include "io/CprImport.h"
 #include "../tests/EngineTests.h"
 #include "../tests/LocalisationUiTests.h"
 #include "../tests/WorkflowUiTests.h"
@@ -161,6 +162,19 @@ public:
             auto r=engine->loadProject(juce::File(args[1]));if(r.ok())r=engine->exportMix(juce::File(args[2]),args[3].getDoubleValue(),32);
             std::cout<<(r.ok()?"ok":r.getErrorMessage().toStdString())<<std::endl;setApplicationReturnValue(r.ok()?0:1);quit();return;
         }
+        if(args.size()>=3&&args[0]=="--import-cpr")
+        {
+            // Importa un .cpr (solo lectura) y guarda la sesión y su informe en el destino indicado.
+            const juce::File cpr(args[1]),destination(juce::File(args[2]).withFileExtension("silente"));io::cpr::PreparedImport prepared;
+            auto r=io::cpr::isInsideCubaseFolder(destination,cpr)?juce::Result::fail(i18n::tr("Elige una carpeta distinta de la del proyecto Cubase: Silente no escribe junto al .cpr.")):io::cpr::prepare(*engine,cpr,prepared);
+            if(r.wasOk())
+            {
+                const auto summary=io::cpr::apply(*engine,prepared);r=engine->saveProject(destination);
+                if(r.wasOk()&&!io::cpr::reportFileFor(destination).replaceWithText(summary.report))r=juce::Result::fail(i18n::tr("No se pudo escribir el informe de importación."));
+                std::cout<<summary.report.toStdString();
+            }
+            std::cout<<(r.wasOk()?"ok":r.getErrorMessage().toStdString())<<std::endl;setApplicationReturnValue(r.wasOk()?0:1);quit();return;
+        }
         if(args.size()>=4&&args[0]=="--capture-playback")
         {
             startCaptureCheck(*engine,juce::File(args[1]),juce::File(args[2]),args[3].getDoubleValue(),[this](int code){setApplicationReturnValue(code);quit();});return;
@@ -299,7 +313,7 @@ private:
         if (index == 0)
         {
             menu.addItem(1,i18n::tr("Nuevo proyecto")); menu.addItem(2,i18n::tr("Abrir proyecto…  ⌘O")); menu.addItem(3,i18n::tr("Guardar proyecto…  ⌘S"));
-            menu.addSeparator(); menu.addItem(4,i18n::tr("Importar audio / MIDI / video…  ⌥⌘I")); menu.addItem(5,i18n::tr("Exportar mezcla de audio…"));menu.addItem(8,i18n::tr("Exportar MIDI…"));menu.addItem(9,i18n::tr("Exportar MIDI de la pista seleccionada…"));
+            menu.addSeparator(); menu.addItem(4,i18n::tr("Importar audio / MIDI / video…  ⌥⌘I")); menu.addItem(33,i18n::tr("Importar proyecto Cubase (.cpr)…")); menu.addItem(5,i18n::tr("Exportar mezcla de audio…"));menu.addItem(8,i18n::tr("Exportar MIDI…"));menu.addItem(9,i18n::tr("Exportar MIDI de la pista seleccionada…"));
             menu.addSeparator(); menu.addItem(6,i18n::tr("Conversión de formatos…")); menu.addItem(7,i18n::tr("Extraer audio de video…"));
         }
         if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo"));menu.addSeparator();menu.addItem(16,i18n::tr("Añadir pista de regla"));menu.addItem(17,i18n::tr("Añadir pista de marcador"));
@@ -346,7 +360,7 @@ private:
         switch (item)
         {
             case 1: c.newProject(); break; case 2: c.openProject(); break; case 3: c.saveProject(); break;
-            case 4: c.importFiles(); break; case 5: c.exportAudio(); break; case 8: c.runCommand("exportMidi"); break; case 9: c.runCommand("exportMidiSelected"); break;
+            case 4: c.importFiles(); break; case 33: c.importCubaseProject(); break; case 5: c.exportAudio(); break; case 8: c.runCommand("exportMidi"); break; case 9: c.runCommand("exportMidiSelected"); break;
             case 6: c.showConversion(false); break; case 7: c.showConversion(true); break;
             case 10: c.showAddTrack(TrackKind::audio); break; case 11: c.showAddTrack(TrackKind::instrument); break;
             case 12: c.showAddTrack(TrackKind::midi); break; case 13: c.showAddTrack(TrackKind::folder); break;

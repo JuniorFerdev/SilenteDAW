@@ -27,6 +27,7 @@ public:
     void openProject();
     void saveProject();
     void importFiles();
+    void importCubaseProject(); // Archivo › «Importar proyecto Cubase (.cpr)…» (io/CprImport)
     void exportAudio();
     void showAudioSettings();
     void showSettings();

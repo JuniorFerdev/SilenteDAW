@@ -65,7 +65,7 @@ MHitPointEvent 23 763 · FNPath 129 · FAttributes 128 · PDrumMapEntry 128 · G
 | Campo | Dónde / formato | Evidencia | Estado |
 |---|---|---|---|
 | Versión de Cubase | PAppVersion: cadenas | "Version 15.0.30" / "12.0.20" | verificado |
-| Archivo de audio | PAudioClip → 1.er hijo FNPath: cadena nombre, FourCC (`WAVE`), 3 cadenas, u32+u16 (?), cadena carpeta | sulph 120/120 y tom-01 99/99 existen | verificado (carpeta = ubicación original; ver riesgos) |
+| Archivo de audio | PAudioClip → 1.er hijo FNPath: cadena nombre, FourCC (no fiable: `00000000` en 30 de 99 clips de tom-01 que son WAV reales), 3 cadenas, u32+u16 (?), cadena carpeta | sulph 120/120 y tom-01 99/99 existen | verificado (carpeta = ubicación original; ver riesgos) |
 | Frames, bits, bytes/frame, canales, Hz | AudioFile v1: u64, u16, u16, u16, f32, id FNPath, 8 bytes (?) | 120/120 sulph, 136/136 tom, 99/99 tom-01 iguales a la cabecera WAV (p. ej. sulph-07: 25 461 504, 32, 8, 2, 96000) | verificado |
 | Nombre del clip | PAudioClip: 1.ª cadena | coincide con el archivo en 120/120 sulph; puede diferir si se renombró (tom: 1, «limpio»: 45) | verificado como nombre; no es el nombre de archivo |
 | Evento → clip | MAudioEvent v6: ranura tras 3 f64 (objeto en línea o id) | 31/31 sulph, 190/190 tom resueltos | verificado |

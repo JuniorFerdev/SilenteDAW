@@ -39,6 +39,7 @@
 #include "ui/io/ExportDialog.h"
 #include "io/AudioFileFormats.h"
 #include "io/VideoAudio.h"
+#include "io/CprImport.h"
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -2056,6 +2057,68 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     {
         chooser=std::make_unique<juce::FileChooser>(i18n::tr("Importar audio o MIDI"),juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),io::readableWildcard(engine.formatManager)+";*.mid;*.midi",true);chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::canSelectMultipleItems,[safe=juce::Component::SafePointer<MainComponent>(&owner)](const juce::FileChooser& fc){if(!safe)return;juce::StringArray paths;for(auto& f:fc.getResults())paths.add(f.getFullPathName());if(!paths.isEmpty())safe->ui->importPaths(paths);});
     }
+    // Archivo › «Importar proyecto Cubase (.cpr)…»: elegir el .cpr (solo lectura), elegir dónde guardar la
+    // sesión (nunca en la carpeta del .cpr), leer y verificar en un hilo de trabajo, sustituir el proyecto,
+    // guardarlo y mostrar el informe, que también se guarda como .txt junto a la sesión.
+    void importCubase()
+    {
+        if(engine.recording){error(i18n::tr("Detén la grabación antes de importar archivos."));return;}
+        confirmDiscard([this]
+        {
+            chooser=std::make_unique<juce::FileChooser>(i18n::tr("Importar proyecto Cubase (.cpr)"),juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),"*.cpr",true);
+            chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles,[safe=juce::Component::SafePointer<MainComponent>(&owner)](const juce::FileChooser& fc)
+            {
+                const auto cpr=fc.getResult();if(!safe||cpr==juce::File())return;
+                juce::MessageManager::callAsync([safe,cpr]{if(safe)safe->ui->chooseCubaseDestination(cpr);});
+            });
+        });
+    }
+    void chooseCubaseDestination(const juce::File& cpr)
+    {
+        const auto initial=juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile(cpr.getFileNameWithoutExtension()+".silente");
+        chooser=std::make_unique<juce::FileChooser>(i18n::tr("Guardar la sesión importada de Cubase"),initial,"*.silente",true);
+        chooser->launchAsync(juce::FileBrowserComponent::saveMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::warnAboutOverwriting,[safe=juce::Component::SafePointer<MainComponent>(&owner),cpr](const juce::FileChooser& fc)
+        {
+            auto destination=fc.getResult();if(!safe||destination==juce::File())return;
+            if(!destination.hasFileExtension("silente"))destination=destination.withFileExtension("silente");
+            juce::MessageManager::callAsync([safe,cpr,destination]{if(safe)safe->ui->runCubaseImport(cpr,destination);});
+        });
+    }
+    void runCubaseImport(const juce::File& cpr,const juce::File& destination)
+    {
+        if(io::cpr::isInsideCubaseFolder(destination,cpr)){error(i18n::tr("Elige una carpeta distinta de la del proyecto Cubase: Silente no escribe junto al .cpr."));return;}
+        auto prepared=std::make_shared<io::cpr::PreparedImport>();
+        ui::BackgroundJob::start(i18n::tr("Importando proyecto Cubase…"),[&audio=engine,cpr,prepared](const std::function<bool(double)>& progress)
+        {
+            return io::cpr::prepare(audio,cpr,*prepared,progress);
+        },[safe=juce::Component::SafePointer<MainComponent>(&owner),prepared,destination](const juce::Result& result)
+        {
+            if(!safe)return;auto& self=*safe->ui;
+            if(result.failed()){if(result.getErrorMessage()!="cancel")self.error(result.getErrorMessage());return;}
+            self.plugins.closeEditors();self.stopTransport();
+            const auto summary=io::cpr::apply(self.engine,*prepared);
+            self.undoStack.clear();self.redoStack.clear();self.selected=0;self.arrangement.selectedClip=-1;self.arrangement.scrollSeconds=0;self.arrangement.firstTrack=0;
+            self.engine.projectName=destination.getFileNameWithoutExtension();
+            auto saved=self.engine.saveProject(destination);
+            const auto reportFile=io::cpr::reportFileFor(destination);
+            if(saved.wasOk()&&!reportFile.replaceWithText(summary.report))saved=juce::Result::fail(i18n::tr("No se pudo escribir el informe de importación."));
+            self.dirty=saved.failed();
+            self.notice=i18n::tr("Proyecto Cubase importado: ")+juce::String(summary.eventsImported)+"/"+juce::String(summary.events)+i18n::tr(" eventos");
+            self.refresh();
+            self.showTextReport(i18n::tr("Informe de importación de Cubase"),summary.report+(saved.wasOk()?"\n"+i18n::tr("Informe guardado en: ")+reportFile.getFullPathName():"\n"+saved.getErrorMessage()));
+        });
+    }
+    void showTextReport(const juce::String& title,const juce::String& text)
+    {
+        auto* editor=new juce::TextEditor();
+        editor->setMultiLine(true);editor->setReadOnly(true);editor->setScrollbarsShown(true);editor->setCaretVisible(false);
+        editor->setText(text,false);editor->setSize(720,460);
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned(editor);options.dialogTitle=title;options.componentToCentreAround=&owner;
+        options.dialogBackgroundColour=owner.getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId);
+        options.escapeKeyTriggersCloseButton=true;options.useNativeTitleBar=true;options.resizable=true;
+        options.launchAsync();
+    }
     void exportChooser()
     {
         // «Exportar mezcla de audio»: mix and/or separate channels in WAV, AIFF, FLAC, MP3 or M4A.
@@ -2352,6 +2415,7 @@ void MainComponent::newProject(){ui->confirmDiscard([this]{ui->stopTransport();u
 void MainComponent::openProject(){ui->open();}
 void MainComponent::saveProject(){ui->save();}
 void MainComponent::importFiles(){ui->importChooser();}
+void MainComponent::importCubaseProject(){ui->importCubase();}
 void MainComponent::exportAudio(){ui->exportChooser();}
 void MainComponent::showAudioSettings(){ui->settingsDialog();}
 void MainComponent::showSettings(){ui->showSettingsPage(ui::SettingsWorkspace::Page::appearance);}

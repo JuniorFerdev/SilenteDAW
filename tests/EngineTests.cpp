@@ -15,8 +15,12 @@
 #include "../src/app/TrackOrderCommands.h"
 #include "../src/domain/TrackTree.h"
 #include "../src/domain/MediaPool.h"
+#include "../src/io/CprImport.h"
 #include "../src/ui/project/TimelineTracks.h"
 #include <limits>
+#include <cstring>
+#include <map>
+#include <string>
 #include <cmath>
 #include <functional>
 #include <iostream>
@@ -165,6 +169,69 @@ void addTestDelay(AudioEngine& engine, int trackIndex, int delaySamples)
     const auto description = plugin->getPluginDescription();
     requireOk(engine.addPlugin(trackIndex, std::move(plugin), description));
 }
+
+// Minimal Cubase .cpr writer for the importer tests: RIF2 (8-byte words) or RIFF (4-byte words),
+// one ROOT/ARCH section, objects with the class-marker grammar of docs/CPR_INVESTIGACION.md.
+struct CprBuilder
+{
+    int W;
+    std::vector<juce::uint8> b;
+    std::map<std::string, size_t> markers;
+    std::vector<size_t> open;
+    explicit CprBuilder(bool wide) : W(wide ? 8 : 4) {}
+    static void put(std::vector<juce::uint8>& out, juce::uint64 v, int n) { for (int i = n - 1; i >= 0; --i) out.push_back((juce::uint8) (v >> (8 * i))); }
+    void be(juce::uint64 v, int n) { put(b, v, n); }
+    void u16(int v) { be((juce::uint64) v, 2); }
+    void u32(juce::uint64 v) { be(v, 4); }
+    void i64(juce::int64 v) { be((juce::uint64) v, 8); }
+    void f64(double x) { juce::uint64 v; std::memcpy(&v, &x, 8); be(v, 8); }
+    void f32(float x) { juce::uint32 v; std::memcpy(&v, &x, 4); be(v, 4); }
+    void str(const char* s) { const auto n = std::strlen(s); u32(n + 1); b.insert(b.end(), s, s + n); b.push_back(0); }
+    void word(juce::uint64 v) { be(v, W); }
+    juce::uint64 begin(const char* cls, int version) // returns the object id (offset of its size field)
+    {
+        const juce::uint64 all = W == 8 ? ~juce::uint64 {} : 0xFFFFFFFFull, ref = W == 8 ? (1ull << 63) : (1ull << 31);
+        if (auto it = markers.find(cls); it != markers.end()) word(ref | it->second);
+        else { markers[cls] = b.size(); word(all); str(cls); u16(version); }
+        const auto id = b.size(); word(0); open.push_back(id); return id;
+    }
+    void end()
+    {
+        const auto at = open.back(); open.pop_back();
+        const auto size = (juce::uint64) (b.size() - at - (size_t) W);
+        for (int i = 0; i < W; ++i) b[at + (size_t) i] = (juce::uint8) (size >> (8 * (W - 1 - i)));
+    }
+    void attribute(const char* key, juce::int64 value) { str(key); u16(1); i64(value); }
+    juce::uint64 fnPath(const char* file, const char* folder)
+    {
+        const auto id = begin("FNPath", 0); str(file); b.insert(b.end(), { 'W', 'A', 'V', 'E' }); str("wav"); str("wav"); str("Archivo Wave");
+        u32(0); u16(0); str(folder); end();
+        return id;
+    }
+    juce::uint64 clip(const char* name, const char* file, const char* folder, juce::uint64 frames, int bits, int channels, float hz)
+    {
+        const auto id = begin("PAudioClip", 4); str(name);
+        const auto path = fnPath(file, folder);
+        begin("AudioCluster", 0); begin("AudioFile", 1);
+        be(frames, 8); u16(bits); u16(bits / 8 * channels); u16(channels); f32(hz);
+        word(path); i64(0); // reference to the FNPath (its id)
+        end(); end(); end();
+        return id;
+    }
+    void event(double startTicks, double length, double offset) { begin("MAudioEvent", 6); u16(0); f64(startTicks); f64(length); f64(offset); }
+    juce::MemoryBlock file() const
+    {
+        std::vector<juce::uint8> out;
+        const char* section = "Arrangement1";
+        out.insert(out.end(), { 'R', 'I', 'F', (juce::uint8) (W == 8 ? '2' : 'F') }); put(out, 0, W); out.insert(out.end(), { 'N', 'U', 'N', 'D' });
+        out.insert(out.end(), { 'R', 'O', 'O', 'T' }); put(out, 4 + std::strlen(section), W); put(out, std::strlen(section), 4);
+        out.insert(out.end(), section, section + std::strlen(section));
+        out.insert(out.end(), { 'A', 'R', 'C', 'H' }); put(out, b.size(), W); out.insert(out.end(), b.begin(), b.end());
+        std::vector<juce::uint8> size; put(size, out.size() - (W == 8 ? 16 : 12), W);
+        std::copy(size.begin(), size.end(), out.begin() + 4);
+        return juce::MemoryBlock(out.data(), out.size());
+    }
+};
 
 struct Suite
 {
@@ -1517,6 +1584,104 @@ int runEngineTests(const juce::File& outputDir)
         const auto after = buildPool(engine.mediaClips(), [](const juce::String& p) { return juce::File(p).existsAsFile(); });
         require(after.size() == 2 && after[1].uses == 3, "After relinking, stereo.wav has 3 uses");
     });
+    suite.run("Cubase .cpr import: tempo, signature, tracks, verified clips and event positions", [&]
+    {
+        using namespace io::cpr;
+        // Fixture audio: «toma.wav» 48000 frames, 2 channels, 24 bit, 48 kHz; «mal.wav» exists but the .cpr says 999 frames.
+        juce::AudioBuffer<float> two(2, 48000);
+        for (int i = 0; i < two.getNumSamples(); ++i) { two.setSample(0, i, 0.125f); two.setSample(1, i, -0.25f); }
+        const auto cprFolder = dir.getChildFile("cubase"); cprFolder.getChildFile("Audio").createDirectory();
+        writeWav(cprFolder.getChildFile("Audio"), "toma.wav", rate, two);
+        writeWav(cprFolder.getChildFile("Audio"), "mal.wav", rate, two);
+        CprBuilder w(true);
+        w.begin("MTempoTrackEvent", 3); w.u32(1); w.f32(60.0f / 90.0f); w.u32(0); w.end();                 // 90 BPM stored as f32
+        w.begin("MSignatureTrackEvent", 3); w.u32(1); w.u32(0); w.u16(3); w.u16(4);
+        w.begin("FAttributes", 0); w.u32(2); w.attribute("Numerator", 3); w.attribute("Denominator", 4); w.end(); w.end();
+        w.begin("MAudioTrackEvent", 1); w.begin("MListNode", 0); w.str("Bajo");
+        w.event(960.0, 24000.0, 4800.0); const auto toma = w.clip("toma", "toma.wav", "/sin/carpeta/", 48000, 24, 2, 48000.0f); w.end();
+        w.event(1920.0, 12000.0, 0.0); w.word(toma); w.end();               // reference to the clip already written
+        w.event(3840.0, 47000.0, 2000.0); w.word(toma); w.end();            // ends 1000 samples past the file: skipped
+        w.end(); w.end();
+        w.begin("MAudioTrackEvent", 1); w.begin("MListNode", 0); w.str("Voz");
+        w.event(0.0, 100.0, 0.0); w.clip("falta", "falta.wav", "/sin/carpeta/", 48000, 24, 2, 48000.0f); w.end();
+        w.event(480.0, 100.0, 0.0); w.clip("mal (2)", "mal.wav", "/sin/carpeta/", 999, 24, 2, 48000.0f); w.end();
+        w.end(); w.end();
+        w.begin("MFadeIn", 0); w.end();
+        const auto cpr = cprFolder.getChildFile("sintetico.cpr");
+        require(cpr.replaceWithData(w.file().getData(), w.file().getSize()), "Cannot write the synthetic .cpr");
+        ProjectInfo info;
+        requireOk(readProject(cpr, info));
+        require(info.wide && info.tempoPoints == 1 && info.numerator == 3 && info.denominator == 4, "Tempo points and 3/4 signature");
+        near(info.bpm(), 90.0, 0.0, "f32 seconds per quarter rounds to 90.000 BPM");
+        require(info.tracks.size() == 2 && info.tracks[0].name == "Bajo" && info.tracks[1].name == "Voz", "Two audio tracks with names");
+        require(info.clips.size() == 3 && info.clips[0].name == "toma" && info.clips[0].fileName == "toma.wav" && info.clips[0].frames == 48000
+                && info.clips[0].bits == 24 && info.clips[0].channels == 2 && info.clips[0].sampleRate == 48000.0 && info.clips[0].folder == "/sin/carpeta/", "Clip toma: file and format");
+        require(info.events.size() == 5, "Five audio events, got " + juce::String((int) info.events.size()));
+        require(info.events[0].track == 0 && info.events[0].clip == 0 && info.events[0].startTicks == 960.0 && info.events[0].lengthSamples == 24000.0 && info.events[0].offsetSamples == 4800.0, "Event 1 fields");
+        require(info.events[1].clip == 0 && info.events[2].clip == 0 && info.events[3].track == 1 && info.events[3].clip == 1 && info.events[4].clip == 2, "Events resolve inline clips and references");
+        require(info.warnings.joinIntoString("|").contains(i18n::tr("Fundidos de entrada no importados: ") + "1"), "The fade-in object is reported as omitted");
+        const auto resolution = resolveClips(info, cpr);
+        require(resolution[0].status == ClipStatus::verified && resolution[0].file == cprFolder.getChildFile("Audio/toma.wav") && ! resolution[0].nameDiffers, "toma.wav verified in Audio/");
+        require(resolution[1].status == ClipStatus::missing, "falta.wav is missing");
+        require(resolution[2].status == ClipStatus::mismatch && resolution[2].reason.contains("999") && resolution[2].nameDiffers, "mal.wav: frames differ and the name differs");
+        AudioEngine engine; setup(engine);
+        PreparedImport prepared;
+        requireOk(prepare(engine, cpr, prepared));
+        require(prepared.audio[0] != nullptr && prepared.audio[1] == nullptr && prepared.audio[2] == nullptr, "Only the verified clip is decoded");
+        require(prepared.eventSkip[0].isEmpty() && prepared.eventSkip[1].isEmpty() && prepared.eventSkip[2].isNotEmpty() && prepared.eventSkip[3].isNotEmpty() && prepared.eventSkip[4].isNotEmpty(), "Out-of-file and unverified events are skipped");
+        const auto summary = apply(engine, prepared);
+        require(summary.tracks == 2 && summary.clips == 3 && summary.clipsVerified == 1 && summary.clipsImported == 1 && summary.events == 5 && summary.eventsImported == 2, "Summary counts");
+        require(engine.tracks.size() == 2 && engine.tracks[0]->name == "Bajo" && engine.tracks[1]->name == "Voz" && engine.tracks[0]->clips.size() == 2 && engine.tracks[1]->clips.empty(), "Engine tracks and clips");
+        near(engine.tempo.load(), 90.0, 0.0, "Project tempo");
+        require(engine.tempoMap.tempos.empty() && engine.tempoMap.signatures.size() == 1 && engine.tempoMap.signatures[0] == domain::SignatureEvent { 0, 3, 4 }, "3/4 from bar 1");
+        const auto& first = engine.tracks[0]->clips[0];
+        near(first.startSeconds, 2.0 * 60.0 / 90.0, 1e-12, "960 ticks = 2 quarters at 90 BPM");
+        near(first.offsetSeconds, 0.1, 1e-12, "Offset 4800 samples");
+        near(first.durationSeconds, 0.5, 1e-12, "Length 24000 samples");
+        require(first.name == "toma" && first.audio && first.audio->getNumSamples() == 48000 && first.sourceRate == rate, "Clip audio and name");
+        near(engine.tracks[0]->clips[1].startSeconds, 4.0 * 60.0 / 90.0, 1e-12, "1920 ticks = 4 quarters");
+        require(engine.tracks[0]->clips[1].id != first.id && engine.tracks[0]->clips[1].audio == first.audio, "Shared audio, distinct clip ids");
+        require(summary.report.contains("falta") && summary.report.contains("999") && summary.report.contains("mal (2) -> mal.wav"), "Report lists unverified and renamed clips");
+        require(isInsideCubaseFolder(cprFolder.getChildFile("x.silente"), cpr) && isInsideCubaseFolder(cprFolder.getChildFile("Audio/x.silente"), cpr)
+                && ! isInsideCubaseFolder(dir.getChildFile("x.silente"), cpr), "Never write next to the .cpr");
+        // RIFF (Cubase 12, 4-byte words): tempo v2 and signature are read; events are not verified in that layout.
+        CprBuilder r(false);
+        r.begin("MTempoTrackEvent", 2); r.u32(1); r.f32(0.5f); r.u32(0); r.end();
+        r.begin("MSignatureTrackEvent", 3); r.u32(1); r.u32(0); r.u16(4); r.u16(4);
+        r.begin("FAttributes", 0); r.u32(2); r.attribute("Numerator", 4); r.attribute("Denominator", 4); r.end(); r.end();
+        r.begin("MAudioTrackEvent", 1); r.begin("MListNode", 0); r.str("A"); r.event(0.0, 10.0, 0.0); r.end(); r.end(); r.end();
+        const auto data = r.file();
+        ProjectInfo old;
+        requireOk(parse(data.getData(), data.getSize(), old));
+        require(! old.wide && old.bpm() == 120.0 && old.numerator == 4 && old.tracks.size() == 1 && old.events.empty(), "RIFF: 120 BPM, 4/4, one track, no events imported");
+        require(old.warnings.joinIntoString("|").contains(i18n::tr("Eventos de audio en un formato no verificado (versión o Cubase 12), omitidos: ") + "1"), "RIFF event reported");
+        ProjectInfo bad;
+        const char junk[] = "RIFF0000WAVEfmt ";
+        require(parse(junk, sizeof(junk), bad).failed(), "A WAV is not a .cpr");
+    });
+    {
+        // Optional integration case (read only; no audio decoded, nothing written next to the .cpr).
+        const juce::File tom("/Applications/ARCHIVO FER/PRODUCCION MUSICAL/seguricopia tom pere mix fer/sesion con el tom-01.cpr");
+        if (! tom.existsAsFile()) { suite.text += "SKIP Cubase tom-01 integration: file not present\n"; std::cout << "SKIP Cubase tom-01 integration" << std::endl; }
+        else suite.run("Cubase tom-01 (real .cpr): 43 tracks, 99 clips verified against the WAVs, 187 events, 67 BPM, 2/4", [&]
+        {
+            using namespace io::cpr;
+            ProjectInfo info;
+            requireOk(readProject(tom, info));
+            require(info.tracks.size() == 43 && info.clips.size() == 99 && info.events.size() == 187, "Counts " + juce::String((int) info.tracks.size()) + "/" + juce::String((int) info.clips.size()) + "/" + juce::String((int) info.events.size()));
+            near(info.bpm(), 67.0, 0.0, "Tempo");
+            require(info.numerator == 2 && info.denominator == 4 && info.tempoPoints == 1, "2/4, one tempo point");
+            const auto resolution = resolveClips(info, tom);
+            int verified = 0, renamed = 0;
+            for (const auto& r : resolution) { verified += r.status == ClipStatus::verified; renamed += r.nameDiffers; }
+            require(verified == 99 && renamed == 1, "Verified " + juce::String(verified) + ", renamed " + juce::String(renamed));
+            for (const auto& e : info.events)
+            {
+                require(e.track >= 0 && e.clip >= 0, "Every event has a track and a clip");
+                require(e.offsetSamples >= 0.0 && e.offsetSamples + e.lengthSamples <= (double) info.clips[(size_t) e.clip].frames + 0.5, "Event inside its file");
+            }
+        });
+    }
     auto* report = new juce::DynamicObject();
     report->setProperty("suite", "Silente offline engine tests");
     report->setProperty("timestamp", juce::Time::getCurrentTime().toISO8601(true));
