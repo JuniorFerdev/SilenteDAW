@@ -154,16 +154,15 @@ private:
     template<typename Notes> void pianoRollUndoCheck(ui::PianoRoll& roll,const Notes& notes)
     {
         {const ScopedLock lock(engine.modelLock);auto& n=engine.tracks[0]->notes;n.clear();for(int p:{60,64,67}){MidiNote m;m.pitch=p;m.startBeats=1;n.push_back(m);}}
-        view.runCommand("selectTrack1");roll.track=0;roll.clearSelection();roll.selectAll();
+        roll.track=0;roll.clearSelection();roll.selectAll();
         const auto x=[&](double beat){return 52.f+(float)(beat*roll.pixelsPerBeat);};const float y64=24.f+(float)((roll.topPitch-64)*12)+5.f;
         const auto historyBefore=view.editHistory();
         roll.mouseDown(mouse(roll,x(1.5),y64));roll.mouseDrag(mouse(roll,x(3.0),y64,true));roll.mouseDrag(mouse(roll,x(3.5),y64,true));roll.mouseUp(mouse(roll,x(3.5),y64));
-        const auto moved=notes();
+        const auto moved=notes();const bool oneStep=view.editHistory().size()==jmin(100,historyBefore.size()+1);
         view.runCommand("undo");const auto undone=notes();
         view.runCommand("redo");const auto redone=notes();
         const auto starts=[](const std::vector<MidiNote>& v,double b){if(v.size()!=3)return false;for(auto& m:v)if(m.startBeats!=b)return false;return true;};
-        expect(starts(moved,3.0)&&starts(undone,1.0)&&starts(redone,3.0)&&roll.selection.empty(),"Piano roll: a multi-step group drag is one undo step; Undo restores all three notes and Redo reapplies it");
-        ignoreUnused(historyBefore);
+        expect(oneStep&&starts(moved,3.0)&&starts(undone,1.0)&&starts(redone,3.0)&&roll.selection.empty(),"Piano roll: a multi-step group drag is one undo step; Undo restores all three notes and Redo reapplies it");
     }
     void keyCommandChecks()
     {

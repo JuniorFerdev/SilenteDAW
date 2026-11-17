@@ -26,11 +26,11 @@ Objetivo (pedido de Fernando): que Silente abra un .cpr real y lea audios, edici
 
 ## Plan propuesto (por tramos, con evidencia en cada uno)
 1. Lector de contenedor: recorrer RIFF/NUND/ROOT/ARCH y volcar el árbol de objetos (herramienta `scripts/cpr_dump.py`, solo lectura). Entrega: volcado del proyecto vacío y de uno real.
-2. Metadatos: versión, tempo, compás, pistas (nombre, tipo), pool de audio con rutas de archivos. Entrega: lista comparada a mano con lo que muestra Cubase.
-3. Eventos: partes y eventos de audio (posición, longitud, offset, fundidos, volumen) y notas MIDI. Entrega: importar y comparar posiciones con el .cpr abierto en Cubase por Fernando (no se abre Cubase desde aquí).
-4. Canales: volumen, pan, mute/solo, envíos, inserciones (nombres de plugin). Entrega: comparación con la consola.
+2. Metadatos: versión, tempo, compás, pistas (nombre, tipo), pool de audio con rutas de archivos. Entrega: lista contrastada con los archivos reales de Audio/ (nombres y longitudes).
+3. Eventos: partes y eventos de audio (posición, longitud, offset, fundidos, volumen) y notas MIDI. Entrega: posiciones y longitudes coherentes con el audio real, diferencias entre versiones de Auto Saves y duración de Mixdown/.
+4. Canales: volumen, pan, mute/solo, envíos, inserciones (nombres de plugin). Entrega: valores estables entre versiones y consistentes con el Mixdown; lo no confirmable queda «no verificado».
 5. Importación en Silente (módulo `src/io/CprImport`), con archivos de audio resueltos por ruta o búsqueda; advertencias para lo no soportado. Los .cpr originales nunca se modifican; Silente no guarda en .cpr.
-Riesgo: formato no documentado y variable entre versiones; cada campo se acepta solo con comparación contra el proyecto real.
+Riesgo: formato no documentado y variable entre versiones; cada campo se acepta solo con la evidencia independiente descrita abajo (sin licencia de Cubase).
 
 ## Sin licencia de Cubase (aviso de Fernando, 16-11-2026): validar sin abrir Cubase
 Cada campo leído se acepta por evidencia independiente, no por comparación con la interfaz de Cubase:
