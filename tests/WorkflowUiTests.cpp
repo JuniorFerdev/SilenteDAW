@@ -2,6 +2,7 @@
 #include "SettingsUiTests.h"
 #include "ToolboxUiTests.h"
 #include "MarkerUiTests.h"
+#include "FolderUiTests.h"
 #include "AddTrackUiTests.h"
 #include "../src/MainComponent.h"
 #include "../src/ui/plugins/PluginSelector.h"
@@ -55,6 +56,7 @@ public:
         runMarkerUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runAddTrackUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         pianoRollChecks();tempoMapChecks();automationChecks();
+        runFolderUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {

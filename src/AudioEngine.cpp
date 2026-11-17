@@ -83,6 +83,9 @@ struct Track::Runtime
     // (cached indices re-validated by id every block) and render rank.
     juce::AudioBuffer<float> bus;
     int outputIndex = -1, rank = 0;
+    // Folder (cached index re-validated by id every block) and the mute/solo it passes down.
+    int parentIndex = -1;
+    bool inheritedMute = false, inheritedSolo = false;
     std::array<int, Track::sendCount> sendIndex;
     bool destinationSoloed = false;
     // Per block: index of the clip heard at each sample (later clips cover earlier ones).
@@ -324,8 +327,53 @@ void AudioEngine::removeTrack(int index)
 {
     if (recording.load()) return;
     const juce::ScopedLock lock(modelLock);
-    if (juce::isPositiveAndBelow(index, static_cast<int>(tracks.size()))) {tracks.erase(tracks.begin() + index);if(!findTrack(activeMarkerTrack)){activeMarkerTrack.clear();for(const auto& track:tracks)if(track->kind==TrackKind::marker){activeMarkerTrack=track->id;break;}}}
+    if (juce::isPositiveAndBelow(index, static_cast<int>(tracks.size()))) {
+        const auto removed = tracks[(size_t) index];
+        for (auto& track : tracks) if (track->data.parentFolder == removed->id) track->data.parentFolder = removed->data.parentFolder;
+        tracks.erase(tracks.begin() + index);if(!findTrack(activeMarkerTrack)){activeMarkerTrack.clear();for(const auto& track:tracks)if(track->kind==TrackKind::marker){activeMarkerTrack=track->id;break;}}}
 }
+domain::TrackOrder trackOrderOf(const std::vector<std::shared_ptr<Track>>& tracks)
+{
+    domain::TrackOrder order;
+    order.reserve(tracks.size());
+    for (const auto& t : tracks) order.push_back({ t->id, t->data.parentFolder, t->kind == TrackKind::folder, t->data.folderCollapsed });
+    return order;
+}
+
+domain::TrackOrder AudioEngine::trackOrder() const
+{
+    return trackOrderOf(tracks);
+}
+
+juce::Result AudioEngine::applyTrackOrder(const domain::TrackOrder& requested)
+{
+    if (recording.load()) return juce::Result::fail(i18n::tr("Detén la grabación antes de reordenar pistas."));
+    const juce::ScopedLock lock(modelLock);
+    if (requested.size() != tracks.size()) return juce::Result::fail(i18n::tr("El orden de pistas no es válido."));
+    std::vector<std::shared_ptr<Track>> next;
+    next.reserve(tracks.size());
+    for (const auto& node : requested)
+    {
+        auto it = std::find_if(tracks.begin(), tracks.end(), [&](const auto& t) { return t->id == node.id; });
+        if (it == tracks.end() || std::find(next.begin(), next.end(), *it) != next.end()) return juce::Result::fail(i18n::tr("El orden de pistas no es válido."));
+        next.push_back(*it);
+    }
+    // Folder kinds come from the tracks, not from the request.
+    auto order = requested;
+    for (size_t k = 0; k < order.size(); ++k) order[k].folder = next[k]->kind == TrackKind::folder;
+    order = domain::normalised(std::move(order));
+    std::vector<std::shared_ptr<Track>> sorted;
+    sorted.reserve(next.size());
+    for (const auto& node : order)
+    {
+        auto t = *std::find_if(next.begin(), next.end(), [&](const auto& candidate) { return candidate->id == node.id; });
+        t->data.parentFolder = node.parent; t->data.folderCollapsed = node.collapsed;
+        sorted.push_back(std::move(t));
+    }
+    tracks = std::move(sorted); // the old vector is freed here, under the lock but on the message thread
+    return juce::Result::ok();
+}
+
 void AudioEngine::prepare(double rate, int maxBlockSize)
 {
     const juce::ScopedLock lock(modelLock);
@@ -551,12 +599,28 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         }
         if (! raised) break;
     }
+    // Folders: mute and solo of a folder apply to everything inside it (Cubase folder tracks).
+    // Pre-order list: an enclosing folder comes first, so its inherited state is already known.
+    for (int n = 0; n < count; ++n)
+    {
+        auto& t = *tracks[static_cast<size_t>(n)];
+        auto& rt = *t.runtime;
+        rt.parentIndex = resolve(rt.parentIndex, t.data.parentFolder, TrackKind::folder, n);
+        rt.inheritedMute = rt.inheritedSolo = false;
+        if (rt.parentIndex >= 0 && rt.parentIndex < n)
+        {
+            const auto& folder = *tracks[static_cast<size_t>(rt.parentIndex)];
+            rt.inheritedMute = folder.mute.load() || folder.runtime->inheritedMute;
+            rt.inheritedSolo = folder.solo.load() || folder.runtime->inheritedSolo;
+        }
+    }
+    const auto soloed = [&](int index) { const auto& d = *tracks[static_cast<size_t>(index)]; return d.solo.load() || d.runtime->inheritedSolo; };
     for (const auto& t : tracks)
     {
         // A source stays audible when a channel it feeds is soloed (upstream solo).
         auto& rt = *t->runtime;
-        rt.destinationSoloed = rt.outputIndex >= 0 && tracks[static_cast<size_t>(rt.outputIndex)]->solo.load();
-        for (int destination : rt.sendIndex) if (destination >= 0 && tracks[static_cast<size_t>(destination)]->solo.load()) rt.destinationSoloed = true;
+        rt.destinationSoloed = rt.outputIndex >= 0 && soloed(rt.outputIndex);
+        for (int destination : rt.sendIndex) if (destination >= 0 && soloed(destination)) rt.destinationSoloed = true;
     }
     const auto processTrack = [&](const std::shared_ptr<Track>& track)
     {
@@ -659,7 +723,8 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
             if (processor.getTotalNumOutputChannels() == 1) rt.buffer.copyFrom(1, 0, rt.buffer, 0, 0, samples);
         }
         // Channels fed by a soloed track stay open (solo-implied mute does not apply to buses).
-        const bool audible = !track->mute.load() && (!hasSolo || track->solo.load() || track->isBus() || rt.destinationSoloed);
+        const bool audible = !track->mute.load() && !rt.inheritedMute
+                             && (!hasSolo || track->solo.load() || rt.inheritedSolo || track->isBus() || rt.destinationSoloed);
         // Fader and pan: the static value, or the curve in Read mode, ramped across the segment.
         const auto& automation = track->automation;
         using domain::AutomationParameter;
@@ -1268,6 +1333,15 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
         }
         std::stable_sort(track->plugins.begin(),track->plugins.end(),[](const auto& a,const auto& b){return (a->description.isInstrument?-1:a->insertPosition)<(b->description.isInstrument?-1:b->insertPosition);});
         loaded.push_back(track);
+    }
+    {   // Folder hierarchy repaired before it is used (unknown or cyclic parents go to top level).
+        const auto order = domain::normalised(trackOrderOf(loaded));
+        std::vector<std::shared_ptr<Track>> sorted;
+        for (const auto& node : order)
+            for (auto& track : loaded)
+                if (track && track->id == node.id) { track->data.parentFolder = node.parent; track->data.folderCollapsed = node.collapsed; sorted.push_back(std::move(track)); break; }
+        for (auto& track : loaded) if (track) { track->data.parentFolder.clear(); sorted.push_back(std::move(track)); } // duplicated ids
+        loaded = std::move(sorted);
     }
     stop();
     const juce::ScopedLock lock(modelLock);

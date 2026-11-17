@@ -302,7 +302,8 @@ private:
             menu.addSeparator(); menu.addItem(4,i18n::tr("Importar audio / MIDI / video…  ⌥⌘I")); menu.addItem(5,i18n::tr("Exportar mezcla de audio…"));menu.addItem(8,i18n::tr("Exportar MIDI…"));menu.addItem(9,i18n::tr("Exportar MIDI de la pista seleccionada…"));
             menu.addSeparator(); menu.addItem(6,i18n::tr("Conversión de formatos…")); menu.addItem(7,i18n::tr("Extraer audio de video…"));
         }
-        if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo"));menu.addSeparator();menu.addItem(16,i18n::tr("Añadir pista de regla"));menu.addItem(17,i18n::tr("Añadir pista de marcador")); }
+        if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo"));menu.addSeparator();menu.addItem(16,i18n::tr("Añadir pista de regla"));menu.addItem(17,i18n::tr("Añadir pista de marcador"));
+            menu.addSeparator();menu.addItem(18,i18n::tr("Mover pista arriba"));menu.addItem(19,i18n::tr("Mover pista abajo"));menu.addItem(32,i18n::tr("Sacar de la carpeta")); }
         if (index == 3 && window) return window->content().audioMenu();
         if (index == 4 && window) return window->content().transportMenu();
         if (index == 5) { menu.addItem(20,i18n::tr("MixConsole  F3")); menu.addItem(27,i18n::tr("MixConsole en zona inferior  ⌥F3")); menu.addItem(21,i18n::tr("Instrumentos y efectos…")); menu.addItem(22,i18n::tr("Dispositivos de audio y MIDI…")); menu.addItem(23,i18n::tr("Apagar todas las notas")); menu.addSeparator(); menu.addItem(24,i18n::tr("Metrónomo  C"),true,window&&window->content().metronomeOn()); menu.addItem(25,i18n::tr("Ajustes del metrónomo…")); menu.addItem(26,i18n::tr("Calculadora de tempo (Tap)…")); menu.addItem(29,i18n::tr("Mapa de tempo y de compás…")); }
@@ -350,6 +351,7 @@ private:
             case 10: c.showAddTrack(TrackKind::audio); break; case 11: c.showAddTrack(TrackKind::instrument); break;
             case 12: c.showAddTrack(TrackKind::midi); break; case 13: c.showAddTrack(TrackKind::folder); break;
             case 16: c.showAddTrack(TrackKind::ruler); break; case 17: c.showAddTrack(TrackKind::marker); break;
+            case 18: c.runCommand("moveTrackUp"); break; case 19: c.runCommand("moveTrackDown"); break; case 32: c.runCommand("moveTrackOutOfFolder"); break;
             case 14: c.showAddTrack(TrackKind::fx); break; case 15: c.showAddTrack(TrackKind::group); break;
             case 20: c.showMixConsole(); break; case 27: c.showMixer(); break; case 21: c.showPlugins(); break; case 22: c.showAudioSettings(); break;
             case 23: engine->panic(); break;

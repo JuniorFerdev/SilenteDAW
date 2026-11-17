@@ -15,7 +15,8 @@ double finite(const juce::var& object,const char* name,double fallback)
 juce::var writeTrackData(const domain::TrackData& data)
 {
     juce::var object(new juce::DynamicObject());
-    set(object,"parentFolder",data.parentFolder);set(object,"folderCollapsed",data.folderCollapsed);
+    // Folder fields only when used: projects without folders carry no folder data.
+    if(data.parentFolder.isNotEmpty())set(object,"parentFolder",data.parentFolder);if(data.folderCollapsed)set(object,"folderCollapsed",true);
     set(object,"rulerFormat",data.rulerFormat);set(object,"rulerOffset",data.rulerOffset);
     juce::Array<juce::var> markers;
     for(const auto& marker:data.markers)

@@ -911,5 +911,13 @@
   "Panorama": "Panorama",
   "Envío ": "Envío ",
   "Selecciona una pista con canal de mezcla para ver su automatización": "Selecciona una pista con canal de mezcla para ver su automatización",
-  "Sin puntos · clic para añadir": "Sin puntos · clic para añadir"
+  "Sin puntos · clic para añadir": "Sin puntos · clic para añadir",
+  "Detén la grabación antes de reordenar pistas.": "Detén la grabación antes de reordenar pistas.",
+  "El orden de pistas no es válido.": "El orden de pistas no es válido.",
+  "No se puede mover la pista ahí.": "No se puede mover la pista ahí.",
+  "Mover pista arriba": "Mover pista arriba",
+  "Mover pista abajo": "Mover pista abajo",
+  "Sacar de la carpeta": "Sacar de la carpeta",
+  "Mover a la carpeta": "Mover a la carpeta",
+  "Mover pista": "Mover pista"
 }

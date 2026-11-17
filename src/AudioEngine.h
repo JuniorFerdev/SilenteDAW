@@ -10,6 +10,7 @@
 #include "domain/MidiNote.h"
 #include "domain/TempoMap.h"
 #include "domain/TrackData.h"
+#include "domain/TrackTree.h"
 #include <functional>
 #include <memory>
 #include <vector>
@@ -97,6 +98,8 @@ struct RecordOptions
     bool countIn = true;
 };
 
+domain::TrackOrder trackOrderOf(const std::vector<std::shared_ptr<Track>>&);
+
 class AudioEngine final : public juce::AudioIODeviceCallback, public juce::MidiInputCallback
 {
 public:
@@ -152,7 +155,13 @@ public:
     std::shared_ptr<Track> addAudioTrack(const juce::String& name = {});
     std::shared_ptr<Track> addMidiTrack(const juce::String& name = {});
     std::shared_ptr<Track> addTrack(TrackKind, const juce::String& name = {});
-    void removeTrack(int index);
+    void removeTrack(int index); // a removed folder hands its content to its own parent
+    // Track list hierarchy (folders) in project order. applyTrackOrder takes a permutation of the
+    // current ids (refused otherwise, or while recording), repairs it with domain::normalised and
+    // reorders `tracks` under modelLock. Routing, sends and automation refer to track ids, so they
+    // keep pointing at the same channels.
+    domain::TrackOrder trackOrder() const;
+    juce::Result applyTrackOrder(const domain::TrackOrder&);
     // Routing (message thread). Output to a group track and sends to FX tracks; anything that
     // would form a loop, target the wrong kind or the track itself is refused.
     bool canRoute(const Track& source, const Track& target, bool asSend) const;

@@ -1,5 +1,6 @@
 #pragma once
 #include "../../AudioEngine.h"
+#include <algorithm>
 #include <set>
 
 namespace silente::ui
@@ -17,7 +18,11 @@ struct TrackFilter
     std::vector<int> visible(const std::vector<std::shared_ptr<Track>>& tracks) const
     {
         std::vector<int> result;
-        for (int i = 0; i < (int) tracks.size(); ++i) if (shows(*tracks[(size_t) i])) result.push_back(i);
+        // Content of a folded folder is hidden too; the hierarchy is only built when folders are used.
+        const bool nested = std::any_of(tracks.begin(), tracks.end(), [](const auto& t) { return t->data.parentFolder.isNotEmpty(); });
+        const auto folded = nested ? domain::hiddenByCollapse(trackOrderOf(tracks)) : std::vector<bool> {};
+        for (int i = 0; i < (int) tracks.size(); ++i)
+            if (shows(*tracks[(size_t) i]) && ! (nested && folded[(size_t) i])) result.push_back(i);
         return result;
     }
 

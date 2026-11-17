@@ -29,6 +29,7 @@
 #include "audio/RangeEdit.h"
 #include "audio/EventEdit.h"
 #include "app/KeyCommands.h"
+#include "app/TrackOrderCommands.h"
 #include "ui/keys/KeyCommandsPanel.h"
 #include "ui/project/EditHistoryPanel.h"
 #include <map>
@@ -74,6 +75,34 @@ public:
     AudioEngine& engine;
     std::function<void(int)> selectTrack;
     std::function<void()> addTracks;
+    // Track list hierarchy: move requests (Mover arriba/abajo, carpetas, arrastrar) and folding.
+    std::function<void(const app::TrackMoveRequest&)> moveTrack;
+    std::function<void(const juce::String&,bool)> foldFolder;
+    static constexpr int indentStep=12,maxIndentLevels=4;
+    int indentOf(int i)const
+    {   // Header indent per folder level (pre-order list; flat projects skip the walk).
+        if(i<0||i>=(int)engine.tracks.size()||engine.tracks[(size_t)i]->data.parentFolder.isEmpty())return 0;
+        return juce::jmin(maxIndentLevels,domain::depthOf(trackOrderOf(engine.tracks),i))*indentStep;
+    }
+    // Track drag in the header (reorder, drop into a folder): dragged track and where it lands.
+    int trackDragIndex=-1,dropTarget=-1;bool trackDragging=false;domain::DropZone dropZone=domain::DropZone::before;
+    void updateDrop(int y)
+    {
+        const auto v=visibleTracks();const int row=y<ruler?firstTrack:(y-ruler)/lane+firstTrack;
+        if(row<0||row>=(int)v.size()){dropTarget=-1;dropZone=domain::DropZone::after;return;}
+        dropTarget=v[(size_t)row];const float f=(float)((y-ruler)-(row-firstTrack)*lane)/(float)lane;
+        const bool folder=engine.tracks[(size_t)dropTarget]->kind==TrackKind::folder;
+        dropZone=folder&&f>.25f&&f<.75f?domain::DropZone::into:f<.5f?domain::DropZone::before:domain::DropZone::after;
+    }
+    void paintDrop(juce::Graphics& g)
+    {
+        if(!trackDragging)return;
+        const auto v=visibleTracks();g.setColour(accent);
+        if(dropTarget<0){const int y=ruler+((int)v.size()-firstTrack)*lane;g.fillRect(0,y-1,getWidth(),3);return;}
+        const int y=ruler+visualRow(dropTarget)*lane,x=indentOf(dropTarget);
+        if(dropZone==domain::DropZone::into){g.drawRect(x,y,header-x,lane,2);g.setColour(accent.withAlpha(.12f));g.fillRect(x,y,header-x,lane);return;}
+        g.fillRect(x,dropZone==domain::DropZone::before?y-1:y+lane-2,getWidth()-x,3);
+    }
     std::function<void(int, juce::Rectangle<int>)> editColour;
     std::function<void()> beforeEdit, changed, openPiano;
     std::function<void(int)> openChannel;
@@ -231,17 +260,33 @@ public:
             }
             // Track header: colour strip with type icon and number; row 1 M · S · readable name;
             // row 2 compact volume, record · monitor · R · W · e; thin level meter at the right edge.
+            const int indent=indentOf(i);
             if(dirtyArea.getX()<header)
             {
+            meter(g,{(float)header-7.0f,(float)y+4,3.0f,(float)lane-9},juce::jmax(t.peakL.load(),t.peakR.load()));
+            if(indent>0)
+            {   // Folder guides: one line per level in the colour of each enclosing folder.
+                g.setColour(panel.darker(.25f));g.fillRect(0,y,indent,lane);
+                auto parent=engine.findTrack(t.data.parentFolder);
+                for(int level=indent/indentStep-1;level>=0&&parent;--level){g.setColour(parent->colour);g.fillRect(level*indentStep+indentStep/2-1,y,2,lane);parent=engine.findTrack(parent->data.parentFolder);}
+            }
+            juce::Graphics::ScopedSaveState indented(g);g.reduceClipRegion(indent,y,header-9-indent,lane);g.setOrigin(indent,0);
             g.setColour(colour); g.fillRect(0,y,strip,lane-1);
             trackIcon(g,t.kind,{4.0f,(float)y+6,15.0f,15.0f},eventInk);
             text(g,juce::String(i+1),{18,y+5,strip-20,18},10,eventInk,juce::Justification::centredRight);
             const bool chosen=i==selectedTrack;const auto headerInk=chosen?activeInk:ink;
-            if(t.kind!=TrackKind::folder){chip(g,"M",{46,y+5,22,20},t.mute,muteColour);chip(g,"S",{70,y+5,22,20},t.solo,soloColour);}
-            text(g,t.name,{98,y+4,lane>=56?header-108:header-184,22},13,headerInk);
+            chip(g,"M",{46,y+5,22,20},t.mute,muteColour);chip(g,"S",{70,y+5,22,20},t.solo,soloColour);
+            if(t.kind==TrackKind::folder)
+            {   // Fold/unfold triangle before the name (open: pointing down).
+                juce::Path arrow;const float ax=100.0f,ay=(float)y+9;
+                if(t.data.folderCollapsed)arrow.addTriangle(ax+2,ay,ax+2,ay+12,ax+11,ay+6);else arrow.addTriangle(ax,ay+2,ax+12,ay+2,ax+6,ay+11);
+                g.setColour(headerInk);g.fillPath(arrow);
+                text(g,t.name,{118,y+4,header-128,22},13,headerInk);
+            }
+            else text(g,t.name,{98,y+4,lane>=56?header-108:header-184,22},13,headerInk);
             if(t.kind!=TrackKind::folder)
             {
-                const auto v=volumeRect(y);const float db=juce::Decibels::gainToDecibels(t.gain.load(),-100.0f);const float p=volumeProportion(db);
+                const auto v=volumeRect(y,indent);const float db=juce::Decibels::gainToDecibels(t.gain.load(),-100.0f);const float p=volumeProportion(db);
                 g.setColour(chosen?activeInk.withAlpha(.5f):muted);juce::Path tri;tri.addTriangle((float)v.getX()-14,(float)v.getBottom()-2,(float)v.getX()-4,(float)v.getBottom()-2,(float)v.getX()-4,(float)v.getY()+3);g.fillPath(tri);
                 g.setColour(chosen?activeInk.withAlpha(.35f):raised);g.fillRoundedRectangle(v.toFloat().withSizeKeepingCentre((float)v.getWidth(),3.0f),1.5f);
                 g.setColour(chosen?activeInk:ink.withAlpha(.85f));g.fillRoundedRectangle(v.toFloat().withWidth((float)v.getWidth()*p).withSizeKeepingCentre((float)v.getWidth()*p,3.0f).withX((float)v.getX()),1.5f);
@@ -251,11 +296,11 @@ public:
             // Second row only when the track is tall enough (Cubase hides it on small tracks).
             if(lane>=56&&t.hasEvents()){chip(g,juce::String::fromUTF8("●"),{98,y+32,22,20},t.armed,coral);chip(g,juce::String::fromUTF8("◉"),{122,y+32,22,20},t.monitor,meterWarning);}
             if(lane>=56&&t.kind!=TrackKind::folder){chip(g,"R",{150,y+32,22,20},false,mint);chip(g,"W",{174,y+32,22,20},false,coral);chip(g,"e",{202,y+32,22,20},false,accent);}
-            meter(g,{(float)header-7.0f,(float)y+4,3.0f,(float)lane-9},juce::jmax(t.peakL.load(),t.peakR.load()));
             }
             g.setColour(line.withAlpha(.65f)); g.drawHorizontalLine(y+lane-1,0,(float)getWidth());
             if(dirtyArea.getRight()<=header)continue; // nothing of the event lane is being repainted
             juce::Graphics::ScopedSaveState state(g); g.reduceClipRegion(header,y,getWidth()-header,lane);
+            if(t.kind==TrackKind::folder)paintFolderParts(g,i,y);
             if (t.isMidi && !t.notes.empty())
             {
                 double end=4; for (auto& n:t.notes) end=juce::jmax(end,n.startBeats+n.lengthBeats);
@@ -306,6 +351,7 @@ public:
         if(engine.tracks.empty()) { text(g,i18n::tr("Tu próxima idea empieza aquí"),{header+30,100,getWidth()-header-60,32},23,ink,juce::Justification::centred); text(g,i18n::tr("Arrastra audio o MIDI, o añade una pista."),{header+30,139,getWidth()-header-60,25},14,muted,juce::Justification::centred); }
         float px=secondsToX(engine.positionSeconds); if(px>=header&&px<getWidth()) { g.setColour(ink.withAlpha(.85f));g.drawVerticalLine((int)px,0,(float)getHeight()); juce::Path p;p.addTriangle(px-5,4,px+5,4,px,11);g.fillPath(p); }
         g.setColour(line);g.drawVerticalLine(header,0,(float)getHeight());
+        paintDrop(g);
         if(dragOver){g.setColour(accent.withAlpha(.1f));g.fillAll();g.setColour(accent);g.drawRect(getLocalBounds().reduced(2),2);}
         juce::ignoreUnused(bar);
     }
@@ -377,21 +423,29 @@ public:
         selectedMarker.clear();
         if(e.x<header)
         {
-            const int dy=e.y-(ruler+visualRow(i)*lane);
-            if(e.x<strip && !e.mods.isPopupMenu()) { if(editColour)editColour(i,localAreaToGlobal(juce::Rectangle<int>{0,ruler+visualRow(i)*lane,strip,lane}));repaint();return; }
-            if(!e.mods.isPopupMenu()&&t.kind!=TrackKind::folder)
+            const int dy=e.y-(ruler+visualRow(i)*lane),indent=indentOf(i),hx=e.x-indent; // hx: header coordinates after the folder indent
+            if(hx>=0&&hx<strip && !e.mods.isPopupMenu()) { if(editColour)editColour(i,localAreaToGlobal(juce::Rectangle<int>{indent,ruler+visualRow(i)*lane,strip,lane}));repaint();return; }
+            bool control=false;
+            if(!e.mods.isPopupMenu()&&hx>=0)
             {
-                const auto v=volumeRect(ruler+visualRow(i)*lane).expanded(6,4);
-                if(v.contains(e.getPosition())){if(beforeEdit)beforeEdit();volumeDrag=i;if(e.getNumberOfClicks()>1)t.gain=1.0f;else setVolumeFrom(t,e.x);if(changed)changed();repaint();return;}
-                if(dy>=5&&dy<25){if(e.x>=46&&e.x<68){if(beforeEdit)beforeEdit();t.mute=!t.mute;if(changed)changed();}else if(e.x>=70&&e.x<92){if(beforeEdit)beforeEdit();t.solo=!t.solo;if(changed)changed();}}
-                else if(lane>=56&&dy>=32&&dy<52)
+                const auto v=volumeRect(ruler+visualRow(i)*lane,indent).expanded(6,4);
+                if(t.kind!=TrackKind::folder&&v.contains(juce::Point<int>(hx,e.y))){if(beforeEdit)beforeEdit();volumeDrag=i;if(e.getNumberOfClicks()>1)t.gain=1.0f;else setVolumeFrom(t,hx,indent);if(changed)changed();repaint();return;}
+                if(dy>=5&&dy<25)
                 {
-                    if(e.x>=98&&e.x<120&&t.hasEvents()){if(beforeEdit)beforeEdit();t.armed=!t.armed;if(changed)changed();}
-                    else if(e.x>=122&&e.x<144&&t.hasEvents()){if(beforeEdit)beforeEdit();t.monitor=!t.monitor;if(changed)changed();}
-                    else if(e.x>=202&&e.x<224&&openChannel){repaint();openChannel(i);return;}
+                    if(hx>=46&&hx<68){if(beforeEdit)beforeEdit();t.mute=!t.mute;if(changed)changed();control=true;}
+                    else if(hx>=70&&hx<92){if(beforeEdit)beforeEdit();t.solo=!t.solo;if(changed)changed();control=true;}
+                    else if(t.kind==TrackKind::folder&&hx>=96&&hx<116){if(foldFolder)foldFolder(t.id,!t.data.folderCollapsed);return;}
+                }
+                else if(t.kind!=TrackKind::folder&&lane>=56&&dy>=32&&dy<52)
+                {
+                    if(hx>=98&&hx<120&&t.hasEvents()){if(beforeEdit)beforeEdit();t.armed=!t.armed;if(changed)changed();control=true;}
+                    else if(hx>=122&&hx<144&&t.hasEvents()){if(beforeEdit)beforeEdit();t.monitor=!t.monitor;if(changed)changed();control=true;}
+                    else if(hx>=202&&hx<224&&openChannel){repaint();openChannel(i);return;}
                 }
             }
-            if(e.mods.isPopupMenu())trackMenu(i); repaint();return;
+            if(e.mods.isPopupMenu())trackMenu(i);
+            else if(!control){trackDragIndex=i;trackDragging=false;} // drag the header to reorder
+            repaint();return;
         }
         if(tool==2&&e.x>=header)
         {   // Range: click and drag; Mayús extends the current range; right click opens its menu.
@@ -453,7 +507,12 @@ public:
             const int rows=(int)visibleTracks().size();moveRows=juce::jlimit(-rangeFirstRow,juce::jmax(0,rows-1-rangeLastRow),rowAt(e.y)-moveFromRow);
             setMouseCursor(e.mods.isAltDown()?juce::MouseCursor::CopyingCursor:juce::MouseCursor::DraggingHandCursor);repaint();return;
         }
-        if(volumeDrag>=0&&volumeDrag<(int)engine.tracks.size()){setVolumeFrom(*engine.tracks[(size_t)volumeDrag],e.x);if(changed)changed();repaint();return;}
+        if(volumeDrag>=0&&volumeDrag<(int)engine.tracks.size()){const int indent=indentOf(volumeDrag);setVolumeFrom(*engine.tracks[(size_t)volumeDrag],e.x-indent,indent);if(changed)changed();repaint();return;}
+        if(trackDragIndex>=0)
+        {
+            if(!trackDragging&&e.getDistanceFromDragStart()<5)return;
+            trackDragging=true;setMouseCursor(juce::MouseCursor::DraggingHandCursor);updateDrop(e.y);repaint();return;
+        }
         if(rulerDragging)
         {
             // The transport follows the pointer precisely; editing snap does not quantise scrubbing.
@@ -489,6 +548,12 @@ public:
         }
         markerDragTrack.clear();cycleDrawFrom=-1;
         if(rangeMoving){rangeMoving=false;setTool(tool);if((std::abs(moveDelta)>1e-9||moveRows!=0)&&moveRange)moveRange(moveDelta,moveRows,e.mods.isAltDown());repaint();}
+        if(trackDragging&&trackDragIndex>=0&&trackDragIndex<(int)engine.tracks.size()&&moveTrack)
+        {
+            app::TrackMoveRequest request{app::TrackMove::drop,engine.tracks[(size_t)trackDragIndex]->id,dropTarget>=0?engine.tracks[(size_t)dropTarget]->id:juce::String(),dropZone};
+            trackDragging=false;trackDragIndex=-1;setTool(tool);moveTrack(request);
+        }
+        trackDragging=false;trackDragIndex=-1;
         dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;fadeDrag=0;rangeDragging=false;if(playTool){playTool=false;engine.pause();}
     }
     int fadeDrag=0; // 1 fade-in handle, 2 fade-out handle, 3 volume handle
@@ -578,7 +643,7 @@ public:
     void glueSelected(){editEvents([](std::vector<AudioClip>& c,int i){return audio::glueEvents(c,i);});}
     void crossfadeSelected(){editEvents([](std::vector<AudioClip>& c,int i){return audio::crossfadeEvents(c,i);});}
     int volumeDrag=-1;
-    void setVolumeFrom(Track& t,int x){const auto v=volumeRect(0);const float db=volumeFromProportion((float)(x-v.getX())/(float)v.getWidth());t.gain=db<=-60.0f?0.0f:juce::Decibels::decibelsToGain(db);}
+    void setVolumeFrom(Track& t,int x,int indent=0){const auto v=volumeRect(0,indent);const float db=volumeFromProportion((float)(x-v.getX())/(float)v.getWidth());t.gain=db<=-60.0f?0.0f:juce::Decibels::decibelsToGain(db);}
     void mouseDoubleClick(const juce::MouseEvent& e) override
     {
         const juce::ScopedLock lock(engine.modelLock);const int i=trackAt(e.y);if(i<0||i>=(int)engine.tracks.size())return;
@@ -623,7 +688,26 @@ private:
     juce::Rectangle<float> clipRect(int i,const AudioClip& c)const {return {secondsToX(c.startSeconds),(float)(ruler+visualRow(i)*lane+8),juce::jmax(4.0f,(float)(c.durationSeconds*pixelsPerSecond)),lane-16.0f};}
     // Track list buttons as in Cubase: grey when off, filled with their colour and dark text when on.
     static constexpr int strip = 40;
-    juce::Rectangle<int> volumeRect(int y)const { return lane>=56?juce::Rectangle<int>{46,y+35,44,14}:juce::Rectangle<int>{header-80,y+8,67,14}; }
+    // Header volume slider (header coordinates, i.e. after the folder indent); on small tracks it
+    // stays at the same absolute place, so it moves left by the indent.
+    juce::Rectangle<int> volumeRect(int y,int indent=0)const { return lane>=56?juce::Rectangle<int>{46,y+35,44,14}:juce::Rectangle<int>{header-80-indent,y+8,67,14}; }
+    // Folder lane (Cubase: folder parts): one thin band per contained track with events, showing
+    // where its audio events and MIDI notes are. Display only; the parts are not edited here.
+    void paintFolderParts(juce::Graphics& g,int folderIndex,int y)
+    {
+        const auto order=trackOrderOf(engine.tracks);const int end=domain::subtreeEnd(order,folderIndex);
+        std::vector<int> content;for(int k=folderIndex+1;k<end;++k)if(engine.tracks[(size_t)k]->hasEvents())content.push_back(k);
+        if(content.empty())return;
+        const auto timeline=engine.tempoView();const float band=juce::jmax(2.0f,((float)lane-8.0f)/(float)content.size());
+        for(size_t n=0;n<content.size();++n)
+        {
+            const auto& c=*engine.tracks[(size_t)content[n]];const float by=(float)y+4.0f+band*(float)n,bh=juce::jmax(1.0f,band-1.0f);
+            for(const auto& clip:c.clips){const float x0=secondsToX(clip.startSeconds),x1=secondsToX(clip.startSeconds+clip.durationSeconds);if(x1<header||x0>getWidth())continue;
+                g.setColour((clip.colour.isTransparent()?c.colour:clip.colour).withAlpha(clip.muted?.3f:.8f));g.fillRect(x0,by,juce::jmax(1.0f,x1-x0),bh);}
+            for(const auto& note:c.notes){const float x0=secondsToX(timeline.secondsAt(note.startBeats)),x1=secondsToX(timeline.secondsAt(note.startBeats+note.lengthBeats));if(x1<header||x0>getWidth())continue;
+                g.setColour(c.colour.withAlpha(.8f));g.fillRect(x0,by,juce::jmax(1.0f,x1-x0),bh);}
+        }
+    }
     static float volumeProportion(float db) { return db <= -60.0f ? 0.0f : juce::jlimit(0.0f,1.0f,std::pow((db+60.0f)/66.0f,1.6f)); }
     static float volumeFromProportion(float p) { return p <= 0.001f ? -100.0f : std::pow(juce::jlimit(0.0f,1.0f,p),1.0f/1.6f)*66.0f-60.0f; }
     // Track type icons drawn in the colour strip (audio waveform, keys, MIDI, folder, FX, group).
@@ -660,7 +744,18 @@ private:
             if(r==6&&safe->selectedTrack>=0&&safe->selectedTrack<(int)safe->engine.tracks.size()){auto& clips=safe->engine.tracks[(size_t)safe->selectedTrack]->clips;if(safe->selectedClip>=0&&safe->selectedClip<(int)clips.size()){if(safe->beforeEdit)safe->beforeEdit();clips[(size_t)safe->selectedClip].muted=!clips[(size_t)safe->selectedClip].muted;if(safe->changed)safe->changed();safe->repaint();}}});}
     void trackMenu(int i)
     {
-        juce::PopupMenu m;m.addItem(4,i18n::tr("Añadir pista…"));m.addSeparator();m.addItem(1,i18n::tr("Renombrar pista…"));m.addItem(3,i18n::tr("Color de pista…"));m.addSeparator();m.addItem(2,i18n::tr("Eliminar pista"));m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this),i](int r){if(!safe)return;if(r==4){if(safe->addTracks)safe->addTracks();return;}if(r==3){if(safe->editColour)safe->editColour(i,safe->localAreaToGlobal(juce::Rectangle<int>{0,ruler+safe->visualRow(i)*safe->lane,25,safe->lane}));return;}if(r==2){if(safe->beforeEdit)safe->beforeEdit();safe->engine.removeTrack(i);safe->selectedTrack=juce::jmax(0,i-1);if(safe->selectTrack)safe->selectTrack(safe->selectedTrack);if(safe->changed)safe->changed();safe->repaint();}if(r==1){auto* alert=new juce::AlertWindow(i18n::tr("Nombre de la pista"),"",juce::MessageBoxIconType::NoIcon);alert->addTextEditor("name",safe->engine.tracks[(size_t)i]->name);alert->addButton(i18n::tr("Guardar"),1,juce::KeyPress(juce::KeyPress::returnKey));alert->addButton(i18n::tr("Cancelar"),0,juce::KeyPress(juce::KeyPress::escapeKey));alert->enterModalState(true,juce::ModalCallbackFunction::create([safe,alert,i](int result){if(safe&&result==1){const juce::ScopedLock lock(safe->engine.modelLock);if(i<(int)safe->engine.tracks.size()){if(safe->beforeEdit)safe->beforeEdit();safe->engine.tracks[(size_t)i]->name=alert->getTextEditorContents("name");if(safe->changed)safe->changed();}}}),true);}});
+        juce::PopupMenu m;m.addItem(4,i18n::tr("Añadir pista…"));m.addSeparator();m.addItem(1,i18n::tr("Renombrar pista…"));m.addItem(3,i18n::tr("Color de pista…"));m.addSeparator();
+        // Organisation: order and folders (only the moves that are possible are enabled).
+        const auto& moved=*engine.tracks[(size_t)i];const auto id=moved.id;
+        const auto can=[&](app::TrackMove move,const juce::String& target={}){return app::planTrackMove(engine,{move,id,target}).has_value();};
+        m.addItem(5,i18n::tr("Mover pista arriba"),can(app::TrackMove::up));m.addItem(6,i18n::tr("Mover pista abajo"),can(app::TrackMove::down));
+        m.addItem(7,i18n::tr("Sacar de la carpeta"),can(app::TrackMove::outOfFolder));
+        juce::PopupMenu folders;std::vector<juce::String> folderIds;
+        for(const auto& f:engine.tracks)if(f->kind==TrackKind::folder&&can(app::TrackMove::intoFolder,f->id)){folderIds.push_back(f->id);folders.addItem(100+(int)folderIds.size()-1,f->name);}
+        m.addSubMenu(i18n::tr("Mover a la carpeta"),folders,!folderIds.empty());
+        m.addSeparator();m.addItem(2,i18n::tr("Eliminar pista"));m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),[safe=juce::Component::SafePointer<Arrangement>(this),i,id,folderIds](int r){if(!safe)return;
+            if(r>=5&&r<=7){if(safe->moveTrack)safe->moveTrack({r==5?app::TrackMove::up:r==6?app::TrackMove::down:app::TrackMove::outOfFolder,id});return;}
+            if(r>=100&&r<100+(int)folderIds.size()){if(safe->moveTrack)safe->moveTrack({app::TrackMove::intoFolder,id,folderIds[(size_t)(r-100)]});return;}if(r==4){if(safe->addTracks)safe->addTracks();return;}if(r==3){if(safe->editColour)safe->editColour(i,safe->localAreaToGlobal(juce::Rectangle<int>{0,ruler+safe->visualRow(i)*safe->lane,25,safe->lane}));return;}if(r==2){if(safe->beforeEdit)safe->beforeEdit();safe->engine.removeTrack(i);safe->selectedTrack=juce::jmax(0,i-1);if(safe->selectTrack)safe->selectTrack(safe->selectedTrack);if(safe->changed)safe->changed();safe->repaint();}if(r==1){auto* alert=new juce::AlertWindow(i18n::tr("Nombre de la pista"),"",juce::MessageBoxIconType::NoIcon);alert->addTextEditor("name",safe->engine.tracks[(size_t)i]->name);alert->addButton(i18n::tr("Guardar"),1,juce::KeyPress(juce::KeyPress::returnKey));alert->addButton(i18n::tr("Cancelar"),0,juce::KeyPress(juce::KeyPress::escapeKey));alert->enterModalState(true,juce::ModalCallbackFunction::create([safe,alert,i](int result){if(safe&&result==1){const juce::ScopedLock lock(safe->engine.modelLock);if(i<(int)safe->engine.tracks.size()){if(safe->beforeEdit)safe->beforeEdit();safe->engine.tracks[(size_t)i]->name=alert->getTextEditorContents("name");if(safe->changed)safe->changed();}}}),true);}});
     }
 };
 
@@ -1099,6 +1194,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         owner.addAndMakeVisible(instrument);instrument.setComponentID("instrument-slot");
         instrument.onClick=[this]{plugins.showInstrument(selected,&instrument);};
         instrument.onOptions=[this]{plugins.showInstrumentSelector(selected,&instrument);};
+        arrangement.moveTrack=[this](const app::TrackMoveRequest& r){moveTrack(r);};
+        arrangement.foldFolder=[this](const juce::String& id,bool collapsed){foldFolder(id,collapsed);};
         arrangement.selectTrack=[this](int i){select(i);};arrangement.beforeEdit=[this]{pushUndo(i18n::tr("Editar evento o pista"));};arrangement.changed=[this]{markDirty();};arrangement.openPiano=[this]{setPiano(true);};
         arrangement.chooseTool=[this](int value){setTool(value);};
         arrangement.contextAction=[this](const juce::String& id){owner.runCommand(id);};
@@ -1213,6 +1310,27 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     }
     void setupSlider(juce::Slider& s,double a,double b,double step,juce::Slider::SliderStyle style,const juce::String& suffix,double reset)
     {s.setSliderStyle(style);s.setRange(a,b,step);s.setTextBoxStyle(style==juce::Slider::RotaryHorizontalVerticalDrag?juce::Slider::TextBoxBelow:juce::Slider::TextBoxRight,false,style==juce::Slider::RotaryHorizontalVerticalDrag?55:64,20);s.setTextValueSuffix(suffix);s.setDoubleClickReturnValue(true,reset);}
+    // Track list organisation (Pista menu, header context menu and drag): one undo step per move;
+    // the moved track stays selected. Ids keep routing, sends and automation attached.
+    bool moveTrack(const app::TrackMoveRequest& request)
+    {
+        const auto next=app::planTrackMove(engine,request);
+        if(!next){notice=i18n::tr("No se puede mover la pista ahí.");refresh();return false;}
+        const auto label=request.move==app::TrackMove::outOfFolder?i18n::tr("Sacar de la carpeta"):request.move==app::TrackMove::intoFolder?i18n::tr("Mover a la carpeta"):i18n::tr("Mover pista");
+        pushUndo(label);
+        if(const auto result=engine.applyTrackOrder(*next);result.failed()){undoStack.pop_back();error(result.getErrorMessage());return false;}
+        for(int k=0;k<(int)engine.tracks.size();++k)if(engine.tracks[(size_t)k]->id==request.track){select(k);break;}
+        // A track moved into a folded folder: unfold it so the track stays in view.
+        if(auto moved=engine.findTrack(request.track))for(auto parent=engine.findTrack(moved->data.parentFolder);parent;parent=engine.findTrack(parent->data.parentFolder))parent->data.folderCollapsed=false;
+        notice=label;markDirty();refresh();arrangement.repaint();return true;
+    }
+    void foldFolder(const juce::String& id,bool collapsed)
+    {
+        if(!app::setFolderCollapsed(engine,id,collapsed))return;
+        if(collapsed)if(auto t=currentTrack();t&&domain::isInside(engine.trackOrder(),selected,id))for(int k=0;k<(int)engine.tracks.size();++k)if(engine.tracks[(size_t)k]->id==id){select(k);break;}
+        arrangement.firstTrack=juce::jlimit(0,juce::jmax(0,(int)arrangement.visibleTracks().size()-1),arrangement.firstTrack);
+        markDirty();refresh();arrangement.repaint();
+    }
     std::shared_ptr<Track> currentTrack()const {return selected>=0&&selected<(int)engine.tracks.size()?engine.tracks[(size_t)selected]:nullptr;}
     void select(int i){if(selected!=i){arrangement.selectedMarker.clear();arrangement.selectedClip=-1;}selected=i;arrangement.selectedTrack=i;piano.track=i;piano.clearSelection();automationLane.setTrack(i);owner.resized();syncInspector();owner.repaint();}
     void markDirty(){dirty=true;owner.repaint();}
@@ -2094,6 +2212,9 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["renameEvent"]=[this]{if(auto* c=selectedClipPtr()){auto t=currentTrack();const int index=arrangement.selectedClip;askValue(i18n::tr("Nombre del evento"),{},c->name,[this,t,index](const juce::String& v){if(t&&juce::isPositiveAndBelow(index,(int)t->clips.size())&&v.trim().isNotEmpty()){pushUndo();t->clips[(size_t)index].name=v.trim();markDirty();refresh();}});}};
         k["open"]=[this]{if(auto t=currentTrack();t&&t->isMidi)setPiano(true);};k["openEditor"]=k["open"];
         k["colour"]=[this]{editTrackColour(selected,trackColour.getScreenBounds());};
+        k["moveTrackUp"]=[this]{if(auto t=currentTrack())moveTrack({app::TrackMove::up,t->id});};
+        k["moveTrackDown"]=[this]{if(auto t=currentTrack())moveTrack({app::TrackMove::down,t->id});};
+        k["moveTrackOutOfFolder"]=[this]{if(auto t=currentTrack())moveTrack({app::TrackMove::outOfFolder,t->id});};
         k["deleteTracks"]=[this]{if(currentTrack()){pushUndo(i18n::tr("Eliminar pista"));plugins.closeEditors();engine.removeTrack(selected);selected=juce::jmax(0,selected-1);markDirty();refresh();}};
         k["trackUp"]=[this]{selectVisible(-1,false);};k["trackDown"]=[this]{selectVisible(1,false);};k["trackTop"]=[this]{selectVisible(-1,true);};k["trackBottom"]=[this]{selectVisible(1,true);};
         const auto stepEvent=[this](int direction)

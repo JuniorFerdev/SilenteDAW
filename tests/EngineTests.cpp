@@ -12,6 +12,8 @@
 #include "../src/persistence/TrackDataJson.h"
 #include "../src/plugins/PluginSelection.h"
 #include "../src/app/TrackCreation.h"
+#include "../src/app/TrackOrderCommands.h"
+#include "../src/domain/TrackTree.h"
 #include "../src/ui/project/TimelineTracks.h"
 #include <limits>
 #include <cmath>
@@ -443,6 +445,103 @@ int runEngineTests(const juce::File& outputDir)
         near(audio.getSample(0, 1024), 0.25, 0.0002, "Solo excludes other track");
         a->solo = false; a->mute = true; b->mute = true;
         near(peak(render(engine, 2048)), 0, 0.00001, "All muted silence");
+    });
+
+    suite.run("track tree: move up/down, nest, out of folder, drop and cycles refused", [&]
+    {
+        using namespace domain;
+        const auto ids = [](const TrackOrder& o) { juce::StringArray a; for (auto& n : o) a.add(n.id + (n.parent.isEmpty() ? "" : "<" + n.parent)); return a.joinIntoString(" "); };
+        TrackOrder flat { { "a", {}, false, false }, { "b", {}, false, false }, { "c", {}, false, false } };
+        require(isValid(flat) && normalised(flat) == flat, "Flat list must be valid and unchanged");
+        require(ids(*moveUp(flat, 1)) == "b a c" && ids(*moveDown(flat, 1)) == "a c b", "Flat move up/down = swap with neighbour");
+        require(! moveUp(flat, 0) && ! moveDown(flat, 2) && ! moveOutOfFolder(flat, 1), "Edges must be refused");
+        TrackOrder tree { { "F", {}, true, false }, { "x", "F", false, false }, { "G", "F", true, false }, { "y", "G", false, false }, { "z", {}, false, false } };
+        require(isValid(tree) && depthOf(tree, 3) == 2 && subtreeEnd(tree, 0) == 4 && subtreeEnd(tree, 2) == 4, "Depth and subtree");
+        require(ids(*moveIntoFolder(tree, 4, "G")) == "F x<F G<F y<G z<G", "Into nested folder as last child");
+        require(ids(*moveOutOfFolder(tree, 3)) == "F x<F G<F y<F z", "Out of folder goes after it, one level up");
+        require(ids(*moveOutOfFolder(tree, 1)) == "F G<F y<G x z", "Out of top folder lands after the whole folder");
+        require(ids(*moveDown(tree, 1)) == "F G<F y<G x<F z", "Move down swaps with the next block (folder with content)");
+        require(ids(*moveDown(tree, 0)) == "z F x<F G<F y<G", "A folder moves with its content");
+        require(! moveIntoFolder(tree, 0, "G") && ! moveInto(tree, 0, "F", 0) && ! moveIntoFolder(tree, 1, "z"), "Cycles and non-folder parents must be refused");
+        require(! dropOn(tree, 0, 3, DropZone::before) && ! dropOn(tree, 2, 3, DropZone::into), "Dropping a folder inside itself must be refused");
+        require(ids(*dropOn(tree, 4, 1, DropZone::before)) == "F z<F x<F G<F y<G", "Drop before a row joins its folder");
+        require(ids(*dropOn(tree, 4, 0, DropZone::after)) == "F z<F x<F G<F y<G", "Drop after an open folder = first child");
+        require(ids(*dropOn(tree, 1, 4, DropZone::after)) == "F G<F y<G z x", "Drop after a top-level row");
+        require(ids(*dropOn(tree, 4, -1, DropZone::before)) == "F x<F G<F y<G z", "Drop at the end keeps a top-level track last");
+        require(ids(withoutTrack(tree, 2)) == "F x<F y<F z", "Removing a folder hands its content up");
+        auto collapsed = tree; collapsed[0].collapsed = true;
+        require(hiddenByCollapse(collapsed, 3) && ! hiddenByCollapse(collapsed, 0) && ! hiddenByCollapse(collapsed, 4), "Collapsed folder hides its whole content");
+        const auto mask = hiddenByCollapse(collapsed); const auto level = depths(collapsed);
+        for (int k = 0; k < (int) collapsed.size(); ++k) require(mask[(size_t) k] == hiddenByCollapse(collapsed, k) && level[(size_t) k] == depthOf(collapsed, k), "One-pass helpers must match");
+        TrackOrder broken { { "y", "G", false, false }, { "c1", "c2", true, false }, { "c2", "c1", true, false }, { "G", {}, true, false }, { "n", "y", false, true }, { "m", "?", false, false } };
+        const auto fixed = normalised(broken);
+        require(isValid(fixed) && fixed.size() == broken.size(), "Repair must give a valid list with every track");
+        require(ids(fixed) == "c1 c2<c1 G y<G n m", "Repair result: " + ids(fixed));
+        require(! fixed[(size_t) indexOf(fixed, "n")].collapsed, "Only folders can be collapsed");
+    });
+
+    suite.run("folders: mute/solo pass down, reordering keeps group/send/automation and persistence", [&]
+    {
+        AudioEngine engine; setup(engine);
+        auto a = importFixture(engine, mono); a->pan = -1.0f;                       // 0.25 left
+        auto b = importFixture(engine, mono); b->pan = -1.0f; b->gain = 0.5f;       // 0.125 left
+        auto folder = engine.addTrack(TrackKind::folder, "Carpeta");
+        auto inner = engine.addTrack(TrackKind::folder, "Interior");
+        using app::TrackMove;
+        requireOk(app::moveTrack(engine, { TrackMove::intoFolder, a->id, folder->id }));
+        requireOk(app::moveTrack(engine, { TrackMove::intoFolder, inner->id, folder->id }));
+        requireOk(app::moveTrack(engine, { TrackMove::intoFolder, b->id, inner->id }));
+        require(engine.tracks[0] == folder && engine.tracks[1] == a && engine.tracks[2] == inner && engine.tracks[3] == b, "Folder content follows its folder");
+        engine.play();
+        near(render(engine, 2048).getSample(0, 1024), 0.375, 0.0002, "Folders do not change the sum");
+        inner->mute = true; near(render(engine, 2048).getSample(0, 1024), 0.25, 0.0002, "Folder mute silences its content");
+        inner->mute = false; folder->mute = true; near(peak(render(engine, 2048)), 0.0, 1.0e-6, "Mute passes through nested folders");
+        folder->mute = false; inner->solo = true; near(render(engine, 2048).getSample(0, 1024), 0.125, 0.0002, "Folder solo solos its content only");
+        inner->solo = false; folder->solo = true; near(render(engine, 2048).getSample(0, 1024), 0.375, 0.0002, "Top folder solo covers nested content");
+        folder->solo = false;
+
+        // Routing and automation refer to ids: reordering must not change what is heard.
+        auto group = engine.addTrack(TrackKind::group, "Bus"); group->pan = -1.0f; group->gain = 0.5f;
+        auto fx = engine.addTrack(TrackKind::fx, "FX"); fx->pan = -1.0f; fx->gain = 1.0f;
+        requireOk(engine.setOutput(*a, group->id)); requireOk(engine.setSend(*b, 0, fx->id));
+        a->automation.volume.points = { { 0.0, 1.0 }, { 64.0, 1.0 } }; a->automation.read = true;
+        const auto before = render(engine, 4096);
+        requireOk(app::moveTrack(engine, { TrackMove::drop, fx->id, folder->id, domain::DropZone::before }));
+        requireOk(app::moveTrack(engine, { TrackMove::drop, group->id, a->id, domain::DropZone::before }));
+        requireOk(app::moveTrack(engine, { TrackMove::outOfFolder, b->id }));
+        require(engine.tracks[0] == fx && engine.tracks[2] == group && group->data.parentFolder == folder->id, "Drop order: " + juce::String(engine.tracks[2]->name));
+        require(a->output == group->id && b->sends[0].target == fx->id && ! a->automation.empty(), "References must survive reordering");
+        const auto after = render(engine, 4096);
+        near(after.getSample(0, 3000), before.getSample(0, 3000), 0.0002, "Reordered routing must sound the same");
+        require(engine.applyTrackOrder({ { a->id } }).failed(), "A partial order must be refused");
+        auto order = engine.trackOrder(); std::swap(order[0], order[1]); order[1].id = order[0].id;
+        require(engine.applyTrackOrder(order).failed(), "A duplicated id must be refused");
+
+        // Persistence: hierarchy and folding survive; plain and old projects read flat.
+        requireOk(app::setFolderCollapsed(engine, inner->id, true) ? juce::Result::ok() : juce::Result::fail("fold"));
+        const auto file = dir.getChildFile("folders.silente"); requireOk(engine.saveProject(file));
+        AudioEngine restored; setup(restored); requireOk(restored.loadProject(file));
+        require(restored.trackOrder() == engine.trackOrder(), "Folder hierarchy changed after save/load");
+        auto json = juce::JSON::parse(file);
+        for (auto& t : *json["tracks"].getArray()) if (auto* d = t["trackData"].getDynamicObject()) { d->removeProperty("parentFolder"); d->removeProperty("folderCollapsed"); }
+        const auto old = dir.getChildFile("folders-old.silente"); require(old.replaceWithText(juce::JSON::toString(json)), "Cannot write old project");
+        requireOk(restored.loadProject(old));
+        for (size_t k = 0; k < restored.tracks.size(); ++k)
+            require(restored.tracks[k]->id == engine.tracks[k]->id && restored.tracks[k]->data.parentFolder.isEmpty(), "Old project must keep its flat order");
+        json = juce::JSON::parse(file);
+        json["tracks"][0]["trackData"].getDynamicObject()->setProperty("parentFolder", inner->id); // fx listed before its folder
+        json["tracks"][1]["trackData"].getDynamicObject()->setProperty("parentFolder", inner->id); // folder -> inner -> folder: cycle
+        const auto cyclic = dir.getChildFile("folders-cycle.silente"); require(cyclic.replaceWithText(juce::JSON::toString(json)), "Cannot write cyclic project");
+        requireOk(restored.loadProject(cyclic));
+        require(domain::isValid(restored.trackOrder()) && restored.tracks.size() == engine.tracks.size(), "A cyclic project must load repaired");
+        AudioEngine plain; setup(plain); plain.addAudioTrack("Plain");
+        const auto plainFile = dir.getChildFile("folders-plain.silente"); requireOk(plain.saveProject(plainFile));
+        require(! plainFile.loadFileAsString().contains("parentFolder") && ! plainFile.loadFileAsString().contains("folderCollapsed"), "A project without folders must not write folder fields");
+
+        // Removing a folder keeps its content one level up.
+        engine.removeTrack(domain::indexOf(engine.trackOrder(), folder->id));
+        require(domain::isValid(engine.trackOrder()) && engine.findTrack(a->id) && engine.findTrack(b->id) && a->data.parentFolder.isEmpty()
+                && b->data.parentFolder.isEmpty() && inner->data.parentFolder.isEmpty(), "Content of a removed folder must stay, one level up");
     });
 
     suite.run("44.1 kHz to 48 kHz preserves duration and pitch", [&]

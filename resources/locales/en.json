@@ -911,5 +911,13 @@
   "Panorama": "Pan",
   "Envío ": "Send ",
   "Selecciona una pista con canal de mezcla para ver su automatización": "Select a track with a mixer channel to see its automation",
-  "Sin puntos · clic para añadir": "No points · click to add"
+  "Sin puntos · clic para añadir": "No points · click to add",
+  "Detén la grabación antes de reordenar pistas.": "Stop recording before reordering tracks.",
+  "El orden de pistas no es válido.": "The track order is not valid.",
+  "No se puede mover la pista ahí.": "The track cannot be moved there.",
+  "Mover pista arriba": "Move Track Up",
+  "Mover pista abajo": "Move Track Down",
+  "Sacar de la carpeta": "Move Out of Folder",
+  "Mover a la carpeta": "Move to Folder",
+  "Mover pista": "Move Track"
 }
