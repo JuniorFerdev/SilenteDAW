@@ -13,6 +13,7 @@
 #include "ui/metronome/MetronomePanel.h"
 #include "ui/metronome/TapTempoPanel.h"
 #include "ui/tempo/TempoMapPanel.h"
+#include "ui/pool/PoolPanel.h"
 #include "ui/mixconsole/MixConsole.h"
 #include "ui/project/ChannelTab.h"
 #include "ui/project/TrackFinder.h"
@@ -911,7 +912,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     juce::MidiKeyboardComponent keyboard;
     juce::TooltipWindow tooltips;
     std::unique_ptr<juce::FileChooser> chooser;
-    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow, tempoWindow;
+    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow, tempoWindow, poolWindow;
     std::unique_ptr<ui::MixConsoleWindow> mixConsoleWindow;
     std::unique_ptr<ui::AddTrackWindow> addTrackWindow;
     std::unique_ptr<UtilityWindow> exportWindow, conversionWindow, historyWindow;
@@ -2171,7 +2172,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["enterLeft"]=[this]{showLoopDialog();};k["enterRight"]=[this]{showLoopDialog();};
         k["enterPosition"]=[this]{askValue(i18n::tr("Posición del cursor del proyecto"),i18n::tr("Compás. Tiempo. Semicorchea"),ui::SnapGrid::formatTime(engine.positionSeconds.load(),ui::TimeFormat::barsBeats,engine.tempoView(),engine.currentSampleRate()).upToLastOccurrenceOf(".",false,false),[this](const juce::String& v){engine.seek(parseBars(v));refresh();});};
         k["enterTempo"]=[this]{askValue(i18n::tr("Introducir tempo"),"BPM",juce::String(engine.tempo.load(),3),[this](const juce::String& v){const double bpm=v.replace(",",".").getDoubleValue();if(bpm>=20&&bpm<=300){pushUndo();engine.tempo=bpm;markDirty();refresh();}});};
-        k["tapTempo"]=[this]{showTapTempo();};
+        k["tapTempo"]=[this]{showTapTempo();};k["openPool"]=[this]{showPool();};
         k["quantize"]=[this]{if(pianoVisible&&currentTrack()&&currentTrack()->isMidi)piano.quantizeNotes();};
         k["undo"]=[this]{undo(false);};k["redo"]=[this]{undo(true);};
         k["delete"]=[this]{if(selectedMarkerPtr()){deleteMarker(currentTrack()->id,arrangement.selectedMarker,false);return;}if(pianoVisible&&piano.hasKeyboardFocus(true))piano.deleteSelected();else if(rangeActive())rangeEdit(i18n::tr("Suprimir rango"),audio::deleteRange);else arrangement.deleteSelected();};
@@ -2279,6 +2280,35 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         if(auto* panel=dynamic_cast<ui::TempoMapPanel*>(tempoWindow->getContentComponent()))panel->setMap(engine.tempoMap,engine.tempoView().bpm);
         tempoWindow->setVisible(true);tempoWindow->toFront(true);
     }
+    void showPool()
+    {
+        if(!poolWindow)
+        {
+            auto* panel=new ui::PoolPanel();
+            panel->provider=[this]{return engine.mediaClips();};
+            panel->onSelectClips=[this](const domain::MediaEntry& entry){selectMediaClips(entry);};
+            panel->onRelink=[this](const juce::String& from,const juce::File& to)->juce::String
+            {
+                pushUndo(i18n::tr("Reasignar medio"));int count=0;const auto result=engine.relinkMedia(from,to,&count);
+                if(result.failed()){if(!undoStack.empty())undoStack.pop_back();return result.getErrorMessage();}
+                markDirty();notice=i18n::tr("Medio reasignado: ")+juce::String(count)+i18n::tr(" clip(s)");refresh();arrangement.repaint();return {};
+            };
+            poolWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Pool de medios"),panel,720,380);poolWindow->setLookAndFeel(&look);
+        }
+        if(auto* panel=dynamic_cast<ui::PoolPanel*>(poolWindow->getContentComponent()))panel->refresh();
+        poolWindow->setVisible(true);poolWindow->toFront(true);
+    }
+    // Doble clic en el Pool: el proyecto solo admite un evento seleccionado, así que se elige el
+    // primero que usa el medio (en orden de pista y de clip).
+    void selectMediaClips(const domain::MediaEntry& entry)
+    {
+        if(entry.clips.empty())return;const auto& ref=entry.clips.front();
+        for(int i=0;i<(int)engine.tracks.size();++i)
+        {
+            auto& t=*engine.tracks[(size_t)i];if(t.id!=ref.trackId)continue;
+            for(int c=0;c<(int)t.clips.size();++c)if(t.clips[(size_t)c].id==ref.clipId){select(i);arrangement.selectedClip=c;notice=juce::String(entry.uses)+i18n::tr(" uso(s) de ")+entry.name;refresh();arrangement.repaint();return;}
+        }
+    }
     void toggleMetronome(){engine.metronome=!engine.metronome.load();click.setToggleState(engine.metronome.load(),juce::dontSendNotification);notice=engine.metronome.load()?i18n::tr("Metrónomo activado"):i18n::tr("Metrónomo desactivado");markDirty();}
     void settingsDialog()
     {
@@ -2351,6 +2381,7 @@ bool MainComponent::runCommand(const juce::String& id){if(auto a=ui->keyActions.
 void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}
 void MainComponent::showTapTempo(){ui->showTapTempo();}
 void MainComponent::showTempoMap(){ui->showTempoMap();}
+void MainComponent::showPool(){ui->showPool();}
 bool MainComponent::metronomeOn()const{return ui->engine.metronome.load();}
 void MainComponent::addAudioTrack(){addTrack(TrackKind::audio);}
 void MainComponent::addTrack(TrackKind kind){if(kind==TrackKind::marker&&std::count_if(ui->engine.tracks.begin(),ui->engine.tracks.end(),[](const auto& track){return track->kind==TrackKind::marker;})>=10){ui->notice=i18n::tr("El proyecto admite hasta diez pistas de marcador.");ui->refresh();return;}ui->pushUndo(i18n::tr("Añadir pista"));ui->engine.addTrack(kind);ui->select((int)ui->engine.tracks.size()-1);ui->markDirty();ui->refresh();}
@@ -2359,6 +2390,7 @@ void MainComponent::addMidiTrack(){ui->plugins.showInstrumentSelector();}
 void MainComponent::refreshLanguage()
 {
     i18n::translateControls(*this);ui->markerInspector.refreshLanguage();
+    if(ui->poolWindow)ui->poolWindow->setName(i18n::tr("Silente · Pool de medios"));
     if(ui->addTrackWindow){ui->addTrackWindow->setName(i18n::tr("Añadir pista"));ui->addTrackWindow->dialog().refreshLanguage();}
     ui->languageButton.setButtonText(i18n::language()==i18n::Language::spanish?juce::String::fromUTF8("Español"):juce::String("English"));
     ui->notice=ui->engine.tracks.empty()?i18n::tr("Nueva sesión. Añade una pista o arrastra tus archivos."):i18n::tr("Listo. Pulsa Espacio para escuchar la sesión.");

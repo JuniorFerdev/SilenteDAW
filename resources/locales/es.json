@@ -919,5 +919,21 @@
   "Mover pista abajo": "Mover pista abajo",
   "Sacar de la carpeta": "Sacar de la carpeta",
   "Mover a la carpeta": "Mover a la carpeta",
-  "Mover pista": "Mover pista"
+  "Mover pista": "Mover pista",
+  "Este medio no tiene ruta de archivo.": "Este medio no tiene ruta de archivo.",
+  "Ningún clip usa este medio.": "Ningún clip usa este medio.",
+  "Ruta": "Ruta",
+  "Duración": "Duración",
+  "Usos": "Usos",
+  "Presente": "Presente",
+  "Ausente": "Ausente",
+  "Reemplazado": "Reemplazado",
+  "Localizar archivo ausente…": "Localizar archivo ausente…",
+  "Selecciona un medio con ruta.": "Selecciona un medio con ruta.",
+  "Elegir el archivo de audio que reemplaza a ": "Elegir el archivo de audio que reemplaza a ",
+  "Silente · Pool de medios": "Silente · Pool de medios",
+  "Reasignar medio": "Reasignar medio",
+  "Medio reasignado: ": "Medio reasignado: ",
+  " clip(s)": " clip(s)",
+  " uso(s) de ": " uso(s) de "
 }

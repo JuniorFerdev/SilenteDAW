@@ -7,6 +7,7 @@
 #include "audio/DeviceSettings.h"
 #include "audio/Metronome.h"
 #include "domain/Automation.h"
+#include "domain/MediaPool.h"
 #include "domain/MidiNote.h"
 #include "domain/TempoMap.h"
 #include "domain/TrackData.h"
@@ -169,6 +170,11 @@ public:
     juce::Result setSend(Track&, int slot, const juce::String& fxId);
     std::shared_ptr<Track> findTrack(const juce::String& id) const;
     juce::Result importAudio(const juce::File&, int trackIndex = -1, double startSeconds = 0.0);
+    // Pool de medios (hilo de mensajes): una referencia por clip de audio, y reasignación de ruta.
+    // relinkMedia lee el archivo nuevo antes de tomar el cerrojo y sustituye el audio de todos los
+    // clips que usaban `fromPath`; no cambia nombre, posición ni recortes. Devuelve el nº de clips en `changed`.
+    std::vector<domain::MediaClipRef> mediaClips() const;
+    juce::Result relinkMedia(const juce::String& fromPath, const juce::File& newFile, int* changed = nullptr);
     juce::Result importMidi(const juce::File&);
     // Standard MIDI File (format 1, fixed PPQ): tempo track plus one track per MIDI/instrument
     // track with notes; `trackIndex` < 0 exports all of them. Same beats<->ticks convention as importMidi.

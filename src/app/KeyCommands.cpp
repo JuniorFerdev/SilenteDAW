@@ -113,7 +113,7 @@ std::vector<KeyCommand> build()
     add("colour", "Ajustar color de pista/evento", "Set Track/Event Color", 'C', A | S);
     add("deleteTracks", "Eliminar pistas seleccionadas", "Remove Selected Tracks", K::deleteKey, S);
     add("tapTempo", "Marcar tempo", "Tap Tempo", K::spaceKey, S);
-    add("", "Abrir Pool", "Open Pool", 'P', C);
+    add("openPool", "Abrir Pool", "Open Pool", 'P', C);
     add("", "Abrir marcadores", "Open Markers", 'M', C);
     add("", "Configuración", "Project Setup", 'S', S);
     cat("Cuantizar", "Quantize");

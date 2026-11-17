@@ -912,6 +912,37 @@ juce::Result AudioEngine::importAudio(const juce::File& file, int trackIndex, do
     tracks[static_cast<size_t>(trackIndex)]->clips.push_back(std::move(clip));
     return juce::Result::ok();
 }
+std::vector<domain::MediaClipRef> AudioEngine::mediaClips() const
+{
+    std::vector<domain::MediaClipRef> refs;
+    const juce::ScopedLock lock(modelLock);
+    for (const auto& track : tracks)
+        for (const auto& clip : track->clips)
+        {
+            domain::MediaClipRef ref;
+            ref.trackId = track->id; ref.clipId = clip.id; ref.path = clip.file.getFullPathName();
+            ref.name = clip.file != juce::File() ? clip.file.getFileName() : clip.name;
+            if (clip.audio) { ref.lengthSamples = clip.audio->getNumSamples(); ref.channels = clip.audio->getNumChannels(); }
+            ref.sampleRate = clip.sourceRate;
+            refs.push_back(std::move(ref));
+        }
+    return refs;
+}
+juce::Result AudioEngine::relinkMedia(const juce::String& fromPath, const juce::File& newFile, int* changed)
+{
+    if (changed) *changed = 0;
+    if (fromPath.isEmpty()) return juce::Result::fail(i18n::tr("Este medio no tiene ruta de archivo."));
+    AudioClip loaded;
+    if (auto result = readAudio(newFile, loaded); result.failed()) return result;
+    const juce::ScopedLock lock(modelLock);
+    int count = 0;
+    for (auto& track : tracks)
+        for (auto& clip : track->clips)
+            if (clip.file.getFullPathName() == fromPath)
+            { clip.file = newFile; clip.audio = loaded.audio; clip.sourceRate = loaded.sourceRate; ++count; }
+    if (changed) *changed = count;
+    return count > 0 ? juce::Result::ok() : juce::Result::fail(i18n::tr("Ningún clip usa este medio."));
+}
 juce::Result AudioEngine::importMidi(const juce::File& file)
 {
     auto stream = file.createInputStream();

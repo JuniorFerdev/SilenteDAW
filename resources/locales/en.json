@@ -919,5 +919,21 @@
   "Mover pista abajo": "Move Track Down",
   "Sacar de la carpeta": "Move Out of Folder",
   "Mover a la carpeta": "Move to Folder",
-  "Mover pista": "Move Track"
+  "Mover pista": "Move Track",
+  "Este medio no tiene ruta de archivo.": "This media file has no file path.",
+  "Ningún clip usa este medio.": "No clip uses this media file.",
+  "Ruta": "Path",
+  "Duración": "Duration",
+  "Usos": "Uses",
+  "Presente": "Present",
+  "Ausente": "Missing",
+  "Reemplazado": "Replaced",
+  "Localizar archivo ausente…": "Locate Missing File…",
+  "Selecciona un medio con ruta.": "Select a media file that has a path.",
+  "Elegir el archivo de audio que reemplaza a ": "Choose the audio file that replaces ",
+  "Silente · Pool de medios": "Silente · Media Pool",
+  "Reasignar medio": "Relink Media",
+  "Medio reasignado: ": "Media relinked: ",
+  " clip(s)": " clip(s)",
+  " uso(s) de ": " use(s) of "
 }

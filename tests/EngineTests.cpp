@@ -14,6 +14,7 @@
 #include "../src/app/TrackCreation.h"
 #include "../src/app/TrackOrderCommands.h"
 #include "../src/domain/TrackTree.h"
+#include "../src/domain/MediaPool.h"
 #include "../src/ui/project/TimelineTracks.h"
 #include <limits>
 #include <cmath>
@@ -1472,6 +1473,50 @@ int runEngineTests(const juce::File& outputDir)
         }
     });
 
+    suite.run("media pool: grouping, usage counts, present/missing/replaced, sorting and relink", [&]
+    {
+        using namespace domain;
+        // Pure model: three references to a.wav, one to b.wav (missing), one in-memory clip.
+        const auto ref = [](const char* path, const char* name, long long length, int channels, double hz)
+        { MediaClipRef r; r.path = path; r.name = name; r.lengthSamples = length; r.channels = channels; r.sampleRate = hz; return r; };
+        std::vector<MediaClipRef> refs { ref("/m/a.wav", "a.wav", 48000, 1, 48000.0), ref("/m/b.wav", "b.wav", 22050, 2, 44100.0),
+                                         ref("/m/a.wav", "a.wav", 48000, 1, 48000.0), ref("", "memoria", 100, 1, 48000.0), ref("/m/a.wav", "a.wav", 48000, 1, 48000.0) };
+        const auto exists = [](const juce::String& path) { return path == "/m/a.wav"; };
+        auto pool = buildPool(refs, exists);
+        require(pool.size() == 3, "Pool must group by path (and keep the unnamed clip apart)");
+        require(pool[0].path == "/m/a.wav" && pool[0].uses == 3 && pool[0].lengthSamples == 48000 && pool[0].seconds == 1.0 && pool[0].channels == 1 && pool[0].state == MediaState::present, "Medium a.wav: 3 uses, 48000 samples, 1.000 s, present");
+        require(pool[1].path == "/m/b.wav" && pool[1].uses == 1 && pool[1].state == MediaState::missing && pool[1].channels == 2, "Medium b.wav: 1 use, missing");
+        require(pool[1].seconds == 0.5 && pool[2].uses == 1 && pool[2].state == MediaState::present, "b.wav lasts 0.5 s; the in-memory medium counts as present");
+        sortPool(pool, MediaColumn::uses, false);
+        require(pool[0].path == "/m/a.wav" && pool[1].path == "/m/b.wav" && pool[2].path.isEmpty(), "Sort by uses, descending, is stable");
+        sortPool(pool, MediaColumn::duration, true);
+        require(pool[0].lengthSamples == 100 && pool[1].lengthSamples == 22050 && pool[2].lengthSamples == 48000, "Sort by duration, ascending");
+        sortPool(pool, MediaColumn::state, true);
+        require(pool.back().state == MediaState::missing, "Sort by state puts missing last");
+        require(reassignPath(refs, "/m/b.wav", "/m/c.wav") == 1 && refs[1].path == "/m/c.wav" && reassignPath(refs, "/m/zzz.wav", "/m/q.wav") == 0, "Reassign changes exactly the clips of that medium");
+        const auto replaced = buildPool(refs, [](const juce::String&) { return true; }, { "/m/c.wav" });
+        require(replaced[1].state == MediaState::replaced && replaced[0].state == MediaState::present, "A reassigned path that exists is replaced");
+        // Engine: two clips on mono.wav, one on stereo.wav; copy mono.wav, delete the copy and relink.
+        AudioEngine engine; setup(engine);
+        auto t1 = importFixture(engine, mono); requireOk(engine.importAudio(mono, 0, 3.0));
+        importFixture(engine, stereo);
+        const auto live = buildPool(engine.mediaClips(), [](const juce::String& p) { return juce::File(p).existsAsFile(); });
+        require(live.size() == 2 && live[0].uses == 2 && live[0].lengthSamples == 48000 && live[0].channels == 1 && live[0].state == MediaState::present, "Engine pool: mono.wav used twice");
+        require(live[1].uses == 1 && live[1].channels == 2 && live[1].lengthSamples == 48000 && live[1].name == "stereo.wav", "Engine pool: stereo.wav used once, 2 channels");
+        const auto gone = dir.getChildFile("gone.wav"); mono.copyFileTo(gone);
+        auto t2 = engine.addAudioTrack("Copia"); requireOk(engine.importAudio(gone, 2, 0.0)); requireOk(engine.importAudio(gone, 2, 5.0));
+        gone.deleteFile();
+        auto withGone = buildPool(engine.mediaClips(), [](const juce::String& p) { return juce::File(p).existsAsFile(); });
+        int missingCount = 0; for (const auto& e : withGone) if (e.state == MediaState::missing) { ++missingCount; require(e.uses == 2 && e.path == gone.getFullPathName(), "Missing medium has its 2 uses"); }
+        require(missingCount == 1, "Exactly one missing medium");
+        int changed = -1;
+        require(engine.relinkMedia(gone.getFullPathName(), stereo, &changed).wasOk() && changed == 2, "Relink replaces both clips");
+        require(t2->clips[0].file == stereo && t2->clips[1].file == stereo && t2->clips[0].audio->getNumChannels() == 2 && t2->clips[1].startSeconds == 5.0, "Relinked clips keep position and use the new audio");
+        require(engine.relinkMedia(gone.getFullPathName(), stereo, &changed).failed() && changed == 0, "Relinking a path nobody uses fails");
+        require(engine.relinkMedia(stereo.getFullPathName(), dir.getChildFile("nada.wav"), &changed).failed() && t2->clips[0].file == stereo, "Relinking to an unreadable file changes nothing");
+        const auto after = buildPool(engine.mediaClips(), [](const juce::String& p) { return juce::File(p).existsAsFile(); });
+        require(after.size() == 2 && after[1].uses == 3, "After relinking, stereo.wav has 3 uses");
+    });
     auto* report = new juce::DynamicObject();
     report->setProperty("suite", "Silente offline engine tests");
     report->setProperty("timestamp", juce::Time::getCurrentTime().toISO8601(true));

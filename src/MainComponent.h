@@ -49,6 +49,7 @@ public:
     void showMetronomeSettings();
     void showTapTempo();
     void showTempoMap(); // «Mapa de tempo y de compás» window (tempo and signature events)
+    void showPool(); // ventana «Pool de medios» (solo lectura y reasignación de rutas)
     bool metronomeOn() const;
     void addAudioTrack();
     void addMidiTrack();
