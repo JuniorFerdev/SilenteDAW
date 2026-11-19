@@ -59,12 +59,15 @@ struct TrackSend
     std::atomic<bool> preFader { false }, enabled { true };
 };
 
+// Colour of a track that has not been painted yet. Only other colours paint the track header row.
+inline constexpr juce::uint32 defaultTrackColour = 0xff7aa6ff;
+
 struct Track
 {
     Track();
     ~Track();
     juce::String id { juce::Uuid().toString() }, name;
-    juce::Colour colour { 0xff7aa6ff };
+    juce::Colour colour { defaultTrackColour };
     TrackKind kind = TrackKind::audio;
     bool isMidi = false; // instrument or midi kind
     bool hasEvents() const noexcept { return kind==TrackKind::audio||isMidi; }

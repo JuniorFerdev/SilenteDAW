@@ -38,6 +38,16 @@ void runFolderUiChecks(MainComponent& view,AudioEngine& engine,const File& outpu
     for(int n=0;n<20;++n)arrangement->mouseWheelMove(mouse(*arrangement,400,100),MouseWheelDetails{0.0f,1.0f,false,false,false});
     view.resized();arrangement->repaint();
     const auto rowY=[&](int row,float f=0.25f){return (float)(ruler+row*lane)+f*lane;};
+    {
+        // Cubase: a painted track also paints its row in the track list, a little darker than its colour.
+        const auto paint=Colour(0xffe05050);
+        bass->colour=paint;arrangement->repaint();
+        const auto image=arrangement->createComponentSnapshot(arrangement->getLocalBounds());
+        const auto pixel=image.getPixelAt(150,ruler+57);
+        const auto expected=paint.darker(.3f);
+        expect(std::abs(pixel.getRed()-expected.getRed())<=6&&std::abs(pixel.getGreen()-expected.getGreen())<=6&&std::abs(pixel.getBlue()-expected.getBlue())<=6,"A painted track paints its row in the track list, a little darker than its colour");
+        bass->colour=Colour(defaultTrackColour);arrangement->repaint();
+    }
     const auto drag=[&](int fromRow,float toY)
     {   // Press on the header background (not a control), drag and release over the destination.
         const Point<float> down{150.0f,rowY(fromRow,0.2f)};

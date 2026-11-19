@@ -387,3 +387,9 @@ Sin probar con interfaz ni micrófono real. Pendiente: confirmar la latencia de 
 Sustituida `releases/macOS/Silente-Universal.app` por un build universal arm64 + x86_64 de las fuentes `7ac8a27`, firmado (`audio.silente.studio`, verificación estricta correcta). SHA-256 del ejecutable `98026bf97042d6e99f97b9e147f3f7bbbc498c2ee161fcce25ad422ef0f5486c`. Sin copias de respaldo. Retiradas las apps temporales de `build/` y `build-universal/` con `clean_generated_apps.py --apply`; solo queda la app entregada.
 Verificado sobre la app entregada: motor 57/57 y formatos 6/6 en arm64 y en x86_64 (Rosetta); interfaz 304/304 en ambas. No se probó con interfaz de audio ni micrófono real.
 Incidente de entorno: la caché de CMake de `build-universal` apuntaba a `UNIVERSIDAD/FUNDACIONES/Silente`; se borró esa carpeta regenerable y se volvió a compilar.
+
+## pintar-pistas01 — Color de pista también en el panel de pistas (19-11-2026)
+
+Pedido de Fer, según el tutorial de Cubase: al pintar una pista, la fila de su cabecera en el panel izquierdo también se pinta, con un tono algo más oscuro. Antes solo tenía una franja estrecha. Implementado en `src/MainComponent.cpp` (fila de cabecera con `colour.darker(.3f)`, solo si la pista tiene un color distinto del de por defecto, ahora `defaultTrackColour` en `src/AudioEngine.h`; marcadores y reglas no cambian). Los eventos ya tomaban el color de la pista.
+Verificado: flujo de interfaz 305/305, con una comprobación nueva en `tests/FolderUiTests.cpp` que lee un píxel de la fila pintada. Sin probar a mano con el ratón ni con el tutorial completo.
+Pendiente: decidir si pintar la fila también al seleccionar la pista, y si el color por defecto debe poder elegirse expresamente.

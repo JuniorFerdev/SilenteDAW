@@ -289,7 +289,9 @@ public:
             int i=visible[(size_t)rowIndex];const int lane=laneOf(i),y=paintY;paintY+=lane; if (y>getHeight()) break;
             if(!dirtyArea.intersects(juce::Rectangle<int>(0,y,getWidth(),lane)))continue; // only rows in the area being repainted
             auto& t=*engine.tracks[(size_t)i]; const auto colour=t.colour;
-            g.setColour(i==selectedTrack ? selectedTrackColour() : panel); g.fillRect(0,y,header,lane);
+            // Cubase: a painted track paints its row in the list too, a little darker than the track colour.
+            const bool painted=t.kind!=TrackKind::marker&&t.kind!=TrackKind::ruler&&colour!=juce::Colour(defaultTrackColour);
+            g.setColour(painted?colour.darker(.3f):i==selectedTrack?selectedTrackColour():panel); g.fillRect(0,y,header,lane);
             if (i==selectedTrack) { g.setColour(colour.withAlpha(.035f)); g.fillRect(header,y,getWidth()-header,lane); }
             if(t.kind==TrackKind::marker||t.kind==TrackKind::ruler)
             {
