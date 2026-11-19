@@ -38,7 +38,7 @@ target_sources(Silente PRIVATE src/Main.cpp src/AudioEngine.cpp src/MainComponen
     src/ui/project/TimelineTracks.cpp src/ui/project/MarkerInspector.cpp tests/MarkerUiTests.cpp src/ui/plugins/InsertRack.cpp
     src/app/TrackCreation.cpp src/ui/project/AddTrackDialog.cpp tests/AddTrackUiTests.cpp
     src/ui/midi/PianoRoll.cpp src/domain/Quantize.cpp src/domain/NoteEdit.cpp src/domain/TempoMap.cpp src/persistence/TempoMapJson.cpp src/ui/tempo/TempoMapPanel.cpp
-    src/domain/Automation.cpp src/domain/TrackTree.cpp src/app/TrackOrderCommands.cpp src/persistence/AutomationJson.cpp src/app/AutomationCommands.cpp src/ui/automation/AutomationLane.cpp tests/FolderUiTests.cpp tests/PoolUiTests.cpp src/domain/MediaPool.cpp src/ui/pool/PoolPanel.cpp)
+    src/domain/Automation.cpp src/domain/TrackTree.cpp src/app/TrackOrderCommands.cpp src/persistence/AutomationJson.cpp src/app/AutomationCommands.cpp src/app/MidiEditCommands.cpp src/ui/automation/AutomationLane.cpp tests/FolderUiTests.cpp tests/PoolUiTests.cpp src/domain/MediaPool.cpp src/ui/pool/PoolPanel.cpp)
 target_compile_definitions(Silente PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:Silente,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}"

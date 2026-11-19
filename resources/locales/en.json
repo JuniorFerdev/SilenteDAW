@@ -1021,5 +1021,12 @@
   "Zoom en N pistas": "Zoom on N tracks",
   "Pistas": "Tracks",
   "Zoom de pistas": "Track zoom",
-  "Expandir pista seleccionada": "Expand selected track"
+  "Expandir pista seleccionada": "Expand selected track",
+  "Mover notas": "Move notes",
+  "Cambiar duración de notas": "Change note length",
+  "Borrar notas": "Delete notes",
+  "Cuantizar notas": "Quantize notes",
+  "Duplicar notas": "Duplicate notes",
+  "Transponer notas": "Transpose notes",
+  "Crear nota": "Create note"
 }

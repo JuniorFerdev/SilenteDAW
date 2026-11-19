@@ -19,6 +19,7 @@
 #include "../src/ui/project/ChannelTab.h"
 #include "../src/app/KeyCommands.h"
 #include "../src/ui/midi/PianoRoll.h"
+#include "../src/app/MidiEditCommands.h"
 #include "../src/ui/tempo/TempoMapPanel.h"
 #include "../src/ui/automation/AutomationLane.h"
 #include "../src/ui/mixconsole/MixConsole.h"
@@ -306,6 +307,7 @@ private:
         pianoRollSelectionChecks(*roll,undoSteps,notes);
         roll->beforeEdit=savedBefore;roll->changed=savedChanged;
         pianoRollUndoCheck(*roll,notes);
+        midiEditCommandChecks(*roll,notes);
         roll->clearSelection();engine.clear();
     }
     // Multiple selection (subetapa 1 of the MIDI editor): marquee, Shift+click, Cmd+A, group move,
@@ -346,6 +348,36 @@ private:
         roll.mouseDown(mouse(roll,x(3.5),y(65),false,ModifierKeys::shiftModifier));roll.mouseUp(mouse(roll,x(3.5),y(65)));
         roll.keyPressed(KeyPress(KeyPress::deleteKey));n=notes();
         expect(undoSteps==before+4&&n.size()==2&&n[0].pitch==63&&n[1].pitch==72&&roll.selection.empty()&&roll.selected==-1,"Piano roll: Delete removes the two selected notes with one undo step");
+    }
+    // Subetapa 2: each MIDI edit command is one named history step that Undo and Redo walk through.
+    template<typename Notes> void midiEditCommandChecks(ui::PianoRoll& roll,const Notes& notes)
+    {
+        const auto setNotes=[&]{const ScopedLock lock(engine.modelLock);auto& n=engine.tracks[0]->notes;n.clear();int k=0;for(int p:{60,64,67}){MidiNote m;m.pitch=p;m.startBeats=k+(k==0?0.1:0.0);m.lengthBeats=1;n.push_back(m);++k;}};
+        const auto fingerprint=[&]{String s;for(auto& m:notes())s<<m.pitch<<"/"<<m.startBeats<<"/"<<m.lengthBeats<<";";return s;};
+        app::MidiEditContext ctx{engine,0,roll.selection,[&](const String& name){roll.editName=name;roll.beforeEdit();},[&]{roll.changed();}};
+        domain::QuantizeSettings q;q.division=4;
+        struct Case{const char* key;std::function<int()> run;std::function<bool()> verify;};
+        const Case cases[]{
+            {"Mover notas",[&]{return app::moveSelection(ctx,1.0,2);},[&]{auto n=notes();return n.size()==3&&n[0].pitch==62&&std::abs(n[0].startBeats-1.1)<1e-9&&n[2].pitch==69&&n[2].startBeats==3.0;}},
+            {"Cambiar duración de notas",[&]{return app::resizeSelection(ctx,0.5);},[&]{auto n=notes();return n.size()==3&&n[0].lengthBeats==1.5&&n[1].lengthBeats==1.5&&n[2].lengthBeats==1.5;}},
+            {"Cuantizar notas",[&]{return app::quantizeSelection(ctx,q);},[&]{auto n=notes();return n.size()==3&&n[0].startBeats==0.0&&n[1].startBeats==1.0;}},
+            {"Duplicar notas",[&]{return app::duplicateSelection(ctx);},[&]{auto n=notes();return n.size()==6&&n[3].pitch==60&&std::abs(n[3].startBeats-3.0)<1e-9&&n[3].id!=n[0].id&&roll.selection.size()==3&&roll.selection.contains(n[5].id)&&!roll.selection.contains(n[0].id);}},
+            {"Transponer notas",[&]{return app::transposeSelection(ctx,12);},[&]{auto n=notes();return n.size()==3&&n[0].pitch==72&&n[1].pitch==76&&n[2].pitch==79;}},
+            {"Borrar notas",[&]{return app::deleteSelection(ctx);},[&]{return notes().empty()&&roll.selection.empty();}}};
+        for(const auto& c:cases)
+        {
+            setNotes();roll.selectAll();const auto before=fingerprint();const int sizeBefore=view.editHistory().size();
+            const int affected=c.run();const auto after=fingerprint();const auto history=view.editHistory();
+            const bool named=history.size()==jmin(100,sizeBefore+1)&&history[history.size()-1]==i18n::tr(c.key);
+            const bool applied=affected>0&&c.verify();
+            view.runCommand("undo");const bool undone=fingerprint()==before&&view.editHistory().size()==history.size()-1;
+            view.runCommand("redo");const bool redone=fingerprint()==after&&view.editHistory().size()==history.size();
+            expect(named&&applied&&undone&&redone,String("MIDI edit command \"")+c.key+"\": result, one named history step, Undo and Redo");
+        }
+        setNotes();roll.clearSelection();const int h=view.editHistory().size();
+        expect(app::moveSelection(ctx,1.0,0)==0&&app::deleteSelection(ctx)==0&&app::transposeSelection(ctx,1)==0&&view.editHistory().size()==h,"MIDI edit commands with an empty selection change nothing and record no history step");
+        roll.selectAll();expect(app::transposeSelection(ctx,100)==3&&notes()[2].pitch==127&&notes()[0].pitch==120,"Transpose limits the whole group to pitch 127 keeping intervals");
+        view.runCommand("undo");
     }
     // Real history: one group move is undone in one step and redone in one step.
     template<typename Notes> void pianoRollUndoCheck(ui::PianoRoll& roll,const Notes& notes)

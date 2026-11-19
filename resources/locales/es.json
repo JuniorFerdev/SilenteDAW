@@ -1021,5 +1021,12 @@
   "Zoom en N pistas": "Zoom en N pistas",
   "Pistas": "Pistas",
   "Zoom de pistas": "Zoom de pistas",
-  "Expandir pista seleccionada": "Expandir pista seleccionada"
+  "Expandir pista seleccionada": "Expandir pista seleccionada",
+  "Mover notas": "Mover notas",
+  "Cambiar duración de notas": "Cambiar duración de notas",
+  "Borrar notas": "Borrar notas",
+  "Cuantizar notas": "Cuantizar notas",
+  "Duplicar notas": "Duplicar notas",
+  "Transponer notas": "Transponer notas",
+  "Crear nota": "Crear nota"
 }

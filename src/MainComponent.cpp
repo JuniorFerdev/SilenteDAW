@@ -1349,7 +1349,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             };
             juce::CallOutBox::launchAsynchronously(std::move(finder),arrangement.localAreaToGlobal(Arrangement::searchButton()),nullptr);
         };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.warn=[this](const juce::String& m){error(m);};arrangement.eventColour=[this]{colourMenu();};arrangement.moveRange=[this](double d,int rows,bool copy){moveRangeContent(d,rows,copy);};arrangement.rangeMenu=[this]{rangeMenu().showMenuAsync(juce::PopupMenu::Options(),[safe=juce::Component::SafePointer<MainComponent>(&owner)](int r){if(safe&&r)safe->ui->rangeMenuItem(r);});};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
-        piano.beforeEdit=[this]{pushUndo();};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
+        piano.beforeEdit=[this]{pushUndo(piano.editName);piano.editName={};};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
         plugins.onChange=[this]{markDirty();refresh();};
         plugins.onTrackCreated=[this](int index){select(index);};
         keyboard.setAvailableRange(24,108);keyboard.setLowestVisibleKey(48);keyboard.setKeyWidth(20);keyboard.setVelocity(.8f,true);
@@ -1578,7 +1578,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     // Each undo step stores the state before an edit plus the edit's name and time (Historial de ediciones).
     void pushUndo(const juce::String& action={}){auto s=snapshot();s.action=action.isEmpty()?i18n::tr("Edición"):action;s.time=juce::Time::getCurrentTime();undoStack.push_back(std::move(s));if(undoStack.size()>100)undoStack.pop_front();redoStack.clear();}
     void undo(bool redo){auto& from=redo?redoStack:undoStack;auto& to=redo?undoStack:redoStack;if(from.empty())return;to.push_back(snapshot());to.back().action=from.back().action;to.back().time=from.back().time;auto s=std::move(from.back());from.pop_back();restore(s);notice=redo?i18n::tr("Edición restaurada."):i18n::tr("Edición deshecha.");}
-    void duplicateNote(){const juce::ScopedLock lock(engine.modelLock);auto t=currentTrack();if(!t||piano.selected<0||piano.selected>=(int)t->notes.size())return;pushUndo();auto n=t->notes[(size_t)piano.selected];n.id=juce::Uuid().toString();n.startBeats+=n.lengthBeats;t->notes.push_back(n);piano.selectOnly((int)t->notes.size()-1);markDirty();}
+    void duplicateNote(){piano.duplicateSelected();}
     void setPiano(bool show){pianoVisible=show;automationVisible=false;piano.setVisible(show);keyboard.setVisible(show);mixer.setVisible(!show);mixerTab.setToggleState(!show,juce::dontSendNotification);pianoTab.setToggleState(show,juce::dontSendNotification);automationTab.setToggleState(false,juce::dontSendNotification);owner.resized();owner.repaint();}
     // Lower zone «Automatización»: the automation lane of the selected track.
     void setAutomation(){pianoVisible=false;automationVisible=true;automationLane.setTrack(selected);mixerTab.setToggleState(false,juce::dontSendNotification);pianoTab.setToggleState(false,juce::dontSendNotification);automationTab.setToggleState(true,juce::dontSendNotification);owner.resized();owner.repaint();}

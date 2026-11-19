@@ -1,6 +1,7 @@
 #include "PianoRoll.h"
 #include "../../i18n/Translations.h"
 #include "../theme/Drawing.h"
+#include "../../app/MidiEditCommands.h"
 #include <cmath>
 
 namespace silente::ui
@@ -40,7 +41,7 @@ void PianoRoll::mouseDown(const juce::MouseEvent& e)
     if(e.mods.isPopupMenu())
     {
         // Existing behaviour: right click deletes the clicked note only.
-        if(beforeEdit)beforeEdit();notes.erase(notes.begin()+hit);selection.remove(id);selected=-1;if(changed)changed();repaint();return;
+        editName=i18n::tr("Borrar notas");if(beforeEdit)beforeEdit();notes.erase(notes.begin()+hit);selection.remove(id);selected=-1;if(changed)changed();repaint();return;
     }
     if(e.mods.isShiftDown()){if(!selection.toggle(id)){selected=-1;repaint();return;}}
     else if(!selection.contains(id)){selection.clear();selection.add(id);}
@@ -50,7 +51,7 @@ void PianoRoll::mouseDown(const juce::MouseEvent& e)
 }
 void PianoRoll::mouseDoubleClick(const juce::MouseEvent& e)
 {
-    const juce::ScopedLock lock(engine.modelLock);if(!valid()||e.x<52||e.y<24)return;gesture=Gesture::none;marquee={};if(beforeEdit)beforeEdit();MidiNote n;n.pitch=juce::jlimit(0,127,topPitch-(e.y-24)/row);n.startBeats=quantize(scrollBeats+(e.x-52)/pixelsPerBeat);n.lengthBeats=1;engine.tracks[(size_t)track]->notes.push_back(n);selectOnly((int)engine.tracks[(size_t)track]->notes.size()-1);if(changed)changed();repaint();
+    const juce::ScopedLock lock(engine.modelLock);if(!valid()||e.x<52||e.y<24)return;gesture=Gesture::none;marquee={};editName=i18n::tr("Crear nota");if(beforeEdit)beforeEdit();MidiNote n;n.pitch=juce::jlimit(0,127,topPitch-(e.y-24)/row);n.startBeats=quantize(scrollBeats+(e.x-52)/pixelsPerBeat);n.lengthBeats=1;engine.tracks[(size_t)track]->notes.push_back(n);selectOnly((int)engine.tracks[(size_t)track]->notes.size()-1);if(changed)changed();repaint();
 }
 void PianoRoll::mouseDrag(const juce::MouseEvent& e)
 {
@@ -69,7 +70,7 @@ void PianoRoll::mouseDrag(const juce::MouseEvent& e)
     else moved=domain::moveNotes(gestureOriginal,gestureCurrent,gestureIndices,selected,delta,-(int)std::round((e.y-dragStart.y)/(float)row),grid());
     if(!moved)return;
     // One undo step per gesture, taken just before the first real change.
-    if(!gestureRecorded){gestureRecorded=true;if(beforeEdit)beforeEdit();}
+    if(!gestureRecorded){gestureRecorded=true;editName=gesture==Gesture::resize?i18n::tr("Cambiar duración de notas"):i18n::tr("Mover notas");if(beforeEdit)beforeEdit();}
     for(int i:gestureIndices)notes[(size_t)i]=gestureCurrent[(size_t)i];
     if(changed)changed();repaint();
 }
@@ -83,23 +84,19 @@ void PianoRoll::selectOnly(int index)
     if(valid()&&index>=0&&index<(int)engine.tracks[(size_t)track]->notes.size()){selected=index;selection.add(engine.tracks[(size_t)track]->notes[(size_t)index].id);}
     repaint();
 }
-void PianoRoll::deleteSelected()
+app::MidiEditContext PianoRoll::context()
 {
-    const juce::ScopedLock lock(engine.modelLock);if(!valid())return;auto& n=engine.tracks[(size_t)track]->notes;
-    if(domain::selectedIndices(n,selection).empty())return;
-    if(beforeEdit)beforeEdit();domain::eraseNotes(n,selection);selection.clear();selected=-1;if(changed)changed();repaint();
+    return {engine,track,selection,[this](const juce::String& name){editName=name;if(beforeEdit)beforeEdit();},[this]{if(changed)changed();repaint();}};
 }
-int PianoRoll::quantizeNotes()
-{
-    const juce::ScopedLock lock(engine.modelLock);if(!valid())return 0;auto& n=engine.tracks[(size_t)track]->notes;
-    auto copy=n;
-    if(domain::quantizeSelectedNotes(copy,domain::selectedIndices(n,selection),quantizeSettings)==0)return 0;
-    if(beforeEdit)beforeEdit();n=std::move(copy);if(changed)changed();repaint();return 1;
-}
+void PianoRoll::deleteSelected(){if(app::deleteSelection(context())>0)selected=-1;}
+int PianoRoll::quantizeNotes(){return app::quantizeSelection(context(),quantizeSettings)>0?1:0;}
+int PianoRoll::duplicateSelected(){int anchor=-1;const int n=app::duplicateSelection(context(),&anchor);if(n>0)selected=anchor;return n;}
+int PianoRoll::transposeSelected(int semitones){return app::transposeSelection(context(),semitones);}
 bool PianoRoll::keyPressed(const juce::KeyPress& k)
 {
     if(k==juce::KeyPress::deleteKey||k==juce::KeyPress::backspaceKey){deleteSelected();return true;}
     const int code=k.getKeyCode();
+    if((code=='D'||code=='d')&&k.getModifiers().isCommandDown()&&!k.getModifiers().isAltDown()&&!k.getModifiers().isShiftDown()){duplicateSelected();return true;}
     if((code=='A'||code=='a')&&k.getModifiers().isCommandDown()&&!k.getModifiers().isAltDown()){if(k.getModifiers().isShiftDown())clearSelection();else selectAll();return true;}
     return false;
 }

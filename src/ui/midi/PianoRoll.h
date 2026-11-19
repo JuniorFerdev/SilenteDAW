@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "../../domain/Quantize.h"
 #include "../../domain/NoteEdit.h"
+#include "../../app/MidiEditCommands.h"
 #include <functional>
 
 namespace silente::ui
@@ -22,6 +23,8 @@ public:
     AudioEngine& engine;int track=0,selected=-1,topPitch=79;double pixelsPerBeat=64,scrollBeats=0;bool snap=true;
     domain::NoteSelection selection;
     std::function<void()> beforeEdit,changed;
+    // Name of the undo step about to be recorded; set just before beforeEdit is called.
+    juce::String editName;
     void paint(juce::Graphics& g)override;
     void mouseDown(const juce::MouseEvent& e)override;
     void mouseDoubleClick(const juce::MouseEvent& e)override;
@@ -37,6 +40,10 @@ public:
     void deleteSelected();
     // Quantize command (Q): the selected notes, or every note when none is selected.
     int quantizeNotes();
+    // Cmd+D: copies the selected group after its span; returns how many notes were copied.
+    int duplicateSelected();
+    // Transposes the selection by semitones (group limited to 0..127).
+    int transposeSelected(int semitones);
     bool keyPressed(const juce::KeyPress& k)override;
 private:
     enum class Gesture{none,move,resize,marquee};
@@ -45,6 +52,7 @@ private:
     Gesture gesture=Gesture::none;bool gestureRecorded=false;
     std::vector<MidiNote> gestureOriginal,gestureCurrent;std::vector<int> gestureIndices;
     domain::NoteSelection marqueeBase;juce::Rectangle<float> marquee;
+    app::MidiEditContext context();
     bool valid()const;
     double grid()const;
     double quantize(double b)const;
