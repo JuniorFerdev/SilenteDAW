@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <string>
 #include <cstddef>
 #include <vector>
 
@@ -41,9 +42,19 @@ struct AutomationCurve
 // Automation mode of a track (Cubase R/W buttons). Read: playback follows the curves that have
 // points. Write: changing a control writes a point at the project cursor (only while the
 // transport is stopped in this stage; live writing during playback is pending).
+//
+// Write style (panel «Automatización», manual p. 913): with Write on, `style` says how writing
+// works. normal = a control change writes at the cursor (stopped transport); touch = writes only
+// while the control is held and goes back to reading on release; latch = starts writing when the
+// control is touched and keeps writing the last value until the transport stops.
+enum class AutomationWriteStyle { normal, touch, latch };
+// The five modes of the panel; read/write/style are the stored form (old projects have no style).
+enum class AutomationMode { off, read, write, touch, latch };
+
 struct TrackAutomation
 {
     bool read = false, write = false;
+    AutomationWriteStyle style = AutomationWriteStyle::normal;
     AutomationCurve volume, pan;
     std::array<AutomationCurve, automationSendCount> sends;
 
@@ -54,7 +65,22 @@ struct TrackAutomation
     bool empty() const noexcept { return ! read && ! write && ! hasPoints(); }
     // Read mode on and this curve has points: the engine and the mixer follow the curve.
     bool reads(AutomationTarget t) const noexcept { return read && ! curve(t).empty(); }
+    AutomationMode mode() const noexcept
+    {
+        if (write) return style == AutomationWriteStyle::touch ? AutomationMode::touch : style == AutomationWriteStyle::latch ? AutomationMode::latch : AutomationMode::write;
+        return read ? AutomationMode::read : AutomationMode::off;
+    }
     bool operator==(const TrackAutomation&) const = default;
+};
+
+// Control held (or latched) for live writing, message thread only (lives in AudioEngine).
+struct AutomationGesture
+{
+    std::string trackId;
+    AutomationTarget target;
+    bool pressed = false, latched = false;
+    double value = 0.0, lastBeat = -1.0;
+    bool active() const noexcept { return pressed || latched; }
 };
 
 double minimumValue(AutomationParameter) noexcept;
@@ -72,6 +98,10 @@ int insertPoint(AutomationCurve&, AutomationParameter, AutomationPoint);
 // false when the index is invalid.
 bool movePoint(AutomationCurve&, AutomationParameter, int index, double beat, double value);
 bool removePoint(AutomationCurve&, int index);
+// Live writing (touch/latch): replaces what lies between `fromBeat` (exclusive; pass a negative
+// value for "nothing written before") and `beat` with `value` at `beat`. Consecutive equal values
+// extend the previous point instead of adding one, so holding a control does not flood the curve.
+void writeSpan(AutomationCurve&, AutomationParameter, double fromBeat, double beat, double value);
 // Sorts, clamps and drops non-finite points (used after loading).
 void normalise(AutomationCurve&, AutomationParameter);
 }

@@ -1065,5 +1065,21 @@
   "No se encuentra el archivo: ": "No se encuentra el archivo: ",
   "No se puede leer la imagen: ": "No se puede leer la imagen: ",
   "Archivo de video ausente: ": "Archivo de video ausente: ",
-  "Sin video en la posición del cursor": "Sin video en la posición del cursor"
+  "Sin video en la posición del cursor": "Sin video en la posición del cursor",
+  "Silente · Automatización": "Silente · Automatización",
+  "Suspender lectura": "Suspender lectura",
+  "Suspender escritura": "Suspender escritura",
+  "Suspender lectura: todas las pistas suenan con sus valores fijos": "Suspender lectura: todas las pistas suenan con sus valores fijos",
+  "Suspender escritura: ningún control escribe automatización": "Suspender escritura: ningún control escribe automatización",
+  "Desactivado": "Desactivado",
+  "Leer": "Leer",
+  "Escribir": "Escribir",
+  "Modo de automatización de la pista": "Modo de automatización de la pista",
+  "Mostrar la curva de volumen en la zona inferior": "Mostrar la curva de volumen en la zona inferior",
+  "Mostrar la curva de panorama en la zona inferior": "Mostrar la curva de panorama en la zona inferior",
+  "Mostrar la curva de un envío en la zona inferior": "Mostrar la curva de un envío en la zona inferior",
+  "Sin envíos": "Sin envíos",
+  "Modo": "Modo",
+  "Mostrar": "Mostrar",
+  "Modo de automatización": "Modo de automatización"
 }

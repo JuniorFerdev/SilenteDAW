@@ -1065,5 +1065,21 @@
   "No se encuentra el archivo: ": "File not found: ",
   "No se puede leer la imagen: ": "Cannot read the image: ",
   "Archivo de video ausente: ": "Missing video file: ",
-  "Sin video en la posición del cursor": "No video at the cursor position"
+  "Sin video en la posición del cursor": "No video at the cursor position",
+  "Silente · Automatización": "Silente · Automation",
+  "Suspender lectura": "Suspend Read",
+  "Suspender escritura": "Suspend Write",
+  "Suspender lectura: todas las pistas suenan con sus valores fijos": "Suspend Read: all tracks play their static values",
+  "Suspender escritura: ningún control escribe automatización": "Suspend Write: no control writes automation",
+  "Desactivado": "Off",
+  "Leer": "Read",
+  "Escribir": "Write",
+  "Modo de automatización de la pista": "Track automation mode",
+  "Mostrar la curva de volumen en la zona inferior": "Show the volume curve in the lower zone",
+  "Mostrar la curva de panorama en la zona inferior": "Show the pan curve in the lower zone",
+  "Mostrar la curva de un envío en la zona inferior": "Show the curve of a send in the lower zone",
+  "Sin envíos": "No sends",
+  "Modo": "Mode",
+  "Mostrar": "Show",
+  "Modo de automatización": "Automation mode"
 }

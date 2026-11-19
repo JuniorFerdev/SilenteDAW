@@ -18,6 +18,7 @@
 #include "../src/io/CprImport.h"
 #include "../src/ui/project/TimelineTracks.h"
 #include "../src/app/VideoCommands.h"
+#include "../src/app/AutomationCommands.h"
 #include "../src/io/VideoFrames.h"
 #include "VideoFixture.h"
 #include <limits>
@@ -1573,6 +1574,111 @@ int runEngineTests(const juce::File& outputDir)
             AudioEngine plain; setup(plain); plain.addAudioTrack("Plain");
             const auto plainFile = dir.getChildFile("automation-plain.silente"); requireOk(plain.saveProject(plainFile));
             require(! plainFile.loadFileAsString().contains("automation"), "A project without automation must not write it");
+        }
+    });
+
+    suite.run("automation panel: Touch/Latch live writing, modes, suspend and persistence", [&]
+    {
+        using namespace domain;
+        const AutomationTarget vol { AutomationParameter::volume };
+        // writeSpan: replaces the span, equal consecutive values extend the last point.
+        {
+            AutomationCurve c; c.points = { { 0.0, 0.0 }, { 2.0, 1.0 }, { 4.0, 0.0 } };
+            writeSpan(c, AutomationParameter::volume, 1.0, 3.0, 0.5);
+            require(c.points == std::vector<AutomationPoint> { { 0.0, 0.0 }, { 3.0, 0.5 }, { 4.0, 0.0 } }, "writeSpan overwrites (1,3] and inserts the value at 3");
+            AutomationCurve h;
+            writeSpan(h, AutomationParameter::volume, -1.0, 1.0, 0.2); writeSpan(h, AutomationParameter::volume, 1.0, 2.0, 0.4);
+            writeSpan(h, AutomationParameter::volume, 2.0, 3.0, 0.4); writeSpan(h, AutomationParameter::volume, 3.0, 4.0, 0.4);
+            require(h.points == std::vector<AutomationPoint> { { 1.0, 0.2 }, { 2.0, 0.4 }, { 4.0, 0.4 } }, "writeSpan: holding a value does not add points");
+        }
+        const auto curveOf = [](AudioEngine& e) { const juce::ScopedLock lock(e.modelLock); return e.tracks[0]->automation.volume; };
+        // Touch: writes while held (also playing), then reads the curve again on release.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Touch"); t->automation.volume.points = { { 0.0, 1.0 }, { 16.0, 1.0 } };
+            app::setMode(engine, *t, AutomationMode::touch);
+            require(t->automation.mode() == AutomationMode::touch && t->automation.read && t->automation.write, "Touch mode stores read+write+style");
+            engine.playing = true; engine.positionSeconds = 1.0;
+            require(! app::writeAtCursor(engine, *t, vol, 0.7), "Touch: a change with the control not held writes nothing");
+            app::beginGesture(engine, *t, vol);
+            require(app::writeAtCursor(engine, *t, vol, 0.5), "Touch: writes while held");
+            engine.positionSeconds = 2.0; require(app::writeAtCursor(engine, *t, vol, 0.25), "Touch: keeps writing while moving");
+            engine.positionSeconds = 3.0; app::tickAutomation(engine);
+            near(evaluate(curveOf(engine), 6.0, -1.0), 0.25, 1e-9, "Touch: held still keeps its value");
+            app::endGesture(engine, *t, vol);
+            require(engine.automationGestures.empty() && ! app::writeAtCursor(engine, *t, vol, 0.1), "Touch: after release nothing is written");
+            engine.positionSeconds = 4.0; app::tickAutomation(engine);
+            const auto c = curveOf(engine);
+            near(c.points.front().value, 1.0, 0, "Touch: the curve before the gesture is intact");
+            near(evaluate(c, 2.0, -1.0), 0.5, 1e-9, "Touch: value written at beat 2");
+            near(evaluate(c, 12.0, -1.0), 0.25 + (6.0 / 10.0) * 0.75, 1e-9, "Touch: after release the old curve continues from the last written value");
+        }
+        // Latch: starts on touch, keeps the last value after release until the transport stops.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Latch");
+            app::setMode(engine, *t, AutomationMode::latch);
+            engine.playing = true; engine.positionSeconds = 1.0;
+            app::beginGesture(engine, *t, vol); app::writeAtCursor(engine, *t, vol, 0.6); app::endGesture(engine, *t, vol);
+            require(engine.automationGestures.size() == 1, "Latch: stays latched after release");
+            engine.positionSeconds = 2.0; app::tickAutomation(engine); engine.positionSeconds = 3.0; app::tickAutomation(engine);
+            engine.positionSeconds = 4.0; app::tickAutomation(engine);
+            const auto c = curveOf(engine);
+            require(c.points == std::vector<AutomationPoint> { { 2.0, 0.6 }, { 8.0, 0.6 } }, "Latch: the held value is written until the cursor (one flat segment)");
+            engine.playing = false; app::tickAutomation(engine);
+            require(engine.automationGestures.empty() && ! app::writeAtCursor(engine, *t, vol, 0.1) && curveOf(engine) == c, "Latch: stopping the transport releases it");
+            // Stopped, a touched control writes at the cursor (like Write).
+            engine.positionSeconds = 10.0; app::beginGesture(engine, *t, vol);
+            require(app::writeAtCursor(engine, *t, vol, 0.9), "Latch: touched control writes with the transport stopped");
+        }
+        // Suspend write / read, normal Write, mode round trip.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Modes"); t->gain = 0.8f;
+            app::setMode(engine, *t, AutomationMode::write); engine.positionSeconds = 1.0;
+            require(app::writeAtCursor(engine, *t, vol, 0.3) && curveOf(engine).points.size() == 1, "Write: stopped, a change writes at the cursor");
+            engine.playing = true; require(! app::writeAtCursor(engine, *t, vol, 0.4), "Write: not while playing (use Touch or Latch)");
+            engine.playing = false;
+            app::setSuspendWrite(engine, true); require(! app::writeAtCursor(engine, *t, vol, 0.5) && curveOf(engine).points.size() == 1, "Suspend write blocks writing");
+            app::setSuspendWrite(engine, false);
+            near(app::displayedValue(engine, *t, vol), 0.3, 1e-9, "Read shows the curve");
+            app::setSuspendRead(engine, true); near(app::displayedValue(engine, *t, vol), 0.8, 1e-6, "Suspend read shows the static value");
+            app::setSuspendRead(engine, false);
+            for (auto m : { AutomationMode::off, AutomationMode::read, AutomationMode::write, AutomationMode::touch, AutomationMode::latch })
+            { app::setMode(engine, *t, m); require(t->automation.mode() == m, "Mode round trip"); }
+            app::setMode(engine, *t, AutomationMode::off); require(! t->automation.read && ! t->automation.write, "Off clears read and write");
+            app::setReadMode(engine, *t, true); app::setWriteMode(engine, *t, true);
+            require(t->automation.mode() == AutomationMode::write, "The R/W buttons still give Read/Write");
+        }
+        // Suspend read in the audio: renders like a track without automation.
+        {
+            const auto build = [&](AudioEngine& engine, bool automated)
+            {
+                setup(engine); auto a = engine.addAudioTrack("A"); a->gain = 0.8f;
+                AudioClip clip; clip.name = "DC"; clip.sourceRate = rate; clip.durationSeconds = 2.0; clip.fadeIn = clip.fadeOut = 0.0;
+                clip.audio = std::make_shared<juce::AudioBuffer<float>>(2, (int) std::llround(2.0 * rate));
+                for (int c = 0; c < 2; ++c) juce::FloatVectorOperations::fill(clip.audio->getWritePointer(c), 0.3f, clip.audio->getNumSamples());
+                a->clips.push_back(clip);
+                if (automated) { a->automation.volume.points = { { 0.0, 0.1 } }; a->automation.read = true; engine.automationSuspendRead = true; }
+                engine.play(); return render(engine, (int) (rate * 1.0));
+            };
+            AudioEngine e0, e1; const auto plain = build(e0, false), suspended = build(e1, true);
+            bool same = true;
+            for (int c = 0; c < 2; ++c) for (int i = 0; i < plain.getNumSamples(); ++i) same = same && plain.getSample(c, i) == suspended.getSample(c, i);
+            require(same && peak(plain) > 0.05, "Suspend read: the render ignores the curves");
+        }
+        // Persistence: the style is saved only when not the default; old projects load as Write.
+        {
+            AudioEngine source; setup(source);
+            auto a = source.addAudioTrack("A"); app::setMode(source, *a, AutomationMode::latch);
+            const auto file = dir.getChildFile("automation-latch.silente"); requireOk(source.saveProject(file));
+            AudioEngine restored; setup(restored); requireOk(restored.loadProject(file));
+            require(restored.tracks[0]->automation.mode() == AutomationMode::latch, "Latch mode survives save/load");
+            app::setMode(source, *a, AutomationMode::write);
+            const auto plain = dir.getChildFile("automation-write.silente"); requireOk(source.saveProject(plain));
+            require(! plain.loadFileAsString().contains("\"style\""), "Plain Write does not write a style (old format)");
+            requireOk(restored.loadProject(plain));
+            require(restored.tracks[0]->automation.mode() == AutomationMode::write, "Projects without style load as Write");
         }
     });
 

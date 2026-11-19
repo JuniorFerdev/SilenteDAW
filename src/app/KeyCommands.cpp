@@ -23,7 +23,7 @@ std::vector<KeyCommand> build()
     add("", "Auto-rejilla", "Auto Grid", 'Q', S);
     add("crossfade", "Fundido cruzado", "Crossfade", 'X');
     cat("Automatización", "Automation");
-    add("", "Abrir panel", "Open Panel", K::F6Key);
+    add("openAutomationPanel", "Abrir panel", "Open Panel", K::F6Key);
     add("", "«Leer automatización» en todas las pistas act./desact.", "Toggle Read Enable All Tracks", 'R', A);
     add("", "«Escribir automatización» en todas las pistas act./desact.", "Toggle Write Enable All Tracks", 'W', A);
     cat("Acordes", "Chords");

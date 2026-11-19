@@ -4,6 +4,7 @@
 #include "MarkerUiTests.h"
 #include "FolderUiTests.h"
 #include "PoolUiTests.h"
+#include "AutomationUiTests.h"
 #include "VideoUiTests.h"
 #include "AddTrackUiTests.h"
 #include "../src/MainComponent.h"
@@ -61,6 +62,7 @@ public:
         pianoRollChecks();tempoMapChecks();automationChecks();
         runFolderUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         runPoolUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
+        runAutomationUiChecks(view,engine,[this](bool ok,const String& label){expect(ok,label);});
         runVideoUiChecks(view,engine,output,[this](bool ok,const String& label){expect(ok,label);});
         {   // Abrir proyecto con un .cpr entra en el flujo de importación; otras extensiones no (el selector nativo no es testeable)
             File routed;view.cubaseImportOverride=[&routed](const File& f){routed=f;};

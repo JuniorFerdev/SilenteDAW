@@ -95,7 +95,8 @@ public:
             level.setDoubleClickReturnValue(true, 0.0);
             level.setScrollWheelEnabled(false); // Wheel navigation must not change a send level.
             level.setColour(juce::Slider::rotarySliderOutlineColourId, line);
-            level.onDragStart = [this] { edited(); };
+            level.onDragStart = [this, k] { edited(); if (track) app::beginGesture(engine, *track, { app::AutomationParameter::send, k }); };
+            level.onDragEnd = [this, k] { if (track) app::endGesture(engine, *track, { app::AutomationParameter::send, k }); };
             level.onValueChange = [this, k]
             {
                 if (syncing || ! track) return;
@@ -147,7 +148,11 @@ public:
         volume.setColour(juce::Label::backgroundColourId, bg);
         volume.setTooltip(i18n::tr("Volumen en dB · doble clic para escribir"));
 
-        fader.onDragStart = pan.onDragStart = [this] { edited(); };
+        // Touch/Latch automation: the grabbed control starts and ends a live writing gesture.
+        fader.onDragStart = [this] { edited(); if (track) app::beginGesture(engine, *track, { app::AutomationParameter::volume }); };
+        fader.onDragEnd = [this] { if (track) app::endGesture(engine, *track, { app::AutomationParameter::volume }); };
+        pan.onDragStart = [this] { edited(); if (track) app::beginGesture(engine, *track, { app::AutomationParameter::pan }); };
+        pan.onDragEnd = [this] { if (track) app::endGesture(engine, *track, { app::AutomationParameter::pan }); };
         fader.onValueChange = [this]
         {
             if (syncing) return;

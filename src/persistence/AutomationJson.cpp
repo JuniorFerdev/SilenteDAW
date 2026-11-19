@@ -36,6 +36,9 @@ juce::var writeAutomation(const domain::TrackAutomation& automation)
 {
     juce::var object(new juce::DynamicObject());
     set(object, "read", automation.read); set(object, "write", automation.write);
+    // Write style only when it is not the default, so projects without touch/latch stay identical.
+    if (automation.style == domain::AutomationWriteStyle::touch) set(object, "style", "touch");
+    else if (automation.style == domain::AutomationWriteStyle::latch) set(object, "style", "latch");
     if (! automation.volume.empty()) set(object, "volume", writePoints(automation.volume));
     if (! automation.pan.empty()) set(object, "pan", writePoints(automation.pan));
     juce::Array<juce::var> sends;
@@ -56,6 +59,8 @@ domain::TrackAutomation readAutomation(const juce::var& object)
     if (! object.isObject()) return automation;
     automation.read = static_cast<bool>(object.getProperty("read", false));
     automation.write = static_cast<bool>(object.getProperty("write", false));
+    const auto style = object.getProperty("style", {}).toString();
+    automation.style = style == "touch" ? domain::AutomationWriteStyle::touch : style == "latch" ? domain::AutomationWriteStyle::latch : domain::AutomationWriteStyle::normal;
     automation.volume = readPoints(object["volume"], AutomationParameter::volume);
     automation.pan = readPoints(object["pan"], AutomationParameter::pan);
     if (auto* sends = object["sends"].getArray())

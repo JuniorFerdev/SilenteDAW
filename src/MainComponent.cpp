@@ -14,6 +14,7 @@
 #include "ui/metronome/TapTempoPanel.h"
 #include "ui/tempo/TempoMapPanel.h"
 #include "ui/pool/PoolPanel.h"
+#include "ui/automation/AutomationPanel.h"
 #include "ui/mixconsole/MixConsole.h"
 #include "ui/project/ChannelTab.h"
 #include "ui/project/TrackFinder.h"
@@ -986,7 +987,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     juce::MidiKeyboardComponent keyboard;
     juce::TooltipWindow tooltips;
     std::unique_ptr<juce::FileChooser> chooser;
-    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow, tempoWindow, poolWindow, videoWindow;
+    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow, tempoWindow, poolWindow, videoWindow, automationWindow;
     std::unique_ptr<ui::MixConsoleWindow> mixConsoleWindow;
     std::unique_ptr<ui::AddTrackWindow> addTrackWindow;
     std::unique_ptr<UtilityWindow> exportWindow, conversionWindow, historyWindow;
@@ -1864,6 +1865,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     }
     void refresh(bool fromTimer=false)
     {
+        if(fromTimer)app::tickAutomation(engine);
         syncing=true;if(!projectTitle.isBeingEdited())projectTitle.setText(engine.projectName,juce::dontSendNotification);if(!tempo.isMouseButtonDown())tempo.setValue(engine.tempo,juce::dontSendNotification);syncing=false;
         play.setToggleState(engine.playing,juce::dontSendNotification);play.setButtonText(engine.playing?juce::String::fromUTF8("Ⅱ"):juce::String::fromUTF8("▶"));loop.setToggleState(engine.looping,juce::dontSendNotification);click.setToggleState(engine.metronome,juce::dontSendNotification);
         record.setColour(juce::TextButton::buttonColourId,engine.capturing?coral:engine.recording?coral.withAlpha(.3f):raised);
@@ -2379,7 +2381,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["enterLeft"]=[this]{showLoopDialog();};k["enterRight"]=[this]{showLoopDialog();};
         k["enterPosition"]=[this]{askValue(i18n::tr("Posición del cursor del proyecto"),i18n::tr("Compás. Tiempo. Semicorchea"),ui::SnapGrid::formatTime(engine.positionSeconds.load(),ui::TimeFormat::barsBeats,engine.tempoView(),engine.currentSampleRate()).upToLastOccurrenceOf(".",false,false),[this](const juce::String& v){engine.seek(parseBars(v));refresh();});};
         k["enterTempo"]=[this]{askValue(i18n::tr("Introducir tempo"),"BPM",juce::String(engine.tempo.load(),3),[this](const juce::String& v){const double bpm=v.replace(",",".").getDoubleValue();if(bpm>=20&&bpm<=300){pushUndo();engine.tempo=bpm;markDirty();refresh();}});};
-        k["tapTempo"]=[this]{showTapTempo();};k["openPool"]=[this]{showPool();};k["videoPlayer"]=[this]{showVideoPlayer();};
+        k["tapTempo"]=[this]{showTapTempo();};k["openPool"]=[this]{showPool();};k["openAutomationPanel"]=[this]{showAutomationPanel();};k["videoPlayer"]=[this]{showVideoPlayer();};
         k["quantize"]=[this]{if(pianoVisible&&currentTrack()&&currentTrack()->isMidi)piano.quantizeNotes();};
         k["undo"]=[this]{undo(false);};k["redo"]=[this]{undo(true);};
         k["delete"]=[this]{if(selectedMarkerPtr()){deleteMarker(currentTrack()->id,arrangement.selectedMarker,false);return;}if(pianoVisible&&piano.hasKeyboardFocus(true))piano.deleteSelected();else if(rangeActive())rangeEdit(i18n::tr("Suprimir rango"),audio::deleteRange);else arrangement.deleteSelected();};
@@ -2486,6 +2488,20 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         }
         if(auto* panel=dynamic_cast<ui::TempoMapPanel*>(tempoWindow->getContentComponent()))panel->setMap(engine.tempoMap,engine.tempoView().bpm);
         tempoWindow->setVisible(true);tempoWindow->toFront(true);
+    }
+    // Panel «Automatización» (Cubase F6): floating window; the mode and the lane buttons are commands.
+    void showAutomationPanel()
+    {
+        if(!automationWindow)
+        {
+            auto* panel=new ui::AutomationPanel(engine);
+            panel->beforeEdit=[this]{pushUndo(i18n::tr("Modo de automatización"));};
+            panel->changed=[this]{markDirty();refresh();};
+            panel->onShow=[this](int track,domain::AutomationTarget target){select(track);setAutomation();automationLane.setTarget(target);};
+            automationWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Automatización"),panel,560,320);automationWindow->setLookAndFeel(&look);
+        }
+        if(auto* panel=dynamic_cast<ui::AutomationPanel*>(automationWindow->getContentComponent()))panel->refresh();
+        automationWindow->setVisible(true);automationWindow->toFront(true);
     }
     void showPool()
     {
@@ -2646,6 +2662,7 @@ void MainComponent::refreshLanguage()
 {
     i18n::translateControls(*this);ui->markerInspector.refreshLanguage();
     if(ui->poolWindow)ui->poolWindow->setName(i18n::tr("Silente · Pool de medios"));
+    if(ui->automationWindow){ui->automationWindow->setName(i18n::tr("Silente · Automatización"));if(auto* panel=dynamic_cast<ui::AutomationPanel*>(ui->automationWindow->getContentComponent()))panel->refreshLanguage();}
     if(ui->videoWindow){ui->videoWindow->setName(i18n::tr("Silente · Reproductor de video"));ui->videoWindow->repaint();}
     if(ui->addTrackWindow){ui->addTrackWindow->setName(i18n::tr("Añadir pista"));ui->addTrackWindow->dialog().refreshLanguage();}
     ui->languageButton.setButtonText(i18n::language()==i18n::Language::spanish?juce::String::fromUTF8("Español"):juce::String("English"));

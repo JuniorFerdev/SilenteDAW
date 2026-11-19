@@ -16,9 +16,26 @@ double displayedValue(const AudioEngine&, const Track&, AutomationTarget);
 // R/W buttons. Turning Write on also turns Read on (Cubase habit); turning Read off turns Write off.
 void setReadMode(AudioEngine&, Track&, bool read);
 void setWriteMode(AudioEngine&, Track&, bool write);
-// Write mode with the transport stopped: a control change writes (or replaces) a point at the
-// project cursor. Returns false when nothing was written (Write off, transport running —
-// live writing during playback is pending — or invalid target).
+// The five modes of the «Automatización» panel (F6). Off: neither read nor write. Read. Write
+// (normal): a control change writes at the cursor with the transport stopped. Touch and Latch
+// write live (also during playback) through beginGesture / writeAtCursor / endGesture. Replaces
+// the old R/W pair without changing what it stores: old projects load as Off/Read/Write.
+void setMode(AudioEngine&, Track&, domain::AutomationMode);
+// Global «Suspender lectura» / «Suspender escritura»: not saved. Suspended read plays the static
+// fader/pan/send values; suspended write writes nothing.
+void setSuspendRead(AudioEngine&, bool);
+void setSuspendWrite(AudioEngine&, bool);
+// A control of the track is grabbed / released (slider drag start / end). In Touch mode writing
+// lasts while the control is held and the track goes back to reading on release; in Latch mode
+// it continues with the last value until the transport stops. Ignored in other modes.
+void beginGesture(AudioEngine&, Track&, AutomationTarget);
+void endGesture(AudioEngine&, Track&, AutomationTarget);
+// Called by a message-thread timer: while playing, held and latched controls keep writing their
+// last value at the cursor; when the transport stops, latched controls are released.
+void tickAutomation(AudioEngine&);
+// Writes (or replaces) a point at the project cursor for a control change. Normal Write: only with
+// the transport stopped. Touch/Latch: only while the control is held or latched, also during
+// playback. Returns false when nothing was written (not writing, write suspended, invalid target).
 bool writeAtCursor(AudioEngine&, Track&, AutomationTarget, double value);
 // Lane edits. Return the affected point index (-1 / false on refusal).
 int addPoint(AudioEngine&, Track&, AutomationTarget, double beat, double value);

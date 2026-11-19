@@ -101,4 +101,18 @@ void normalise(AutomationCurve& c, AutomationParameter parameter)
     for (auto& q : p) { q.beat = std::max(0.0, q.beat); q.value = clampValue(parameter, q.value); }
     std::stable_sort(p.begin(), p.end(), [](const AutomationPoint& a, const AutomationPoint& b) { return a.beat < b.beat; });
 }
+
+void writeSpan(AutomationCurve& curve, AutomationParameter parameter, double fromBeat, double beat, double value)
+{
+    beat = std::max(0.0, beat); value = clampValue(parameter, value);
+    auto& pts = curve.points;
+    if (fromBeat >= 0.0 && fromBeat < beat)
+        std::erase_if(pts, [&](const AutomationPoint& p) { return p.beat > fromBeat + 1e-9 && p.beat <= beat + 1e-9; });
+    else
+        std::erase_if(pts, [&](const AutomationPoint& p) { return std::abs(p.beat - beat) <= 1e-9; });
+    size_t at = 0;
+    while (at < pts.size() && pts[at].beat < beat) ++at;
+    if (at >= 2 && pts[at - 1].value == value && pts[at - 2].value == value && fromBeat >= 0.0) { pts[at - 1].beat = beat; return; }
+    pts.insert(pts.begin() + (std::ptrdiff_t) at, { beat, value });
+}
 }
