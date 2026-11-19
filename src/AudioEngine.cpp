@@ -622,6 +622,24 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         rt.destinationSoloed = rt.outputIndex >= 0 && soloed(rt.outputIndex);
         for (int destination : rt.sendIndex) if (destination >= 0 && soloed(destination)) rt.destinationSoloed = true;
     }
+    // Pro Tools: while recording, an armed track is heard through its input only inside the punch window.
+    // Before and after the punch it plays its own material alone; the take never records monitored sound.
+    const bool recordingBlock = recording.load() && recordingSession && transportPlaying;
+    double monitorFrom = 0.0, monitorTo = 0.0;
+    if (recordingBlock)
+    {
+        monitorFrom = recordingSession->captureFrom;
+        monitorTo = std::numeric_limits<double>::max();
+        if (punchIn.load()) monitorFrom = juce::jmax(monitorFrom, loopStart.load());
+        if (punchOut.load()) monitorTo = loopEnd.load();
+    }
+    const auto inputMonitored = [&](const std::shared_ptr<Track>& track)
+    {
+        if (! recordingBlock || ! track->armed.load() || end <= monitorFrom || start >= monitorTo) return false;
+        for (const auto& entry : recordingSession->entries)
+            if (entry.track == track) return true;
+        return false;
+    };
     const auto processTrack = [&](const std::shared_ptr<Track>& track)
     {
         auto& rt = *track->runtime;
@@ -706,7 +724,7 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
             }
         }
         rt.chase = false;
-        if (track->kind == TrackKind::audio && track->monitor.load() && input && inputChannels > 0)
+        if (track->kind == TrackKind::audio && (track->monitor.load() || inputMonitored(track)) && input && inputChannels > 0)
             for (int ch = 0; ch < 2; ++ch)
             {const int source=ch==0?track->inputLeft:track->inputRight;if(source>=0&&source<inputChannels&&input[source])rt.buffer.addFrom(ch,0,input[source]+offset,samples);}
         bool hasInstrument = false;

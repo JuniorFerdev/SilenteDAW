@@ -1005,6 +1005,38 @@ int runEngineTests(const juce::File& outputDir)
         near(clip.audio->getSample(1, clip.audio->getNumSamples() - 1), 0.15, 1e-4, "Last recorded sample is the input before punch out");
     });
 
+    suite.run("punch over an armed track: existing material stays audible; input is monitored only inside the punch", [&]
+    {
+        // Pro Tools: the armed track keeps playing its material while recording. Its input is heard only
+        // between punch in and punch out; before and after, the track plays its own material alone.
+        AudioEngine engine; auto track = recorder(engine);
+        track->clips.push_back(constantClip(0.0, 4.0, 0.4f));
+        engine.loopStart = 1.0; engine.loopEnd = 2.0; engine.punchIn = true; engine.punchOut = true; engine.seek(0.5);
+        requireOk(engine.beginRecording(dir.getChildFile("punch-monitor"), { -1.0, false }));
+        juce::AudioBuffer<float> out(2, block), in(2, block);
+        double clock = 0.0, base = -1.0; // base: the material alone (track gain and pan law included)
+        for (int done = 0, total = (int) std::llround(2.0 * rate); done < total; done += block)
+        {
+            const int n = std::min(block, total - done);
+            const double at = 0.5 + clock; // project time at the start of this block
+            for (int i = 0; i < n; ++i) for (int c = 0; c < 2; ++c) in.setSample(c, i, (float) ((clock + i / rate) / 10.0));
+            out.clear(); engine.renderOfflineBlock(out, n, in);
+            double sum = 0.0; for (int i = 0; i < n; ++i) sum += out.getSample(0, i);
+            const double mean = sum / n, inputMean = (clock + (n - 1) / (2.0 * rate)) / 10.0;
+            if (at > 0.6 && at < 0.9) { if (base < 0.0) base = mean; require(base > 0.2 && std::abs(mean - base) < 1e-4, "Track material must stay audible before punch in, got " + juce::String(mean)); }
+            if (at > 1.1 && at < 1.9) require(std::abs(mean - (base + base / 0.4 * inputMean)) < 0.003, "Input must be monitored over the material inside the punch, got " + juce::String(mean));
+            if (at > 2.1 && at < 2.4) require(std::abs(mean - base) < 1e-4, "Only the material must play after punch out, got " + juce::String(mean));
+            clock += n / rate;
+        }
+        requireOk(engine.endRecording());
+        // Default mode (cycle history + replace): the old event is cut inside the punch and the take takes its place.
+        require(track->clips.size() == 3, "Expected left remnant, take and right remnant, got " + juce::String((int) track->clips.size()));
+        const auto& take = track->clips.back();
+        near(take.startSeconds, 1.0, 1.0 / rate, "Take starts at punch in");
+        near(take.durationSeconds, 1.0, 1.0 / rate, "Take ends at punch out");
+        near(take.audio->getSample(0, 0), 0.05, 1e-4, "Take must hold only the input, not the monitored material");
+    });
+
     suite.run("live recording view: lap start, captured length and waveform peaks", [&]
     {
         AudioEngine engine; auto track = recorder(engine);
