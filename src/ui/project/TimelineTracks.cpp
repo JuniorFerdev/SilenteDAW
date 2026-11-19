@@ -42,6 +42,27 @@ void paintMarkers(juce::Graphics& g,const domain::TrackData& data,const Timeline
         text(g,(marker.cycle?juce::String("[")+juce::String(marker.number)+"]":juce::String(marker.number))+" "+marker.description,r.toNearestInt().reduced(5,0),11,activeInk);
     }
 }
+juce::Rectangle<float> videoEventBounds(const domain::VideoEvent& event,const TimelineView& view)
+{
+    const float x0=view.x(event.start),x1=view.x(event.start+event.length);
+    return {x0,(float)view.lane.getY()+4,juce::jmax(2.0f,x1-x0),(float)view.lane.getHeight()-9};
+}
+void paintVideoEvents(juce::Graphics& g,const domain::TrackData& data,const TimelineView& view,juce::Colour trackColour)
+{
+    for(const auto& event:data.videoEvents)
+    {
+        const auto r=videoEventBounds(event,view);if(!g.getClipBounds().toFloat().intersects(r))continue;
+        g.setColour(trackColour.withAlpha(.82f));g.fillRoundedRectangle(r,2);
+        g.setColour(trackColour.brighter(.3f));g.drawRoundedRectangle(r.reduced(.5f),2,1);
+        if(!event.still&&r.getHeight()>20)
+        {   // Film strip perforations along both edges.
+            g.setColour(eventInk.withAlpha(.55f));
+            for(float x=r.getX()+4;x<r.getRight()-6;x+=10){g.fillRect(x,r.getY()+3,5.0f,3.0f);g.fillRect(x,r.getBottom()-6,5.0f,3.0f);}
+        }
+        const auto kind=event.still?i18n::tr("Imagen"):i18n::tr("Video");
+        text(g,event.name+juce::String::fromUTF8(" · ")+kind,r.toNearestInt().reduced(8,8),11,eventInk);
+    }
+}
 juce::String rulerFormatName(int format)
 {
     switch(format){case 1:return i18n::tr("Segundos");case 2:return i18n::tr("Código de tiempo");case 3:return i18n::tr("Muestras");case 4:return i18n::tr("Fotogramas (60 fps)");default:return i18n::tr("Compases+Tiempos");}

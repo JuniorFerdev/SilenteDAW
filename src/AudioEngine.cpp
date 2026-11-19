@@ -240,11 +240,11 @@ void AudioEngine::clear()
 }
 juce::String trackKindId(TrackKind kind)
 {
-    switch(kind){case TrackKind::instrument:return "instrument";case TrackKind::midi:return "midi";case TrackKind::folder:return "folder";case TrackKind::fx:return "fx";case TrackKind::group:return "group";case TrackKind::ruler:return "ruler";case TrackKind::marker:return "marker";default:return "audio";}
+    switch(kind){case TrackKind::instrument:return "instrument";case TrackKind::midi:return "midi";case TrackKind::folder:return "folder";case TrackKind::fx:return "fx";case TrackKind::group:return "group";case TrackKind::ruler:return "ruler";case TrackKind::marker:return "marker";case TrackKind::video:return "video";default:return "audio";}
 }
 TrackKind trackKindFromId(const juce::String& id, bool legacyIsMidi)
 {
-    for(auto kind:{TrackKind::audio,TrackKind::instrument,TrackKind::midi,TrackKind::folder,TrackKind::fx,TrackKind::group,TrackKind::ruler,TrackKind::marker})if(id==trackKindId(kind))return kind;
+    for(auto kind:{TrackKind::audio,TrackKind::instrument,TrackKind::midi,TrackKind::folder,TrackKind::fx,TrackKind::group,TrackKind::ruler,TrackKind::marker,TrackKind::video})if(id==trackKindId(kind))return kind;
     return legacyIsMidi?TrackKind::instrument:TrackKind::audio;
 }
 std::shared_ptr<Track> AudioEngine::makeTrack(const juce::String& name, bool midi)
@@ -257,7 +257,7 @@ std::shared_ptr<Track> AudioEngine::makeTrack(const juce::String& name, TrackKin
     track->kind = kind;
     track->isMidi = kind == TrackKind::instrument || kind == TrackKind::midi;
     juce::String base;
-    switch(kind){case TrackKind::instrument:base=i18n::tr("Instrumento ");break;case TrackKind::midi:base=i18n::tr("MIDI ");break;case TrackKind::folder:base=i18n::tr("Carpeta ");break;case TrackKind::fx:base=i18n::tr("FX ");break;case TrackKind::group:base=i18n::tr("Grupo ");break;case TrackKind::ruler:base=i18n::tr("Regla ");break;case TrackKind::marker:base=i18n::tr("Marcador ");break;default:base=i18n::tr("Audio ");}
+    switch(kind){case TrackKind::instrument:base=i18n::tr("Instrumento ");break;case TrackKind::midi:base=i18n::tr("MIDI ");break;case TrackKind::folder:base=i18n::tr("Carpeta ");break;case TrackKind::fx:base=i18n::tr("FX ");break;case TrackKind::group:base=i18n::tr("Grupo ");break;case TrackKind::ruler:base=i18n::tr("Regla ");break;case TrackKind::marker:base=i18n::tr("Marcador ");break;case TrackKind::video:base=i18n::tr("Video ");break;default:base=i18n::tr("Audio ");}
     track->name = name.isNotEmpty() ? name : base + juce::String(tracks.size() + 1);
     static constexpr juce::uint32 colours[] { 0xffa994ff, 0xff65d6c5, 0xffffba72, 0xff6eabef, 0xffe391bf, 0xffbdd27a };
     track->colour = kind == TrackKind::folder ? juce::Colour(0xff8a93a3) : juce::Colour(colours[tracks.size() % std::size(colours)]);
@@ -1121,6 +1121,7 @@ double AudioEngine::duration() const
         for (const auto& clip : track->clips) result = juce::jmax(result, clip.startSeconds + clip.durationSeconds);
         for (const auto& note : track->notes) result = juce::jmax(result, tempoView().secondsAt(note.startBeats + note.lengthBeats));
         for(const auto& marker:track->data.markers)result=juce::jmax(result,marker.cycle?marker.end:marker.position);
+        for(const auto& event:track->data.videoEvents)result=juce::jmax(result,event.start+event.length);
     }
     return result;
 }
@@ -1213,7 +1214,7 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
         auto t = object();
         set(t, "id", track->id); set(t, "name", track->name); set(t, "colour", track->colour.toString()); set(t, "stripWidth", track->stripWidth);
         set(t, "kind", trackKindId(track->kind)); set(t, "isMidi", track->isMidi); set(t, "gain", track->gain.load()); set(t, "pan", track->pan.load());
-        set(t,"trackData",persistence::writeTrackData(track->data));
+        set(t,"trackData",persistence::writeTrackData(track->data,destination.getParentDirectory()));
         if (! track->automation.empty()) set(t, "automation", persistence::writeAutomation(track->automation));
         set(t, "mute", track->mute.load()); set(t, "solo", track->solo.load());
         set(t,"inputLeft",track->inputLeft);set(t,"inputRight",track->inputRight);
@@ -1315,7 +1316,7 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
         track->stripWidth = juce::jlimit(0, 240, static_cast<int>(t.getProperty("stripWidth", 0)));
         track->kind = trackKindFromId(t.getProperty("kind", {}).toString(), static_cast<bool>(t["isMidi"]));
         track->isMidi = track->kind == TrackKind::instrument || track->kind == TrackKind::midi;
-        track->data=persistence::readTrackData(t.getProperty("trackData",{}));
+        track->data=persistence::readTrackData(t.getProperty("trackData",{}),file.getParentDirectory());
         track->automation = persistence::readAutomation(t.getProperty("automation", {}));
         track->output = t.getProperty("output", {}).toString();
         if (auto* sends = t["sends"].getArray())

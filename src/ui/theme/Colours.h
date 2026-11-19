@@ -19,5 +19,7 @@ inline const juce::Colour activeFill { 0xff8e8f90 }, activeInk { 0xff141618 };
 inline const juce::Colour insertLoaded { 0xff1d8597 };
 // Automation (Cubase habit): Read green, Write red; curve and points of the automation lane.
 inline const juce::Colour automationRead { 0xff3fbf5c }, automationWrite { 0xffe2453c }, automationCurve { 0xffe6c84a }, automationLane { 0xff26282b };
+// Video player surface (letterbox around the picture).
+inline const juce::Colour videoBackground { 0xff000000 };
 inline const juce::Colour faderCap { 0xffb9bbbd }, faderGroove { 0xff0f1011 }, sliderFill { 0xffbfc1c3 }, knobRing { 0xffaeb0b2 };
 }

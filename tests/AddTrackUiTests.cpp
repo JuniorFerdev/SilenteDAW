@@ -22,10 +22,10 @@ void runAddTrackUiChecks(MainComponent& view,AudioEngine& engine,const juce::Fil
     auto* name=dynamic_cast<TextEditor*>(control("add-name"));auto* count=dynamic_cast<Slider*>(control("add-count"));auto* keep=dynamic_cast<ToggleButton*>(control("add-keep-open"));
     auto* configuration=dynamic_cast<ComboBox*>(control("add-configuration"));auto* input=dynamic_cast<ComboBox*>(control("add-input"));auto* outputBox=dynamic_cast<ComboBox*>(control("add-output"));
     expect(name&&count&&keep&&configuration&&input&&outputBox,"Dialog exposes Name, Count, Keep Open, input, mono/stereo and output settings");if(!name||!count||!keep||!configuration||!input||!outputBox)return;
-    const char* supported[]{"audio","instrument","midi","group","fx","marker","ruler","folder"};bool all=true;
+    const char* supported[]{"audio","instrument","midi","group","fx","marker","ruler","folder","video"};bool all=true;
     for(const auto* type:supported){auto* b=control(("add-type-"+String(type)).toRawUTF8());all&=b&&b->isEnabled();}
     auto* sampler=control("add-type-sampler");auto* video=control("add-type-video");
-    expect(all&&sampler&&!sampler->isEnabled()&&video&&!video->isEnabled(),"All eight implemented track types are available; deferred types are visibly disabled");
+    expect(all&&sampler&&!sampler->isEnabled()&&video&&video->isEnabled(),"All nine implemented track types (video included) are available; deferred types are visibly disabled");
     panel->updateOptions({"Input 1","Input 2","Input 3","Input 4"},{},engine.knownPlugins.getTypes(),0);
     configuration->setSelectedId(1,sendNotificationSync);input->setSelectedId(3,sendNotificationSync);name->setText(String::fromUTF8("Voz ñ"),false);count->setValue(3,dontSendNotification);keep->setToggleState(true,dontSendNotification);
     i18n::setLanguage(i18n::Language::english,false);view.refreshLanguage();

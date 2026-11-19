@@ -24,6 +24,8 @@
 #include "ui/project/TimelineTracks.h"
 #include "ui/project/MarkerInspector.h"
 #include "ui/project/AddTrackDialog.h"
+#include "ui/video/VideoViewer.h"
+#include "app/VideoCommands.h"
 #include "ui/midi/PianoRoll.h"
 #include "ui/automation/AutomationLane.h"
 #include "audio/FadeCurves.h"
@@ -54,11 +56,11 @@ namespace
 using namespace silente::ui::theme;
 juce::String kindLabel(TrackKind kind)
 {
-    switch(kind){case TrackKind::instrument:return i18n::tr("INSTRUMENTO");case TrackKind::midi:return i18n::tr("MIDI");case TrackKind::folder:return i18n::tr("CARPETA");case TrackKind::fx:return i18n::tr("FX");case TrackKind::group:return i18n::tr("GRUPO");case TrackKind::marker:return i18n::tr("MARCADOR");case TrackKind::ruler:return i18n::tr("REGLA");default:return i18n::tr("AUDIO");}
+    switch(kind){case TrackKind::instrument:return i18n::tr("INSTRUMENTO");case TrackKind::midi:return i18n::tr("MIDI");case TrackKind::folder:return i18n::tr("CARPETA");case TrackKind::fx:return i18n::tr("FX");case TrackKind::group:return i18n::tr("GRUPO");case TrackKind::marker:return i18n::tr("MARCADOR");case TrackKind::ruler:return i18n::tr("REGLA");case TrackKind::video:return i18n::tr("VIDEO");default:return i18n::tr("AUDIO");}
 }
 juce::String kindDescription(TrackKind kind)
 {
-    switch(kind){case TrackKind::instrument:return i18n::tr("Instrumento MIDI");case TrackKind::midi:return i18n::tr("Pista MIDI");case TrackKind::folder:return i18n::tr("Pista de carpeta");case TrackKind::fx:return i18n::tr("Canal de efectos");case TrackKind::group:return i18n::tr("Canal de grupo");case TrackKind::marker:return i18n::tr("Pista de marcador");case TrackKind::ruler:return i18n::tr("Pista de regla");default:return i18n::tr("Audio estéreo");}
+    switch(kind){case TrackKind::instrument:return i18n::tr("Instrumento MIDI");case TrackKind::midi:return i18n::tr("Pista MIDI");case TrackKind::folder:return i18n::tr("Pista de carpeta");case TrackKind::fx:return i18n::tr("Canal de efectos");case TrackKind::group:return i18n::tr("Canal de grupo");case TrackKind::marker:return i18n::tr("Pista de marcador");case TrackKind::ruler:return i18n::tr("Pista de regla");case TrackKind::video:return i18n::tr("Pista de video");default:return i18n::tr("Audio estéreo");}
 }
 juce::String gainLabel(float value) { return value < 0.0001f ? juce::String::fromUTF8("−∞ dB") : juce::String(juce::Decibels::gainToDecibels(value), 1) + " dB"; }
 void meter(juce::Graphics& g, juce::Rectangle<float> r, float level)
@@ -129,6 +131,9 @@ public:
     int selectedTrack = 0, selectedClip = -1;
     juce::String selectedMarker;
     std::function<void(const juce::String&,const juce::String&,int)> markerAction;
+    std::function<void()> openVideoPlayer;
+    // Project-wide tracks drawn without audio controls (marker, ruler, video).
+    static bool timelineKind(TrackKind kind){return kind==TrackKind::marker||kind==TrackKind::ruler||kind==TrackKind::video;}
     std::function<void(const juce::String&,double,bool,double,bool)> addTimelineMarker;
     std::function<void(const juce::String&,const juce::String&,bool)> deleteTimelineMarker;
     juce::String markerDragTrack;
@@ -290,10 +295,10 @@ public:
             if(!dirtyArea.intersects(juce::Rectangle<int>(0,y,getWidth(),lane)))continue; // only rows in the area being repainted
             auto& t=*engine.tracks[(size_t)i]; const auto colour=t.colour;
             // Cubase: a painted track paints its row in the list too, a little darker than the track colour.
-            const bool painted=t.kind!=TrackKind::marker&&t.kind!=TrackKind::ruler&&colour!=juce::Colour(defaultTrackColour);
+            const bool painted=!timelineKind(t.kind)&&colour!=juce::Colour(defaultTrackColour);
             g.setColour(painted?colour.darker(.3f):i==selectedTrack?selectedTrackColour():panel); g.fillRect(0,y,header,lane);
             if (i==selectedTrack) { g.setColour(colour.withAlpha(.035f)); g.fillRect(header,y,getWidth()-header,lane); }
-            if(t.kind==TrackKind::marker||t.kind==TrackKind::ruler)
+            if(timelineKind(t.kind))
             {
                 g.setColour(colour);g.fillRect(0,y,strip,lane-1);trackIcon(g,t.kind,{6.0f,(float)y+7,17,17},eventInk);
                 text(g,t.name,{48,y+3,header-80,22},13,i==selectedTrack?activeInk:ink);
@@ -303,6 +308,11 @@ public:
                     chip(g,juce::String::fromUTF8("◎"),{header-30,y+3,23,22},engine.activeMarkerTrack==t.id,accent);
                     for(int n=0;n<3;++n)chip(g,n==0?i18n::tr("Localizar"):n==1?i18n::tr("Ciclo"):i18n::tr("Zoom"),{118+n*43,y+29,42,23},false,accent);
                     if(dirtyArea.getRight()>header){juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(header,y,getWidth()-header,lane);ui::paintMarkers(g,t.data,timelineView(i),colour,selectedMarker);}
+                }
+                else if(t.kind==TrackKind::video)
+                {   // Video track: picture events only (no audio channel); the chip opens the Video Player.
+                    chip(g,i18n::tr("Reproductor de video"),{48,y+29,header-58,23},false,accent);
+                    if(dirtyArea.getRight()>header){juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(header,y,getWidth()-header,lane);ui::paintVideoEvents(g,t.data,timelineView(i),colour);}
                 }
                 else
                 {
@@ -445,12 +455,13 @@ public:
         if(e.mods.isPopupMenu()&&e.x<header&&i<0){if(addTracks)addTracks();return;}
         const juce::ScopedLock lock(engine.modelLock); if(i<0||i>=(int)engine.tracks.size())return;
         selectedTrack=i; selectedClip=-1; if(selectTrack)selectTrack(i); auto& t=*engine.tracks[(size_t)i];const int lane=laneOf(i);
-        if(t.kind==TrackKind::marker||t.kind==TrackKind::ruler)
+        if(timelineKind(t.kind))
         {
             const int dy=e.y-(trackTop(i));
             if(e.x<header)
             {
                 if(e.x<strip){if(editColour)editColour(i,localAreaToGlobal(juce::Rectangle<int>{0,trackTop(i),strip,lane}));return;}
+                if(t.kind==TrackKind::video){if(dy>=28&&openVideoPlayer)openVideoPlayer();return;}
                 if(t.kind==TrackKind::ruler){if(dy>=28&&markerAction)markerAction(t.id,{},-7);return;}
                 if(e.x>=header-30&&dy<27){if(markerAction)markerAction(t.id,{},-6);return;}
                 if(dy>=28&&markerAction)
@@ -461,7 +472,7 @@ public:
                 }
                 return;
             }
-            if(t.kind==TrackKind::ruler){engine.seek(xToSeconds(e.position.x));repaint();return;}
+            if(t.kind==TrackKind::ruler||t.kind==TrackKind::video){engine.seek(xToSeconds(e.position.x));repaint();return;}
             if(e.mods.isPopupMenu())return;
             if(e.mods.isCommandDown()){cycleDrawFrom=snapped(xToSeconds(e.position.x));markerDragTrack=t.id;cycleRename=e.mods.isShiftDown();return;}
             if(e.mods.isAltDown()&&tool!=5&&e.getNumberOfClicks()<2){if(addTimelineMarker)addTimelineMarker(t.id,snapped(xToSeconds(e.position.x)),false,0,e.mods.isShiftDown());return;}
@@ -783,6 +794,7 @@ private:
             case TrackKind::fx: g.setFont(juce::Font(juce::FontOptions(h*.75f,juce::Font::bold)));g.drawText("fx",r,juce::Justification::centred);break;
             case TrackKind::marker: p.startNewSubPath(x+2,y+h);p.lineTo(x+2,y);p.lineTo(x+w,y);p.lineTo(x+w*.7f,y+h*.4f);p.lineTo(x+2,y+h*.4f);g.strokePath(p,juce::PathStrokeType(1.5f));break;
             case TrackKind::ruler:g.drawRect(r,1.0f);for(int k=1;k<5;++k)g.drawLine(x+w*k/5,y,x+w*k/5,y+h*(k%2?.4f:.65f),1);break;
+            case TrackKind::video: g.drawRect(r.withTrimmedLeft(w*.1f).withTrimmedRight(w*.1f),1.2f);for(int k=0;k<4;++k){g.fillRect(x,y+h*(.08f+k*.24f),w*.08f,h*.12f);g.fillRect(x+w*.92f,y+h*(.08f+k*.24f),w*.08f,h*.12f);}break;
             case TrackKind::group: for(int k=0;k<3;++k)g.drawLine(x,y+h*(.2f+k*.3f),x+w*.55f,y+h*.5f,1.3f);g.drawLine(x+w*.55f,y+h*.5f,x+w,y+h*.5f,1.6f);break;
         }
     }
@@ -974,7 +986,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     juce::MidiKeyboardComponent keyboard;
     juce::TooltipWindow tooltips;
     std::unique_ptr<juce::FileChooser> chooser;
-    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow, tempoWindow, poolWindow;
+    std::unique_ptr<UtilityWindow> channelWindow, settingsWindow, tapWindow, tempoWindow, poolWindow, videoWindow;
     std::unique_ptr<ui::MixConsoleWindow> mixConsoleWindow;
     std::unique_ptr<ui::AddTrackWindow> addTrackWindow;
     std::unique_ptr<UtilityWindow> exportWindow, conversionWindow, historyWindow;
@@ -1134,6 +1146,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         markerInspector.activate=[this](const auto& id){timelineAction(id,{},-6);};
         markerInspector.rename=[this](const auto& id,const auto& name){if(auto track=engine.findTrack(id);track&&track->name!=name){pushUndo(i18n::tr("Renombrar pista"));track->name=name;markDirty();refresh();}};
         arrangement.markerAction=markerInspector.act;
+        arrangement.openVideoPlayer=[this]{showVideoPlayer();};
         arrangement.addTimelineMarker=[this](const auto& id,double at,bool cycle,double end,bool rename){addMarkerAt(id,at,cycle,end,rename);};
         arrangement.deleteTimelineMarker=[this](const auto& id,const auto& marker,bool following){deleteMarker(id,marker,following);};
         visibility.setVisible(false);inspectorTab.setToggleState(true,juce::dontSendNotification);
@@ -1324,7 +1337,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         arrangement.trackFilterMenu=[this]
         {
             juce::PopupMenu menu;menu.addSectionHeader(i18n::tr("Ajustar filtro de tipo de pista"));
-            const std::pair<TrackKind,juce::String> kinds[]{{TrackKind::audio,i18n::tr("Audio")},{TrackKind::instrument,i18n::tr("Instrumento")},{TrackKind::midi,i18n::tr("MIDI")},{TrackKind::folder,i18n::tr("Carpeta")},{TrackKind::fx,i18n::tr("FX")},{TrackKind::group,i18n::tr("Grupo")},{TrackKind::ruler,i18n::tr("Regla")},{TrackKind::marker,i18n::tr("Marcador")}};
+            const std::pair<TrackKind,juce::String> kinds[]{{TrackKind::audio,i18n::tr("Audio")},{TrackKind::instrument,i18n::tr("Instrumento")},{TrackKind::midi,i18n::tr("MIDI")},{TrackKind::folder,i18n::tr("Carpeta")},{TrackKind::fx,i18n::tr("FX")},{TrackKind::group,i18n::tr("Grupo")},{TrackKind::ruler,i18n::tr("Regla")},{TrackKind::marker,i18n::tr("Marcador")},{TrackKind::video,i18n::tr("Video")}};
             for(const auto& [kind,label]:kinds)menu.addItem((int)kind+1,label,true,arrangement.filter.hiddenKinds.count((int)kind)==0);
             menu.addSeparator();menu.addItem(100,i18n::tr("Mostrar todos los tipos  (⌘ clic)"),arrangement.filter.filtering());
             menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(arrangement.localAreaToGlobal(Arrangement::filterButton())),[safe=juce::Component::SafePointer<MainComponent>(&owner)](int result)
@@ -1997,7 +2010,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     }
     void applyZones()
     {
-        const bool timeline=currentTrack()&&(currentTrack()->kind==TrackKind::marker||currentTrack()->kind==TrackKind::ruler);
+        const bool timeline=currentTrack()&&Arrangement::timelineKind(currentTrack()->kind);
         const bool shown=inspectorShown()&&!timeline;
         markerInspector.setVisible(inspectorShown()&&currentTrack()&&currentTrack()->kind==TrackKind::marker);
         const auto fits=[this](juce::Component* c){return !c->getBounds().isEmpty()&&std::find(inspectorOverflow.begin(),inspectorOverflow.end(),c)==inspectorOverflow.end();};
@@ -2366,7 +2379,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["enterLeft"]=[this]{showLoopDialog();};k["enterRight"]=[this]{showLoopDialog();};
         k["enterPosition"]=[this]{askValue(i18n::tr("Posición del cursor del proyecto"),i18n::tr("Compás. Tiempo. Semicorchea"),ui::SnapGrid::formatTime(engine.positionSeconds.load(),ui::TimeFormat::barsBeats,engine.tempoView(),engine.currentSampleRate()).upToLastOccurrenceOf(".",false,false),[this](const juce::String& v){engine.seek(parseBars(v));refresh();});};
         k["enterTempo"]=[this]{askValue(i18n::tr("Introducir tempo"),"BPM",juce::String(engine.tempo.load(),3),[this](const juce::String& v){const double bpm=v.replace(",",".").getDoubleValue();if(bpm>=20&&bpm<=300){pushUndo();engine.tempo=bpm;markDirty();refresh();}});};
-        k["tapTempo"]=[this]{showTapTempo();};k["openPool"]=[this]{showPool();};
+        k["tapTempo"]=[this]{showTapTempo();};k["openPool"]=[this]{showPool();};k["videoPlayer"]=[this]{showVideoPlayer();};
         k["quantize"]=[this]{if(pianoVisible&&currentTrack()&&currentTrack()->isMidi)piano.quantizeNotes();};
         k["undo"]=[this]{undo(false);};k["redo"]=[this]{undo(true);};
         k["delete"]=[this]{if(selectedMarkerPtr()){deleteMarker(currentTrack()->id,arrangement.selectedMarker,false);return;}if(pianoVisible&&piano.hasKeyboardFocus(true))piano.deleteSelected();else if(rangeActive())rangeEdit(i18n::tr("Suprimir rango"),audio::deleteRange);else arrangement.deleteSelected();};
@@ -2492,6 +2505,46 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         if(auto* panel=dynamic_cast<ui::PoolPanel*>(poolWindow->getContentComponent()))panel->refresh();
         poolWindow->setVisible(true);poolWindow->toFront(true);
     }
+    // «Reproductor de video» (Cubase: Dispositivos › Reproductor de video, F8): floating window
+    // with the picture of the topmost video track at the project cursor.
+    void showVideoPlayer()
+    {
+        if(!videoWindow){videoWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Reproductor de video"),new ui::VideoViewer(engine),640,400);videoWindow->setLookAndFeel(&look);}
+        videoWindow->setVisible(true);videoWindow->toFront(false);
+    }
+    // Archivo › «Importar video o imagen en pista de video…»: each picture becomes an event on the
+    // selected video track (or the first one; a new video track when the project has none), at the
+    // cursor and one after another. Audio extraction keeps its own flow (Importar audio / MIDI / video).
+    juce::Result importVisualMedia(const juce::StringArray& input)
+    {
+        if(engine.recording)return juce::Result::fail(i18n::tr("Detén la grabación antes de importar archivos."));
+        std::vector<std::pair<juce::File,io::VisualMediaInfo>> items;juce::StringArray errors;
+        for(const auto& path:input)
+        {   // Probe on the message thread (metadata only; frames are decoded by the viewer's worker).
+            const juce::File file(path);io::VisualMediaInfo info;
+            if(auto result=io::probeVisualMedia(file,info);result.failed())errors.add(result.getErrorMessage());else items.push_back({file,info});
+        }
+        if(items.empty()){auto message=errors.isEmpty()?i18n::tr("No hay archivos de video o imagen."):errors.joinIntoString("\n");error(message);return juce::Result::fail(message);}
+        pushUndo(i18n::tr("Importar video o imagen"));
+        auto track=app::videoTrackFor(engine,selected);
+        if(!track){const juce::ScopedLock lock(engine.modelLock);track=engine.addTrack(TrackKind::video);}
+        double at=engine.positionSeconds.load();int count=0;
+        for(const auto& [file,info]:items)
+        {
+            if(auto result=app::addVideoEvent(engine,track->id,file,info,at);result.failed()){errors.add(file.getFileName()+": "+result.getErrorMessage());continue;}
+            at+=info.still?domain::defaultStillLength:info.duration;++count;recentFiles.insert(0,file.getFileName());
+        }
+        for(int n=0;n<(int)engine.tracks.size();++n)if(engine.tracks[(size_t)n]==track)select(n);
+        markDirty();notice=juce::String(count)+i18n::tr(" archivo(s) importado(s).");refresh();arrangement.repaint();
+        if(!errors.isEmpty())error(errors.joinIntoString("\n"));
+        if(count>0)showVideoPlayer();
+        return count>0?juce::Result::ok():juce::Result::fail(errors.joinIntoString("\n"));
+    }
+    void importVisualChooser()
+    {
+        chooser=std::make_unique<juce::FileChooser>(i18n::tr("Importar video o imagen en pista de video"),juce::File::getSpecialLocation(juce::File::userMoviesDirectory),io::visualMediaWildcard(),true);
+        chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectFiles|juce::FileBrowserComponent::canSelectMultipleItems,[safe=juce::Component::SafePointer<MainComponent>(&owner)](const juce::FileChooser& fc){if(!safe)return;juce::StringArray paths;for(auto& f:fc.getResults())paths.add(f.getFullPathName());if(!paths.isEmpty())safe->ui->importVisualMedia(paths);});
+    }
     // Doble clic en el Pool: el proyecto solo admite un evento seleccionado, así que se elige el
     // primero que usa el medio (en orden de pista y de clip).
     void selectMediaClips(const domain::MediaEntry& entry)
@@ -2581,6 +2634,9 @@ void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}
 void MainComponent::showTapTempo(){ui->showTapTempo();}
 void MainComponent::showTempoMap(){ui->showTempoMap();}
 void MainComponent::showPool(){ui->showPool();}
+void MainComponent::showVideoPlayer(){ui->showVideoPlayer();}
+void MainComponent::importVideoOrImage(){ui->importVisualChooser();}
+juce::Result MainComponent::importVisualMedia(const juce::StringArray& paths){return ui->importVisualMedia(paths);}
 bool MainComponent::metronomeOn()const{return ui->engine.metronome.load();}
 void MainComponent::addAudioTrack(){addTrack(TrackKind::audio);}
 void MainComponent::addTrack(TrackKind kind){if(kind==TrackKind::marker&&std::count_if(ui->engine.tracks.begin(),ui->engine.tracks.end(),[](const auto& track){return track->kind==TrackKind::marker;})>=10){ui->notice=i18n::tr("El proyecto admite hasta diez pistas de marcador.");ui->refresh();return;}ui->pushUndo(i18n::tr("Añadir pista"));ui->engine.addTrack(kind);ui->select((int)ui->engine.tracks.size()-1);ui->markDirty();ui->refresh();}
@@ -2590,6 +2646,7 @@ void MainComponent::refreshLanguage()
 {
     i18n::translateControls(*this);ui->markerInspector.refreshLanguage();
     if(ui->poolWindow)ui->poolWindow->setName(i18n::tr("Silente · Pool de medios"));
+    if(ui->videoWindow){ui->videoWindow->setName(i18n::tr("Silente · Reproductor de video"));ui->videoWindow->repaint();}
     if(ui->addTrackWindow){ui->addTrackWindow->setName(i18n::tr("Añadir pista"));ui->addTrackWindow->dialog().refreshLanguage();}
     ui->languageButton.setButtonText(i18n::language()==i18n::Language::spanish?juce::String::fromUTF8("Español"):juce::String("English"));
     ui->notice=ui->engine.tracks.empty()?i18n::tr("Nueva sesión. Añade una pista o arrastra tus archivos."):i18n::tr("Listo. Pulsa Espacio para escuchar la sesión.");

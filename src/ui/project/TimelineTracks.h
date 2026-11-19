@@ -15,6 +15,9 @@ struct MarkerHit { juce::String id; int edge=0; }; // 0 body, 1 start, 2 end
 juce::Rectangle<float> markerBounds(const domain::Marker&,const TimelineView&);
 std::optional<MarkerHit> hitMarker(const domain::TrackData&,const TimelineView&,juce::Point<float>);
 void paintMarkers(juce::Graphics&,const domain::TrackData&,const TimelineView&,juce::Colour,const juce::String& selected);
+// Video track lane: one block per picture event (film strip edges; stills marked as images).
+juce::Rectangle<float> videoEventBounds(const domain::VideoEvent&,const TimelineView&);
+void paintVideoEvents(juce::Graphics&,const domain::TrackData&,const TimelineView&,juce::Colour);
 void paintRulerTrack(juce::Graphics&,const domain::TrackData&,const TimelineView&,const domain::TempoView&,double rate);
 juce::String timelinePosition(double seconds,int format,const domain::TempoView&,double rate);
 std::optional<double> parseTimelinePosition(const juce::String&,int format,const domain::TempoView&,double rate);

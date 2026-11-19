@@ -13,7 +13,7 @@ struct Type { const char* id; const char* caption; std::optional<TrackKind> kind
 const Type definitions[]{
     {"audio","Audio",TrackKind::audio},{"instrument","Instrumento",TrackKind::instrument},{"sampler","Muestreador",{}},{"midi","MIDI",TrackKind::midi},
     {"group","Grupo",TrackKind::group},{"fx","Efecto",TrackKind::fx},{"vca","VCA",{}},{"marker","Marcador",TrackKind::marker},{"ruler","Regla",TrackKind::ruler},{"folder","Carpeta",TrackKind::folder},
-    {"tempo","Tempo",{}},{"signature","Tipo de compás",{}},{"arranger","Arreglos",{}},{"transpose","Transposición",{}},{"chord","Acorde",{}},{"video","Video",{}}
+    {"tempo","Tempo",{}},{"signature","Tipo de compás",{}},{"arranger","Arreglos",{}},{"transpose","Transposición",{}},{"chord","Acorde",{}},{"video","Video",TrackKind::video}
 };
 void icon(juce::Graphics& g,int type,juce::Rectangle<float> r,juce::Colour colour)
 {

@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_graphics/juce_graphics.h>
+#include "VideoEvents.h"
 #include <vector>
 
 namespace silente::domain
@@ -22,6 +23,7 @@ struct TrackData
     int rulerFormat = 0; // bars/beats, seconds, timecode, samples, user frames
     double rulerOffset = 0.0;
     std::vector<Marker> markers;
+    std::vector<VideoEvent> videoEvents; // video tracks only
 };
 
 Marker* findMarker(TrackData&, const juce::String& id);

@@ -313,14 +313,14 @@ private:
         if (index == 0)
         {
             menu.addItem(1,i18n::tr("Nuevo proyecto")); menu.addItem(2,i18n::tr("Abrir proyecto…  ⌘O")); menu.addItem(3,i18n::tr("Guardar proyecto…  ⌘S"));
-            menu.addSeparator(); menu.addItem(4,i18n::tr("Importar audio / MIDI / video…  ⌥⌘I")); menu.addItem(33,i18n::tr("Importar proyecto Cubase (.cpr)…")); menu.addItem(5,i18n::tr("Exportar mezcla de audio…"));menu.addItem(8,i18n::tr("Exportar MIDI…"));menu.addItem(9,i18n::tr("Exportar MIDI de la pista seleccionada…"));
+            menu.addSeparator(); menu.addItem(4,i18n::tr("Importar audio / MIDI / video…  ⌥⌘I")); menu.addItem(34,i18n::tr("Importar video o imagen en pista de video…")); menu.addItem(33,i18n::tr("Importar proyecto Cubase (.cpr)…")); menu.addItem(5,i18n::tr("Exportar mezcla de audio…"));menu.addItem(8,i18n::tr("Exportar MIDI…"));menu.addItem(9,i18n::tr("Exportar MIDI de la pista seleccionada…"));
             menu.addSeparator(); menu.addItem(6,i18n::tr("Conversión de formatos…")); menu.addItem(7,i18n::tr("Extraer audio de video…"));
         }
-        if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo"));menu.addSeparator();menu.addItem(16,i18n::tr("Añadir pista de regla"));menu.addItem(17,i18n::tr("Añadir pista de marcador"));
+        if (index == 2) { menu.addItem(10,i18n::tr("Añadir pista de audio")); menu.addItem(11,i18n::tr("Añadir instrumento MIDI")); menu.addItem(12,i18n::tr("Añadir pista MIDI")); menu.addSeparator(); menu.addItem(13,i18n::tr("Añadir pista de carpeta")); menu.addItem(14,i18n::tr("Añadir pista de FX")); menu.addItem(15,i18n::tr("Añadir pista de grupo"));menu.addSeparator();menu.addItem(16,i18n::tr("Añadir pista de regla"));menu.addItem(17,i18n::tr("Añadir pista de marcador"));menu.addItem(35,i18n::tr("Añadir pista de video"));
             menu.addSeparator();menu.addItem(18,i18n::tr("Mover pista arriba"));menu.addItem(19,i18n::tr("Mover pista abajo"));menu.addItem(32,i18n::tr("Sacar de la carpeta")); }
         if (index == 3 && window) return window->content().audioMenu();
         if (index == 4 && window) return window->content().transportMenu();
-        if (index == 5) { menu.addItem(20,i18n::tr("MixConsole  F3")); menu.addItem(27,i18n::tr("MixConsole en zona inferior  ⌥F3")); menu.addItem(21,i18n::tr("Instrumentos y efectos…")); menu.addItem(22,i18n::tr("Dispositivos de audio y MIDI…")); menu.addItem(23,i18n::tr("Apagar todas las notas")); menu.addSeparator(); menu.addItem(24,i18n::tr("Metrónomo  C"),true,window&&window->content().metronomeOn()); menu.addItem(25,i18n::tr("Ajustes del metrónomo…")); menu.addItem(26,i18n::tr("Calculadora de tempo (Tap)…")); menu.addItem(29,i18n::tr("Mapa de tempo y de compás…")); }
+        if (index == 5) { menu.addItem(20,i18n::tr("MixConsole  F3")); menu.addItem(27,i18n::tr("MixConsole en zona inferior  ⌥F3")); menu.addItem(21,i18n::tr("Instrumentos y efectos…")); menu.addItem(22,i18n::tr("Dispositivos de audio y MIDI…")); menu.addItem(23,i18n::tr("Apagar todas las notas")); menu.addSeparator(); menu.addItem(24,i18n::tr("Metrónomo  C"),true,window&&window->content().metronomeOn()); menu.addItem(25,i18n::tr("Ajustes del metrónomo…")); menu.addItem(26,i18n::tr("Calculadora de tempo (Tap)…")); menu.addItem(29,i18n::tr("Mapa de tempo y de compás…")); menu.addSeparator(); menu.addItem(36,i18n::tr("Reproductor de video  F8")); }
         if (index == 8) { menu.addItem(30,i18n::tr("Acerca de Silente")); menu.addItem(31,i18n::tr("Guía rápida")); }
         if (index == 1)
         {
@@ -360,7 +360,7 @@ private:
         switch (item)
         {
             case 1: c.newProject(); break; case 2: c.openProject(); break; case 3: c.saveProject(); break;
-            case 4: c.importFiles(); break; case 33: c.importCubaseProject(); break; case 5: c.exportAudio(); break; case 8: c.runCommand("exportMidi"); break; case 9: c.runCommand("exportMidiSelected"); break;
+            case 4: c.importFiles(); break; case 33: c.importCubaseProject(); break; case 34: c.importVideoOrImage(); break; case 35: c.showAddTrack(TrackKind::video); break; case 36: c.showVideoPlayer(); break; case 5: c.exportAudio(); break; case 8: c.runCommand("exportMidi"); break; case 9: c.runCommand("exportMidiSelected"); break;
             case 6: c.showConversion(false); break; case 7: c.showConversion(true); break;
             case 10: c.showAddTrack(TrackKind::audio); break; case 11: c.showAddTrack(TrackKind::instrument); break;
             case 12: c.showAddTrack(TrackKind::midi); break; case 13: c.showAddTrack(TrackKind::folder); break;

@@ -34,7 +34,7 @@ std::vector<KeyCommand> build()
     add("mixConsole", "MixConsole", "MixConsole", K::F3Key);
     add("mixConsoleLower", "MixConsole en la ventana de proyecto", "MixConsole in Project Window", K::F3Key, A);
     add("", "Teclado en pantalla", "On-Screen Keyboard", 'K', A);
-    add("", "Reproductor de video", "Video Player", K::F8Key);
+    add("videoPlayer", "Reproductor de video", "Video Player", K::F8Key);
     add("vstInstruments", "Instrumentos VST", "VST Instruments", K::F11Key);
     cat("Procesado offline directo", "Direct Offline Processing");
     add("", "Procesado offline directo", "Direct Offline Processing", K::F7Key);

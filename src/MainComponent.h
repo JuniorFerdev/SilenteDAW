@@ -56,6 +56,11 @@ public:
     void showTapTempo();
     void showTempoMap(); // «Mapa de tempo y de compás» window (tempo and signature events)
     void showPool(); // ventana «Pool de medios» (solo lectura y reasignación de rutas)
+    void showVideoPlayer(); // «Reproductor de video» (F8): picture of the video track at the cursor
+    void importVideoOrImage(); // Archivo › «Importar video o imagen en pista de video…» (file chooser)
+    // Places movies (mp4/mov/m4v) and images (png/jpg) on the selected or first video track, at the
+    // cursor; creates a video track when there is none. Undoable. Fails when nothing was imported.
+    juce::Result importVisualMedia(const juce::StringArray& paths);
     bool metronomeOn() const;
     void addAudioTrack();
     void addMidiTrack();

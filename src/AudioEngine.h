@@ -46,7 +46,8 @@ struct PluginSlot
     juce::String error;
 };
 
-enum class TrackKind { audio, instrument, midi, folder, fx, group, ruler, marker };
+// Video tracks hold picture events only (TrackData::videoEvents): no audio channel and no DSP.
+enum class TrackKind { audio, instrument, midi, folder, fx, group, ruler, marker, video };
 juce::String trackKindId(TrackKind);
 TrackKind trackKindFromId(const juce::String&, bool legacyIsMidi);
 

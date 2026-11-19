@@ -17,7 +17,11 @@
 #include "../src/domain/MediaPool.h"
 #include "../src/io/CprImport.h"
 #include "../src/ui/project/TimelineTracks.h"
+#include "../src/app/VideoCommands.h"
+#include "../src/io/VideoFrames.h"
+#include "VideoFixture.h"
 #include <limits>
+#include <tuple>
 #include <cstring>
 #include <map>
 #include <string>
@@ -1570,6 +1574,90 @@ int runEngineTests(const juce::File& outputDir)
             const auto plainFile = dir.getChildFile("automation-plain.silente"); requireOk(plain.saveProject(plainFile));
             require(! plainFile.loadFileAsString().contains("automation"), "A project without automation must not write it");
         }
+    });
+
+    suite.run("video track: events, frame lookup, persistence, legacy and moved projects, no audio", [&]
+    {
+        using namespace domain;
+        // Pure model: frame grid, overlaps (last event wins), stills and invalid events.
+        VideoEvent movie; movie.path = "/m.mov"; movie.start = 2; movie.length = 3; movie.offset = 1; movie.frameRate = 25;
+        VideoEvent still; still.path = "/s.png"; still.start = 4; still.length = 2; still.still = true;
+        const std::vector<VideoEvent> events { movie, still };
+        require(videoEventAt(events, 1.99) == nullptr && videoEventAt(events, 2.0) == &events[0] && videoEventAt(events, 4.5) == &events[1]
+                && videoEventAt(events, 6.0) == nullptr, "Video event lookup (overlap: the last event wins, end exclusive)");
+        near(videoSourceTime(movie, 2.0), 1.0, 1e-9, "Source time at event start = offset");
+        near(videoSourceTime(movie, 3.019), 2.0, 1e-9, "Source time snaps to the frame start (25 fps)");
+        near(videoSourceTime(movie, 3.041), 2.04, 1e-9, "Next frame after 1/25 s");
+        near(videoSourceTime(still, 5.0), 0.0, 0, "Still image has a single picture");
+        auto invalid = movie; invalid.length = 0; require(! validVideoEvent(invalid), "Zero-length video event accepted");
+        invalid = movie; invalid.start = std::numeric_limits<double>::quiet_NaN(); require(! validVideoEvent(invalid), "NaN start accepted");
+        invalid = movie; invalid.path.clear(); require(! validVideoEvent(invalid), "Video event without file accepted");
+
+        // Synthetic H.264 movie with real pictures: decode at three cursor positions.
+        const auto movieFile = dir.getChildFile("video-engine/colores.mov"); movieFile.getParentDirectory().createDirectory();
+        requireOk(testing::writeColourMovie(movieFile, { juce::Colours::red, juce::Colours::lime, juce::Colours::blue }));
+        io::VisualMediaInfo info; requireOk(io::probeVisualMedia(movieFile, info));
+        require(! info.still && info.width == 160 && info.height == 96 && ! info.hasAudio, "Movie size / audio detection");
+        near(info.duration, 3.0, 0.02, "Movie duration"); near(info.frameRate, 10.0, 0.01, "Movie frame rate");
+        io::VisualMediaInfo none; require(io::probeVisualMedia(dir.getChildFile("video-engine/nada.mov"), none).failed(), "Missing movie probed as valid");
+        require(io::probeVisualMedia(mono, none).failed(), "Audio file accepted as a picture");
+
+        AudioEngine engine; setup(engine); auto audio = importFixture(engine, mono); audio->gain = 1; audio->pan = -1;
+        engine.play(); render(engine, 128); engine.seek(0); const auto baseline = render(engine, 128); engine.pause(); engine.seek(0);
+        auto video = engine.addTrack(TrackKind::video, "Imagen");
+        require(video->kind == TrackKind::video && ! video->hasAudioChannel() && ! video->hasEvents(), "Video track gained an audio channel");
+        require(app::videoTrackFor(engine, 0) == video && app::videoTrackFor(engine, 1) == video, "Video track for import");
+        juce::String movieId; requireOk(app::addVideoEvent(engine, video->id, movieFile, info, 1.0, &movieId));
+        require(app::addVideoEvent(engine, audio->id, movieFile, info, 0.0).failed(), "Picture event accepted on an audio track");
+        io::VisualMediaInfo picture; picture.still = true; picture.width = 64; picture.height = 48;
+        requireOk(app::addVideoEvent(engine, video->id, dir.getChildFile("video-engine/cartel.png"), picture, 4.0));
+        require(video->data.videoEvents.size() == 2 && video->data.videoEvents[0].id == movieId, "Video events stored in order");
+        near(engine.duration(), 4.0 + defaultStillLength, 1e-9, "Video events extend the project duration");
+        const auto target = app::videoFrameAt(engine, 2.55);
+        require(target && target->eventId == movieId && target->path == movieFile.getFullPathName() && ! target->still, "Frame target at the cursor");
+        near(target->sourceSeconds, 1.5, 1e-9, "Frame target source time (cursor 2.55 s, event at 1 s, 10 fps)");
+        require(! app::videoFrameAt(engine, 0.5) && app::videoFrameAt(engine, 6.0)->still, "Frame target before the movie / on the still");
+
+        io::FrameReader reader;
+        for (const auto& [at, red, green, blue] : std::initializer_list<std::tuple<double, bool, bool, bool>> { { 0.5, true, false, false }, { 1.5, false, true, false }, { 2.95, false, false, true } })
+        {
+            const auto image = reader.frameAt(movieFile, at, 320, 200);
+            require(image.isValid() && image.getWidth() == 160 && image.getHeight() == 96, "Decoded frame size at " + juce::String(at));
+            const auto c = image.getPixelAt(80, 72), top = image.getPixelAt(80, 8);
+            require((c.getRed() > 150) == red && (c.getGreen() > 150) == green && (c.getBlue() > 150) == blue, "Wrong picture at " + juce::String(at) + ": " + c.toDisplayString(false));
+            require(top.getRed() > 220 && top.getGreen() > 220 && top.getBlue() > 220, "Frame is not upright at " + juce::String(at));
+        }
+        require(! reader.frameAt(dir.getChildFile("video-engine/nada.mov"), 0).isValid(), "Missing movie decoded");
+
+        // The video track changes no audio sample, even soloed or armed.
+        video->solo = true; video->armed = true;
+        engine.play(); const auto result = render(engine, 128);
+        for (int k = 0; k < 128; ++k) for (int c = 0; c < 2; ++c) near(result.getSample(c, k), baseline.getSample(c, k), 0, "A video track changed an audio sample");
+        engine.pause(); video->solo = false; video->armed = false;
+
+        // Save / reopen, then reopen after moving the project folder together with its media.
+        const auto projectFile = dir.getChildFile("video-engine/video.silente"); requireOk(engine.saveProject(projectFile));
+        AudioEngine loaded; setup(loaded); requireOk(loaded.loadProject(projectFile));
+        auto copy = loaded.findTrack(video->id);
+        require(copy && copy->kind == TrackKind::video && ! copy->hasAudioChannel() && copy->data.videoEvents == video->data.videoEvents, "Video events did not round-trip");
+        const auto json = projectFile.loadFileAsString();
+        require(json.contains("\"relativePath\": \"colores.mov\"") || json.contains("\"relativePath\":\"colores.mov\""), "Relative media path not written");
+        juce::var parsed; requireOk(juce::JSON::parse(json, parsed));
+        juce::var moved = persistence::writeTrackData(video->data);
+        moved.getProperty("videoEvents", {}).getArray()->getReference(0).getDynamicObject()->setProperty("path", "/no/existe/colores.mov");
+        moved.getProperty("videoEvents", {}).getArray()->getReference(0).getDynamicObject()->setProperty("relativePath", "colores.mov");
+        const auto relinked = persistence::readTrackData(moved, movieFile.getParentDirectory());
+        require(relinked.videoEvents.size() == 2 && relinked.videoEvents[0].path == movieFile.getFullPathName(), "A moved project did not find its movie by relative path");
+
+        // Legacy projects and plain tracks carry no video data; damaged events are dropped.
+        require(persistence::readTrackData({}).videoEvents.empty(), "Legacy track data should have no video events");
+        require(! persistence::writeTrackData(audio->data).hasProperty("videoEvents"), "Tracks without pictures must not write videoEvents");
+        juce::var damaged = persistence::writeTrackData(video->data);
+        damaged.getProperty("videoEvents", {}).getArray()->getReference(1).getDynamicObject()->setProperty("length", -1.0);
+        damaged.getProperty("videoEvents", {}).getArray()->getReference(0).getDynamicObject()->setProperty("id", "");
+        const auto repaired = persistence::readTrackData(damaged);
+        require(repaired.videoEvents.size() == 1 && repaired.videoEvents[0].id.isNotEmpty(), "Invalid video events were not repaired/dropped");
+        require(trackKindFromId("video", false) == TrackKind::video && trackKindId(TrackKind::video) == "video", "Video kind id");
     });
 
     suite.run("media pool: grouping, usage counts, present/missing/replaced, sorting and relink", [&]

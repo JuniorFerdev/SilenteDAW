@@ -34,7 +34,7 @@ target_sources(Silente PRIVATE src/Main.cpp src/AudioEngine.cpp src/MainComponen
     src/ui/io/FormatSelector.cpp src/ui/io/ExportDialog.cpp src/ui/io/ConversionPanel.cpp
     src/app/Preferences.cpp src/ui/settings/SettingsWorkspace.cpp tests/SettingsUiTests.cpp
     src/ui/project/ProjectToolbox.cpp tests/ToolboxUiTests.cpp
-    src/domain/TrackData.cpp src/persistence/TrackDataJson.cpp
+    src/domain/TrackData.cpp src/domain/VideoEvents.cpp src/persistence/TrackDataJson.cpp src/io/VideoFrames.mm src/app/VideoCommands.cpp src/ui/video/VideoViewer.cpp tests/VideoUiTests.cpp tests/VideoFixture.mm
     src/ui/project/TimelineTracks.cpp src/ui/project/MarkerInspector.cpp tests/MarkerUiTests.cpp src/ui/plugins/InsertRack.cpp
     src/app/TrackCreation.cpp src/ui/project/AddTrackDialog.cpp tests/AddTrackUiTests.cpp
     src/ui/midi/PianoRoll.cpp src/domain/Quantize.cpp src/domain/NoteEdit.cpp src/domain/TempoMap.cpp src/persistence/TempoMapJson.cpp src/ui/tempo/TempoMapPanel.cpp
@@ -46,7 +46,7 @@ target_compile_definitions(Silente PRIVATE
     JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS=1
     JUCE_MODAL_LOOPS_PERMITTED=1
 )
-target_link_libraries(Silente PRIVATE SilenteLocales silente_lame "-framework AVFoundation" "-framework CoreMedia" juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+target_link_libraries(Silente PRIVATE SilenteLocales silente_lame "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo" "-framework CoreGraphics" juce::juce_audio_utils juce::juce_audio_processors juce::juce_dsp PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/Silente.icns")
     set_source_files_properties(assets/Silente.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     target_sources(Silente PRIVATE assets/Silente.icns)
