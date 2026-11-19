@@ -410,3 +410,8 @@ Pendiente: cargar un VST3 real desde una carpeta propia para tener evidencia de 
 
 Reemplazada `releases/macOS/Silente-Universal.app` desde `ede0a40` (importar video o imagen en pista de video, reproductor F8, eventos guardados con el proyecto). Universal arm64 + x86_64, firmada, sin respaldos; SHA-256 `39397de0600405a2338b8bbbf6d7113eacdf7dd3064cae8ba8f6c32b093b373f`. Motor 58/58 y formatos 6/6 en ambas; interfaz 340/340 en arm64 y en x86_64 (Rosetta, esta vez sin fallos).
 Verificado solo con video H.264 sintético y PNG. Pendiente: videos reales (HEVC, rotados, fps variable), reproducción con dispositivo de audio, mover/recortar/borrar eventos de video, y soltar archivos sobre la pista de video.
+
+## entrega-automacion01 — Universal con panel de automatización F6 (19-11-2026)
+
+Reemplazada `releases/macOS/Silente-Universal.app` desde `a0024fc` (panel F6 con modos Desactivado, Leer, Escribir, Touch y Latch; suspender lectura y escritura). Universal arm64 + x86_64, firmada, sin respaldos; SHA-256 `70f7228974ea3ac06623f5356a6142453a12d6a9cade2703f7aebda7650ce6f5`. Motor 59/59 y io 6/6 en ambas; interfaz 351/351 en arm64 y en x86_64.
+Pendiente: Cross-Over, Trim, Fill, suspender por categoría, automatizar plugins e instrumentos; probar Touch/Latch con el ratón en la app.
