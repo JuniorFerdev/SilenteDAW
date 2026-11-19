@@ -399,3 +399,9 @@ Pendiente: decidir si pintar la fila también al seleccionar la pista, y si el c
 
 Reemplazada `releases/macOS/Silente-Universal.app` desde `36481a1` (comandos MIDI con nombre en el historial, EDITOR_MIDI subetapa 2). Universal arm64 + x86_64, firmada, sin respaldos; SHA-256 `900ec80f229e4d8a44e64bb9809ec14352d2d5aa90774997ace8f9854568537b`. Motor 57/57 en ambas arquitecturas; interfaz 313/313 en arm64.
 En x86_64 (Rosetta) la comprobación «Slot ten's real options menu bypasses only its own processor» falla de forma intermitente (2 de 4 ejecuciones). Ocurre también antes de este cambio; sin resolver. Pendiente: investigar la causa temporal antes de tomarla como aprobada.
+
+## entrega-plugins01 — Universal con carpeta de plugins y origen (19-11-2026)
+
+Reemplazada `releases/macOS/Silente-Universal.app` desde `c172648` (Ajustes › Plugins con carpeta adicional, origen por plugin, matriz de formatos en `docs/PLUGIN_IMPORTACION.md`). Universal arm64 + x86_64, firmada, sin respaldos; SHA-256 `4551a65408138d72748bdbcaace9084c6f43a9ac811bcb90b9d5d947c8d4ea5e`. Motor 57/57 y formatos 6/6 en ambas; interfaz 321/321 en arm64.
+En x86_64 (Rosetta) la interfaz falla de forma intermitente y cambia de comprobación entre ejecuciones (menús, caja de herramientas, paleta). Dos ejecuciones seguidas: una 319/321 y otra 321/321. Sin resolver, misma causa probable que la anterior.
+Pendiente: cargar un VST3 real desde una carpeta propia para tener evidencia de carga de plugins.
