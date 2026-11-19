@@ -409,7 +409,7 @@ public:
     }
     void mouseDown(const juce::MouseEvent& e) override
     {
-        grabKeyboardFocus();markerDragTrack.clear();cycleDrawFrom=-1;markerDragUndo=false; dragClip=-1; rulerDragging=false; locatorDrag=0; const int i=trackAt(e.y);
+        grabKeyboardFocus();markerDragTrack.clear();cycleDrawFrom=-1;markerDragUndo=false; dragClip=-1; rulerDragging=false; locatorDrag=0; locatorRangeClick=false; const int i=trackAt(e.y);
         if(e.x<header&&!e.mods.isPopupMenu()){const int edge=edgeAt(e.y);if(edge>=0){edgeDrag=edge;edgeDownY=e.y;edgeStartLane=laneOf(edge);edgeAll=e.mods.isCommandDown()||e.mods.isCtrlDown();setMouseCursor(juce::MouseCursor::UpDownResizeCursor);return;}}
         if(e.y<ruler)
         {
@@ -425,6 +425,7 @@ public:
             {
                 const float lx=secondsToX(engine.loopStart),rx=secondsToX(engine.loopEnd);
                 locatorDrag=e.y<13 && std::abs(e.x-lx)<10 ? 1 : e.y<13 && std::abs(e.x-rx)<10 ? 2 : 0;
+                locatorRangeClick=! locatorDrag && e.y<13 && e.x>=lx && e.x<=rx && engine.loopEnd.load()>engine.loopStart.load(); // manual p. 325: clic en el rango activa/desactiva el ciclo
                 if(locatorDrag){if(beforeEdit)beforeEdit();}
                 else if(e.mods.isLeftButtonDown()){rulerDragging=true;engine.seek(xToSeconds(e.position.x));}
             }
@@ -609,6 +610,8 @@ public:
             trackDragging=false;trackDragIndex=-1;setTool(tool);moveTrack(request);
         }
         trackDragging=false;trackDragIndex=-1;
+        if(locatorRangeClick&&! e.mouseWasDraggedSinceMouseDown()){engine.looping=! engine.looping.load();if(changed)changed();}
+        locatorRangeClick=false;
         dragClip=-1;locatorDrag=0;rulerDragging=false;volumeDrag=-1;fadeDrag=0;rangeDragging=false;if(playTool){playTool=false;engine.pause();}
     }
     int fadeDrag=0; // 1 fade-in handle, 2 fade-out handle, 3 volume handle
@@ -739,7 +742,7 @@ public:
     }
 private:
     static juce::Colour selectedTrackColour() { return silente::ui::theme::selectedTrack; }
-    int locatorDrag=0; bool rulerDragging=false;
+    int locatorDrag=0; bool rulerDragging=false, locatorRangeClick=false;
     int dragClip=-1; bool resizing=false,dragOver=false;juce::Point<float> dragStart;AudioClip dragOrigin;
     juce::Rectangle<float> clipRect(int i,const AudioClip& c)const {return {secondsToX(c.startSeconds),(float)(trackTop(i)+8),juce::jmax(4.0f,(float)(c.durationSeconds*pixelsPerSecond)),laneOf(i)-16.0f};}
     // Track list buttons as in Cubase: grey when off, filled with their colour and dark text when on.

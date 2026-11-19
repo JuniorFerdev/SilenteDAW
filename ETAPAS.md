@@ -369,3 +369,9 @@ Las ondas no se veían por dos causas medidas: los eventos del .cpr empiezan hac
 ## zoom-bars01 — Barras de zoom horizontal y vertical (19-11-2026)
 
 El zoom horizontal funcionaba, pero no tenía control visible; la rueda requería ⌘/Ctrl y se anclaba al borde izquierdo. Ahora hay barra −/deslizador/+ abajo a la derecha (ids `h-zoom*`), ⌘+rueda y pellizco anclados al puntero. La barra vertical (altura y onda) ya existía y tiene prueba de arrastre y límites. Verificado: motor 56/56, io 6/6, flujo 0 FAIL / 1 SKIP (VST3 opcional), idiomas 1023. Sin probar con ratón real. La fila inferior debe medir 12 px: con 14 fallan dos pruebas de coordenadas.
+
+## ciclo-ruler01 — Clic en el rango de localizadores activa el ciclo (19-11-2026)
+
+Manual p. 325: un clic sin arrastre en el rango de localizadores de la regla activa o desactiva el modo ciclo; el arrastre sigue moviendo el cursor. Implementado en `Arrangement` (`src/MainComponent.cpp`, marca `locatorRangeClick` en `mouseDown` y toggle en `mouseUp` vía `changed`). Se mantienen los tiradores de los localizadores y la botonera de ciclo. Verificado: 304 PASS / 0 FAIL en el flujo de interfaz (4 comprobaciones nuevas en `tests/MarkerUiTests.cpp`). Sin probar con ratón real. Pendiente: no hay paso de Deshacer para el ciclo (igual que el botón); contrastar con el manual la lectura completa de ciclo (págs. 350–351 y 448) y el modo punch/loop de la investigación de punch.
+
+Nota de entorno: el `.venv` y la caché de CMake de `build/` apuntaban a `UNIVERSIDAD/FUNDACIONES/Silente`. Se reconfiguraron dentro de este proyecto (venv reinstalado y `CMakeCache.txt` regenerable retirados); los binarios se reconstruyeron.

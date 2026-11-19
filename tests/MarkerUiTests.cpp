@@ -73,6 +73,21 @@ void runMarkerUiChecks(MainComponent& view,AudioEngine& engine,const File& outpu
     // Pixel-independent hit geometry is tested below; interaction uses a two-marker 4-second fit.
     const double scale=(arrangement->getWidth()-250-32)/4.0;
     const double scroll=std::max(0.0,2-16/scale);const float x=(float)(250+(2-scroll)*scale),right=(float)(250+(6-scroll)*scale);
+    {
+        // Manual p. 325: un clic sin arrastre en el rango de localizadores de la regla activa o desactiva el ciclo; el arrastre solo mueve el cursor.
+        const double savedStart=engine.loopStart.load(),savedEnd=engine.loopEnd.load();const bool savedLooping=engine.looping.load();
+        engine.loopStart=2.0;engine.loopEnd=6.0;engine.looping=false;
+        const float y=6.0f,inside=(x+right)/2,outside=right+40.0f;
+        arrangement->mouseDown(mouse(*arrangement,inside,y));arrangement->mouseUp(mouse(*arrangement,inside,y));
+        expect(engine.looping.load(),"Clicking the locator range on the ruler turns cycle on");
+        arrangement->mouseDown(mouse(*arrangement,inside,y));arrangement->mouseUp(mouse(*arrangement,inside,y));
+        expect(!engine.looping.load(),"A second click on the locator range turns cycle off");
+        arrangement->mouseDown(mouse(*arrangement,inside,y));arrangement->mouseDrag(mouse(*arrangement,inside+30.0f,y,1,0,{inside,y}));arrangement->mouseUp(mouse(*arrangement,inside+30.0f,y,1,0,{inside,y}));
+        expect(!engine.looping.load(),"Dragging on the locator range moves the cursor without toggling cycle");
+        arrangement->mouseDown(mouse(*arrangement,outside,y));arrangement->mouseUp(mouse(*arrangement,outside,y));
+        expect(!engine.looping.load(),"Clicking the ruler outside the locator range does not toggle cycle");
+        engine.loopStart=savedStart;engine.loopEnd=savedEnd;engine.looping=savedLooping;
+    }
     auto* height=dynamic_cast<Slider*>(find(view,"track-height"));const int lane=height?(int)height->getValue():60;
     const float cy=30+lane*.2f,py=30+lane*.7f;
     arrangement->mouseDown(mouse(*arrangement,(x+right)/2,cy,2));arrangement->mouseUp(mouse(*arrangement,(x+right)/2,cy,2));

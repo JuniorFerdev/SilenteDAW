@@ -1,6 +1,22 @@
 # Editor MIDI (Editor de teclas): diseño por subetapas
 
-Referencia UX: Cubase Pro 15, capítulo Editores MIDI (manual, págs. 1170–1304). En esta sesión no se pudieron revisar las páginas del PDF (no hay pdftoppm ni pypdf). Antes de cerrar cada subetapa, hay que contrastar su comportamiento con esas páginas y registrarlo aquí. Sin esa comprobación, el editor no se considera equivalente al de Cubase.
+Referencia UX: Cubase Pro 15, capítulo Editores MIDI (manual, págs. 1170–1304). El texto del PDF se lee con PDFKit (`swift`, sin instalar nada: las páginas PDF coinciden con la numeración del manual). Antes de cerrar cada subetapa hay que contrastar su comportamiento con esas páginas y registrarlo aquí. Sin esa comprobación, el editor no se considera equivalente al de Cubase.
+
+## Contraste con el manual (leído 19-11-2026)
+
+Páginas leídas: 1170–1171 (funciones comunes) y pasajes del Editor de teclas (1229–1262) sobre selección, transposición, empuje, cuantización y escalas. **Pendiente:** leer la sección «Operaciones con el editor de teclas» completa y las páginas 1263–1304 (percusión, lista, in-place).
+
+- **Selección (subetapa 1):** las páginas leídas no describen ⇧-clic, marquesina ni ⌘A con el detalle de la tabla de arriba. Queda sin contrastar.
+- **Transposición:** la paleta de transposición mueve ½ tono y una octava (p. 1236). Silente no lo tiene: pendiente en la subetapa 2.
+- **Teclas de cursor:** mueven el evento por semitonos y ⇧+flecha por octavas (p. 1247). Silente no las tiene: pendiente en la subetapa 4.
+- **Empujar:** inicio y final a izquierda y derecha, y mover por el valor de la rejilla de empuje (p. 1235). Ajustes de empujar son una rejilla propia y separada de la de cuantización. Subetapa 4; la rejilla de empuje no está en el plan.
+- **Cuantizar:** presets de cuantización y de groove, cuantización suave, panel y «Cuantizar duración» (pp. 1235–1236). Subetapa 8, ampliada con cuantización suave y de duración y presets de groove.
+- **Escalas y tonos (no están en el plan):** Cuantizar tonos, Ajustar edición de tonos y visibilidad de tonos por escala. Son funciones avanzadas; registrarlas como pendientes nuevas, sin prometerlas en la subetapa 9.
+- **Extender a siguiente seleccionada y Escalar duración/legato (no están en el plan):** añadir como pendientes nuevos.
+- **Junta eventos y Suprime eventos (en la barra del editor, no en el plan):** pendientes nuevos.
+- **Controladores en el rango de notas (p. 1229):** Seleccionar controladores en el rango de notas y copiar/pegar entre carriles. Subetapa 7.
+- **Zoom (p. 1171):** herramienta Zoom, deslizadores y ⌥-clic. Silente usa H/G y la barra; falta la herramienta de zoom del editor.
+- **Partes MIDI (p. 1236):** «Parte activa», «Todas las partes» y «Todas las partes en pista activa» restringen la selección. Silente no tiene partes: ya figura en las limitaciones.
 
 ## Capas
 
