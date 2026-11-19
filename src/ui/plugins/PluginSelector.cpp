@@ -1,6 +1,8 @@
 #include "PluginSelector.h"
 #include "../../i18n/Translations.h"
 #include "../theme/Colours.h"
+#include "../../plugins/PluginImport.h"
+#include "../../app/Preferences.h"
 #include <map>
 
 namespace silente::ui
@@ -20,7 +22,7 @@ PluginSelector::PluginSelector(KnownPluginList& c,PluginKind k,const String& des
     favourites.setClickingTogglesState(true);favourites.onClick=[this]{rebuild();};
     scan.onClick=[this]{if(scanning&&scanning()){if(onStop)onStop();}else if(onScan)onScan();};
     choose.onClick=[this]{accept();};
-    list.setComponentID("plugin-results");list.setRowHeight(30);list.setColour(ListBox::backgroundColourId,bg);
+    list.setComponentID("plugin-results");list.setRowHeight(36);list.setColour(ListBox::backgroundColourId,bg);
     for(auto* component:std::initializer_list<Component*>{&title,&channel,&search,&format,&grouping,&favourites,&list,&status,&scan,&choose})addAndMakeVisible(component);
     auto saved=JSON::parse(favouriteFile.loadFileAsString());
     if(auto* items=saved.getArray())for(const auto& item:*items)favouriteIds.insert(item.toString());
@@ -51,6 +53,7 @@ void PluginSelector::rebuild()
 {
     String selected;
     int previous=list.getSelectedRow();if(isPositiveAndBelow(previous,static_cast<int>(rows.size()))&&!rows[(size_t)previous].heading)selected=rows[(size_t)previous].plugin.createIdentifierString();
+    importFolder=app::pluginSearchFolder();
     rows.clear();std::map<String,std::vector<PluginDescription>> groups;
     const String selectedFormat=format.getSelectedId()==2?"VST3":format.getSelectedId()==3?"AudioUnit":"";
     auto available=catalog.getTypes();if(kind==PluginKind::instrument)available.add(internalInstrumentDescription());
@@ -74,6 +77,15 @@ void PluginSelector::rebuild()
     lastCount=catalog.getNumTypes();choose.setEnabled(list.getSelectedRow()>=0);repaint();
 }
 int PluginSelector::getNumRows(){return static_cast<int>(rows.size());}
+String PluginSelector::getTooltipForRow(int index)
+{
+    if(!isPositiveAndBelow(index,static_cast<int>(rows.size()))||rows[(size_t)index].heading)return {};
+    return plugins::describeOrigin(rows[(size_t)index].plugin,importFolder);
+}
+String PluginSelector::originText(int index) const
+{
+    return isPositiveAndBelow(index,static_cast<int>(rows.size()))&&!rows[(size_t)index].heading?plugins::describeOrigin(rows[(size_t)index].plugin,importFolder):String();
+}
 void PluginSelector::paintListBoxItem(int index,Graphics& g,int width,int height,bool selected)
 {
     if(!isPositiveAndBelow(index,static_cast<int>(rows.size())))return;const auto& row=rows[(size_t)index];
@@ -81,7 +93,11 @@ void PluginSelector::paintListBoxItem(int index,Graphics& g,int width,int height
     g.setFont(Font(FontOptions(row.heading?12.0f:13.0f,row.heading?Font::bold:Font::plain)));
     g.setColour(row.heading?muted:ink);
     if(row.heading){g.drawText((collapsed.count(row.group)?String::fromUTF8("▸ "):String::fromUTF8("▾ "))+row.group+" ("+String(row.count)+")",10,0,width-20,height,Justification::centredLeft);return;}
-    g.drawText(row.plugin.name,27,0,width-135,height,Justification::centredLeft);g.setColour(muted);g.drawText(row.plugin.pluginFormatName,width-100,0,67,height,Justification::centredRight);
+    const bool imported=plugins::originOf(row.plugin,importFolder)==plugins::Origin::imported;
+    g.drawText(row.plugin.name,27,2,width-135,18,Justification::centredLeft);g.setColour(muted);g.drawText(row.plugin.pluginFormatName,width-100,0,67,height,Justification::centredRight);
+    // Origin line: distinguishes plugins imported from the extra folder from system ones.
+    g.setFont(Font(FontOptions(10.0f)));g.setColour(imported?accent:selected?ink:muted);
+    g.drawText(plugins::describeOrigin(row.plugin,importFolder),27,19,width-135,14,Justification::centredLeft,true);
     g.setColour(favouriteIds.count(row.plugin.createIdentifierString())?cycleColour:muted);g.drawText(String::fromUTF8("★"),width-28,0,24,height,Justification::centred);
 }
 void PluginSelector::listBoxItemClicked(int index,const MouseEvent& e)

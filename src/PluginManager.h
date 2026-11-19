@@ -27,7 +27,7 @@ public:
     juce::String status() const;
     void insertPlugin(int trackIndex, const juce::PluginDescription&);
     void saveCatalog();
-    static int enumerateInChild(const juce::String& format, const juce::File& destination);
+    static int enumerateInChild(const juce::String& format, const juce::File& destination, const juce::File& extraFolder = {});
     static int scanInChild(const juce::String& format, const juce::String& identifier, const juce::File& destination);
     static juce::File settingsDirectory();
     std::function<void()> onChange;

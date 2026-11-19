@@ -1028,5 +1028,22 @@
   "Cuantizar notas": "Cuantizar notas",
   "Duplicar notas": "Duplicar notas",
   "Transponer notas": "Transponer notas",
-  "Crear nota": "Crear nota"
+  "Crear nota": "Crear nota",
+  "Integrado en Silente": "Integrado en Silente",
+  "Audio Units registrados en macOS": "Audio Units registrados en macOS",
+  "Importado": "Importado",
+  "Sistema": "Sistema",
+  "Usuario": "Usuario",
+  "La carpeta de plugins no existe.": "La carpeta de plugins no existe.",
+  "No se pudo guardar la carpeta de plugins.": "No se pudo guardar la carpeta de plugins.",
+  "Carpeta adicional: ": "Carpeta adicional: ",
+  " AU sin registrar en macOS": " AU sin registrar en macOS",
+  " AAX/VST2/CLAP no compatibles": " AAX/VST2/CLAP no compatibles",
+  "Carpeta adicional de plugins (VST3 y AU)": "Carpeta adicional de plugins (VST3 y AU)",
+  "Elegir carpeta…": "Elegir carpeta…",
+  "Quitar carpeta": "Quitar carpeta",
+  "Silente explora las carpetas estándar de macOS y esta carpeta. Los VST3 se cargan desde cualquier ruta; macOS solo registra los Audio Units instalados en Plug-Ins/Components. AAX (Pro Tools), VST2 y CLAP no son compatibles.": "Silente explora las carpetas estándar de macOS y esta carpeta. Los VST3 se cargan desde cualquier ruta; macOS solo registra los Audio Units instalados en Plug-Ins/Components. AAX (Pro Tools), VST2 y CLAP no son compatibles.",
+  "Elegir carpeta de plugins": "Elegir carpeta de plugins",
+  "Sin carpeta adicional": "Sin carpeta adicional",
+  "Importar VST3 Audio Units ruta explorar": "Importar VST3 Audio Units ruta explorar"
 }

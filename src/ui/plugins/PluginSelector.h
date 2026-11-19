@@ -17,6 +17,8 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void focusSearch();
+    int rowCount() const { return static_cast<int>(rows.size()); }
+    juce::String originText(int row) const;
 private:
     struct Row { juce::String group; juce::PluginDescription plugin; bool heading=false; int count=0; };
     theme::SilenteLookAndFeel look;
@@ -31,12 +33,14 @@ private:
     juce::ListBox list;
     std::vector<Row> rows;
     std::set<juce::String> favouriteIds,collapsed;
+    juce::File importFolder;
     int lastCount=-1,lastLanguage=-1;
     void rebuild();
     void translate();
     void accept();
     void timerCallback() override;
     int getNumRows() override;
+    juce::String getTooltipForRow(int) override;
     void paintListBoxItem(int,juce::Graphics&,int,int,bool) override;
     void listBoxItemClicked(int,const juce::MouseEvent&) override;
     void listBoxItemDoubleClicked(int,const juce::MouseEvent&) override;

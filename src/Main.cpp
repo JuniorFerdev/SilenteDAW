@@ -52,7 +52,7 @@ public:
         }
         if (args.size() >= 3 && args[0] == "--enumerate-plugins")
         {
-            setApplicationReturnValue(PluginManager::enumerateInChild(args[1], juce::File(args[2]))); quit(); return;
+            setApplicationReturnValue(PluginManager::enumerateInChild(args[1], juce::File(args[2]), args.size() >= 4 && juce::File::isAbsolutePath(args[3]) ? juce::File(args[3]) : juce::File())); quit(); return;
         }
         if (args.size() >= 4 && args[0] == "--scan-plugin")
         {

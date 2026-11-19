@@ -46,4 +46,24 @@ juce::Result saveShowToolboxOnRightClick(bool show)
         return juce::Result::fail(i18n::tr("No se pudo guardar la preferencia de herramientas."));
     return juce::Result::ok();
 }
+juce::File pluginSearchFolder()
+{
+    if(auto xml=juce::XmlDocument::parse(preferencesDirectory().getChildFile("plugins.xml")))
+    {
+        const auto path=xml->getStringAttribute("searchFolder");
+        if(juce::File::isAbsolutePath(path)&&juce::File(path).isDirectory())return juce::File(path);
+    }
+    return {};
+}
+juce::Result savePluginSearchFolder(const juce::File& folder)
+{
+    if(folder!=juce::File()&&!folder.isDirectory())return juce::Result::fail(i18n::tr("La carpeta de plugins no existe."));
+    const auto file=preferencesDirectory().getChildFile("plugins.xml");
+    const auto result=file.getParentDirectory().createDirectory();if(result.failed())return result;
+    juce::XmlElement xml("PLUGINS");xml.setAttribute("searchFolder",folder.getFullPathName());
+    juce::TemporaryFile temp(file);
+    if(!xml.writeTo(temp.getFile())||!temp.overwriteTargetFileWithTemporary())
+        return juce::Result::fail(i18n::tr("No se pudo guardar la carpeta de plugins."));
+    return juce::Result::ok();
+}
 }

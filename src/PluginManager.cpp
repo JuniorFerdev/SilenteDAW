@@ -4,6 +4,8 @@
 #include "i18n/UiTranslation.h"
 #include "ui/theme/Colours.h"
 #include "ui/plugins/PluginSelector.h"
+#include "plugins/PluginImport.h"
+#include "app/Preferences.h"
 
 namespace silente
 {
@@ -21,7 +23,7 @@ constexpr const char* catalogueName="Plugins.xml";
 class PluginManager::Scanner final : public Thread
 {
 public:
-    explicit Scanner(PluginManager& owner) : Thread(juce::String::fromUTF8("Silente · explorar plugins")), manager(owner) {}
+    Scanner(PluginManager& owner,const File& folder) : Thread(juce::String::fromUTF8("Silente · explorar plugins")), manager(owner), extraFolder(folder) {}
     ~Scanner() override { signalThreadShouldExit(); stopThread(3000); }
     void run() override
     {
@@ -39,6 +41,7 @@ public:
             auto output = directory.getChildFile(Uuid().toString() + ".xml");
             ChildProcess process;
             StringArray args { File::getSpecialLocation(File::currentExecutableFile).getFullPathName(), "--enumerate-plugins", format->getName(), output.getFullPathName() };
+            if (extraFolder != File()) args.add(extraFolder.getFullPathName());
             bool success = process.start(args, 0);
             const auto started = Time::getMillisecondCounterHiRes();
             if (success)
@@ -108,11 +111,21 @@ public:
             }
             output.deleteFile();
         }
-        manager.setStatus(threadShouldExit() ? i18n::tr("Exploración detenida. Los plugins encontrados están disponibles.")
-                          : i18n::tr("Exploración finalizada · ") + String(index) + i18n::tr(" ubicaciones · ") + String(failed) + i18n::tr(" sin respuesta o incompatibles."));
+        auto summary = threadShouldExit() ? i18n::tr("Exploración detenida. Los plugins encontrados están disponibles.")
+                          : i18n::tr("Exploración finalizada · ") + String(index) + i18n::tr(" ubicaciones · ") + String(failed) + i18n::tr(" sin respuesta o incompatibles.");
+        // The extra folder is only walked on disk here; nothing is loaded outside the child processes.
+        if (extraFolder != File() && ! threadShouldExit())
+        {
+            const auto found = plugins::inventoryFolder(extraFolder);
+            summary << "\n" << i18n::tr("Carpeta adicional: ") << String(found.vst3.size()) << " VST3";
+            if (! found.audioUnits.isEmpty()) summary << juce::String::fromUTF8(" · ") << String(found.audioUnits.size()) << i18n::tr(" AU sin registrar en macOS");
+            if (found.unsupported() > 0) summary << juce::String::fromUTF8(" · ") << String(found.unsupported()) << i18n::tr(" AAX/VST2/CLAP no compatibles");
+        }
+        manager.setStatus(summary);
     }
 private:
     PluginManager& manager;
+    File extraFolder;
 };
 
 class PluginManager::BrowserWindow final : public DocumentWindow
@@ -163,7 +176,7 @@ void PluginManager::showBrowser(int trackIndex)
 void PluginManager::scanPlugins()
 {
     if (isScanning()) return;
-    scanner = std::make_unique<Scanner>(*this); scanner->startThread();
+    scanner = std::make_unique<Scanner>(*this, app::pluginSearchFolder()); scanner->startThread();
 }
 void PluginManager::stopScan() { if (scanner != nullptr) scanner->signalThreadShouldExit(); }
 void PluginManager::saveCatalog()
@@ -326,13 +339,16 @@ void PluginManager::loadSelection(SelectionTarget target,const PluginDescription
             showEditor(trackIndex,added);if(onChange)onChange();
         });
 }
-int PluginManager::enumerateInChild(const String& formatName, const File& destination)
+int PluginManager::enumerateInChild(const String& formatName, const File& destination, const File& extraFolder)
 {
     AudioPluginFormatManager formats; addDefaultFormatsToManager(formats);
     for (auto* format : formats.getFormats())
     {
         if (format->getName() != formatName) continue;
-        auto identifiers = format->searchPathsForPlugins(format->getDefaultLocationsToSearch(), true, false);
+        // VST3 accepts any folder. The AU format ignores paths: it lists what macOS has registered.
+        auto paths = format->getDefaultLocationsToSearch();
+        if (extraFolder != File() && extraFolder.isDirectory()) paths.addIfNotAlreadyThere(extraFolder);
+        auto identifiers = format->searchPathsForPlugins(paths, true, false);
         identifiers.removeDuplicates(false);
         XmlElement root("SILENTE_CANDIDATES");
         for (const auto& identifier : identifiers) root.createNewChildElement("plugin")->setAttribute("identifier", identifier);

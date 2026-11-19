@@ -18,6 +18,7 @@ struct SettingsHooks
     std::function<float()> readScale;
     std::function<void(float)> writeScale;
     std::function<bool(const juce::KeyPress&)> key;
+    std::function<void()> scanPlugins;          // starts the existing out-of-process scanner
 };
 
 // Search indexes real settings and command names; a result opens its page and reveals its
@@ -25,8 +26,8 @@ struct SettingsHooks
 class SettingsWorkspace final : public juce::Component, private juce::ListBoxModel
 {
 public:
-    enum class Page { audio, appearance, transport, metronome, keys, editing };
-    static constexpr int pageCount = 6;
+    enum class Page { audio, appearance, transport, metronome, keys, editing, plugins };
+    static constexpr int pageCount = 7;
     SettingsWorkspace(AudioEngine&, SettingsHooks);
     ~SettingsWorkspace() override;
     void paint(juce::Graphics&) override;

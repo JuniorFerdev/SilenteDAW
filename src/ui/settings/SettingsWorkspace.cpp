@@ -6,6 +6,7 @@
 #include "../../app/KeyCommands.h"
 #include "../../app/Preferences.h"
 #include "../../i18n/Translations.h"
+#include "../../plugins/PluginImport.h"
 
 namespace silente::ui
 {
@@ -21,6 +22,7 @@ juce::String title(SettingsWorkspace::Page p)
         case SettingsWorkspace::Page::metronome: return i18n::tr("Metrónomo");
         case SettingsWorkspace::Page::keys: return i18n::tr("Comandos de teclado");
         case SettingsWorkspace::Page::editing: return i18n::tr("Opciones de edición");
+        case SettingsWorkspace::Page::plugins: return i18n::tr("Plugins");
     }
     return {};
 }
@@ -62,6 +64,64 @@ public:
 private:
     juce::ToggleButton toolbox;
     juce::Label hint,status;
+};
+
+// Extra plug-in folder (manual: Plug-in Manager, VST 3 plug-in paths). The scan itself runs in
+// the existing PluginManager child processes; this page only stores the folder and lists bundles.
+class PluginsPanel final : public juce::Component
+{
+public:
+    explicit PluginsPanel(SettingsHooks& h) : hooks(h)
+    {
+        for(auto* c:std::initializer_list<juce::Component*>{&label,&path,&choose,&clear,&scan,&summary,&hint})addAndMakeVisible(c);
+        label.setText(i18n::tr("Carpeta adicional de plugins (VST3 y AU)"),juce::dontSendNotification);
+        path.setComponentID("settings-plugin-folder-path");path.setColour(juce::Label::textColourId,theme::ink);
+        choose.setComponentID("settings-plugin-folder");choose.setButtonText(i18n::tr("Elegir carpeta…"));
+        clear.setComponentID("settings-plugin-folder-clear");clear.setButtonText(i18n::tr("Quitar carpeta"));
+        scan.setComponentID("settings-plugin-scan");scan.setButtonText(i18n::tr("Buscar plugins"));scan.setEnabled((bool)hooks.scanPlugins);
+        summary.setComponentID("settings-plugin-summary");summary.setColour(juce::Label::textColourId,theme::muted);
+        hint.setColour(juce::Label::textColourId,theme::muted);
+        hint.setText(i18n::tr("Silente explora las carpetas estándar de macOS y esta carpeta. Los VST3 se cargan desde cualquier ruta; macOS solo registra los Audio Units instalados en Plug-Ins/Components. AAX (Pro Tools), VST2 y CLAP no son compatibles."),juce::dontSendNotification);
+        choose.onClick=[this]
+        {
+            chooser=std::make_unique<juce::FileChooser>(i18n::tr("Elegir carpeta de plugins"),app::pluginSearchFolder());
+            const juce::Component::SafePointer<PluginsPanel> safe(this);
+            chooser->launchAsync(juce::FileBrowserComponent::openMode|juce::FileBrowserComponent::canSelectDirectories,[safe](const juce::FileChooser& fc)
+            {
+                if(safe!=nullptr&&fc.getResult()!=juce::File())safe->setFolder(fc.getResult());
+            });
+        };
+        clear.onClick=[this]{setFolder({});};
+        scan.onClick=[this]{if(hooks.scanPlugins)hooks.scanPlugins();};
+        refresh();setSize(620,300);
+    }
+    // Also the entry point for tests: persists the folder and refreshes the inventory.
+    void setFolder(const juce::File& folder)
+    {
+        const auto result=app::savePluginSearchFolder(folder);
+        refresh();if(result.failed())summary.setText(result.getErrorMessage(),juce::dontSendNotification);
+    }
+    void resized() override
+    {
+        auto r=getLocalBounds().reduced(20);label.setBounds(r.removeFromTop(26));path.setBounds(r.removeFromTop(26));r.removeFromTop(6);
+        auto row=r.removeFromTop(28);choose.setBounds(row.removeFromLeft(150));row.removeFromLeft(8);clear.setBounds(row.removeFromLeft(130));row.removeFromLeft(8);scan.setBounds(row.removeFromLeft(140));
+        r.removeFromTop(10);summary.setBounds(r.removeFromTop(40));r.removeFromTop(6);hint.setBounds(r.removeFromTop(90));
+    }
+private:
+    SettingsHooks& hooks;
+    juce::Label label,path,summary,hint;
+    juce::TextButton choose,clear,scan;
+    std::unique_ptr<juce::FileChooser> chooser;
+    void refresh()
+    {
+        const auto folder=app::pluginSearchFolder();
+        path.setText(folder==juce::File()?i18n::tr("Sin carpeta adicional"):folder.getFullPathName(),juce::dontSendNotification);
+        clear.setEnabled(folder!=juce::File());
+        if(folder==juce::File()){summary.setText({},juce::dontSendNotification);return;}
+        const auto found=plugins::inventoryFolder(folder);const auto sep=juce::String::fromUTF8(" · ");
+        summary.setText(juce::String(found.vst3.size())+" VST3"+sep+juce::String(found.audioUnits.size())+i18n::tr(" AU sin registrar en macOS")
+                        +sep+juce::String(found.unsupported())+i18n::tr(" AAX/VST2/CLAP no compatibles"),juce::dontSendNotification);
+    }
 };
 
 class AppearancePanel final : public juce::Component, private juce::Timer
@@ -174,12 +234,13 @@ SettingsWorkspace::~SettingsWorkspace() { navigation.setModel(nullptr);viewport.
 void SettingsWorkspace::buildIndex()
 {
     entries.clear();
-    for(auto p:{Page::audio,Page::appearance,Page::transport,Page::metronome,Page::keys,Page::editing})entries.push_back({p,title(p),{},{},{}});
+    for(auto p:{Page::audio,Page::appearance,Page::transport,Page::metronome,Page::keys,Page::editing,Page::plugins})entries.push_back({p,title(p),{},{},{}});
     const auto add=[this](Page p,const juce::String& label,const juce::String& keywords,const char* control){entries.push_back({p,label,title(p)+" "+keywords,control,{}});};
     add(Page::audio,i18n::tr("Dispositivos de audio y MIDI"),i18n::tr("Entrada salida frecuencia búfer latencia canales MIDI")+" buffer","audio-device-selector");
     add(Page::audio,i18n::tr("Guardar configuración"),{},"audio-save");
     add(Page::appearance,i18n::tr("Tamaño de la interfaz y de la letra"),i18n::tr("Escala resolución tamaño fuente texto"),"settings-scale");
     add(Page::editing,i18n::tr("Mostrar caja de herramientas con clic derecho"),i18n::tr("Menú contextual herramientas ratón"),"settings-show-toolbox");
+    add(Page::plugins,i18n::tr("Carpeta adicional de plugins (VST3 y AU)"),i18n::tr("Importar VST3 Audio Units ruta explorar")+" vst au","settings-plugin-folder");
     add(Page::transport,i18n::tr("Modo de inicio"),{},"settings-start-mode");
     add(Page::transport,i18n::tr("Volver a la posición de inicio al parar"),{},"settings-return-start");
     add(Page::transport,i18n::tr("Activar pre-roll"),i18n::tr("Compases"),"settings-pre-roll");
@@ -246,6 +307,7 @@ juce::Component& SettingsWorkspace::page(Page p)
             case Page::metronome: result=std::make_unique<MetronomePanel>(engine);break;
             case Page::keys: result=std::make_unique<KeyCommandsPanel>(hooks.keyAvailable?hooks.keyAvailable:[](const juce::String&){return false;});break;
             case Page::editing: result=std::make_unique<EditingPanel>();break;
+            case Page::plugins: result=std::make_unique<PluginsPanel>(hooks);break;
         }
     }
     return *result;

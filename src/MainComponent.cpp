@@ -2515,6 +2515,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             ui::SettingsHooks hooks;
             hooks.keyAvailable=[this](const juce::String& id){return keyActions.count(id)>0;};
             hooks.key=[this](const juce::KeyPress& key){return owner.keyPressed(key);};
+            hooks.scanPlugins=[this]{if(!plugins.isScanning())plugins.scanPlugins();owner.showPlugins();};
             hooks.readScale=[] {return juce::Desktop::getInstance().getGlobalScaleFactor();};
             hooks.writeScale=[this](float value){if(owner.onInterfaceScaleChange)owner.onInterfaceScaleChange(value);};
             hooks.readTransport=[this]{return ui::TransportPreferences{startMode,returnToStart,usePreRoll,usePostRoll,autoScroll,stationary,preRollBars,postRollBars};};
