@@ -405,3 +405,8 @@ En x86_64 (Rosetta) la comprobación «Slot ten's real options menu bypasses onl
 Reemplazada `releases/macOS/Silente-Universal.app` desde `c172648` (Ajustes › Plugins con carpeta adicional, origen por plugin, matriz de formatos en `docs/PLUGIN_IMPORTACION.md`). Universal arm64 + x86_64, firmada, sin respaldos; SHA-256 `4551a65408138d72748bdbcaace9084c6f43a9ac811bcb90b9d5d947c8d4ea5e`. Motor 57/57 y formatos 6/6 en ambas; interfaz 321/321 en arm64.
 En x86_64 (Rosetta) la interfaz falla de forma intermitente y cambia de comprobación entre ejecuciones (menús, caja de herramientas, paleta). Dos ejecuciones seguidas: una 319/321 y otra 321/321. Sin resolver, misma causa probable que la anterior.
 Pendiente: cargar un VST3 real desde una carpeta propia para tener evidencia de carga de plugins.
+
+## entrega-video01 — Universal con pista de video y reproductor (19-11-2026)
+
+Reemplazada `releases/macOS/Silente-Universal.app` desde `ede0a40` (importar video o imagen en pista de video, reproductor F8, eventos guardados con el proyecto). Universal arm64 + x86_64, firmada, sin respaldos; SHA-256 `39397de0600405a2338b8bbbf6d7113eacdf7dd3064cae8ba8f6c32b093b373f`. Motor 58/58 y formatos 6/6 en ambas; interfaz 340/340 en arm64 y en x86_64 (Rosetta, esta vez sin fallos).
+Verificado solo con video H.264 sintético y PNG. Pendiente: videos reales (HEVC, rotados, fps variable), reproducción con dispositivo de audio, mover/recortar/borrar eventos de video, y soltar archivos sobre la pista de video.
