@@ -212,7 +212,10 @@ public:
     }
     void mouseMove(const juce::MouseEvent& e) override {setMouseCursor(e.x<header&&edgeAt(e.y)>=0?juce::MouseCursor::UpDownResizeCursor:toolCursor());}
     void mouseExit(const juce::MouseEvent&) override {setMouseCursor(toolCursor());}
-    void zoom(double factor) { pixelsPerSecond = juce::jlimit(12.0, 480.0, pixelsPerSecond*factor); repaint(); }
+    static constexpr double minPps = 12.0, maxPps = 480.0; // límites del zoom horizontal
+    void zoom(double factor) { pixelsPerSecond = juce::jlimit(minPps, maxPps, pixelsPerSecond*factor); repaint(); }
+    void zoomTo(double pps, float anchorX) { const double at=xToSeconds(anchorX);pixelsPerSecond=juce::jlimit(minPps,maxPps,pps);scrollSeconds=juce::jmax(0.0,at-(anchorX-header)/pixelsPerSecond);repaint(); }
+    float centreX() const { return header+(getWidth()-header)*.5f; }
     void paint(juce::Graphics& g) override
     {
         // Model containers are only mutated on the message thread (under modelLock, which the audio
@@ -710,10 +713,11 @@ public:
     }
     void mouseWheelMove(const juce::MouseEvent& e,const juce::MouseWheelDetails& w) override
     {
-        if(e.mods.isCommandDown()||e.mods.isCtrlDown())zoom(w.deltaY>0?1.15:1/1.15);
+        if(e.mods.isCommandDown()||e.mods.isCtrlDown())zoomAt((float)e.x,w.deltaY>0?1.15:1/1.15); // el tiempo bajo el puntero se queda fijo
         else if(e.mods.isShiftDown()||std::abs(w.deltaX)>.01f)scrollSeconds=juce::jmax(0.0,scrollSeconds-(w.deltaX!=0?w.deltaX:w.deltaY)*8);
         else { const juce::ScopedLock lock(engine.modelLock);const int visible=juce::jmax(1,(getHeight()-ruler)/lane);firstTrack=juce::jlimit(0,juce::jmax(0,(int)visibleTracks().size()-visible),firstTrack+(w.deltaY>0?-1:1)); }repaint();
     }
+    void mouseMagnify(const juce::MouseEvent& e,float scale) override { if(scale>0.0f)zoomAt((float)e.x,scale); } // pellizco del trackpad
     bool isInterestedInFileDrag(const juce::StringArray&) override { return true; }
     void fileDragEnter(const juce::StringArray&,int,int) override {dragOver=true;repaint();}
     void fileDragExit(const juce::StringArray&) override {dragOver=false;repaint();}
@@ -954,6 +958,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     juce::TextButton glueTool,zoomTool,muteTool,playTool,rangeTool;
     juce::TextButton inspectorTab{i18n::tr("Inspector")},visibilityTab{i18n::tr("Visibilidad")},channelButton{"e"};
     juce::ScrollBar timelineScroll{false};
+    juce::Slider hZoomSlider{juce::Slider::LinearHorizontal,juce::Slider::NoTextBox};
+    juce::TextButton hZoomOut{juce::String::fromUTF8("−")},hZoomIn{"+"}; // barra de zoom horizontal (abajo a la derecha)
     juce::TextButton languageButton{juce::String::fromUTF8("Español")};
     ui::InsertRack inserts;
     ui::PluginSlotButton instrument;
@@ -1142,10 +1148,15 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         timelineScroll.addListener(this);
         owner.addAndMakeVisible(clickOptions);owner.addAndMakeVisible(tapButton);
         loadLayout();loadTransport();registerKeyActions();
-        for(auto* c:std::initializer_list<juce::Component*>{&waveZoomSlider,&trackHeightSlider,&trackZoomButton,&channelSplit,&inspectorSplit,&rightSplit,&lowerSplit})owner.addAndMakeVisible(c);
+        for(auto* c:std::initializer_list<juce::Component*>{&waveZoomSlider,&trackHeightSlider,&trackZoomButton,&hZoomSlider,&hZoomOut,&hZoomIn,&channelSplit,&inspectorSplit,&rightSplit,&lowerSplit})owner.addAndMakeVisible(c);
         waveZoomSlider.setRange(1.0,16.0,0.01);waveZoomSlider.setSkewFactorFromMidPoint(4.0);waveZoomSlider.setValue(arrangement.waveZoom,juce::dontSendNotification);
         waveZoomSlider.setTooltip(i18n::tr("Zoom de forma de onda"));waveZoomSlider.setComponentID("wave-zoom");waveZoomSlider.setDoubleClickReturnValue(true,1.0);
         waveZoomSlider.onValueChange=[this]{arrangement.waveZoom=(float)waveZoomSlider.getValue();arrangement.repaint();};waveZoomSlider.onDragEnd=[this]{saveLayout();};
+        hZoomSlider.setRange(Arrangement::minPps,Arrangement::maxPps,0.01);hZoomSlider.setSkewFactorFromMidPoint(75.0);hZoomSlider.setValue(arrangement.pixelsPerSecond,juce::dontSendNotification);
+        hZoomSlider.setTooltip(i18n::tr("Zoom horizontal"));hZoomSlider.setComponentID("h-zoom");hZoomSlider.setDoubleClickReturnValue(true,75.0);
+        hZoomSlider.onValueChange=[this]{arrangement.zoomTo(hZoomSlider.getValue(),arrangement.centreX());};
+        hZoomOut.setTooltip(i18n::tr("Alejar (zoom horizontal)"));hZoomOut.setComponentID("h-zoom-out");hZoomOut.onClick=[this]{arrangement.zoomTo(arrangement.pixelsPerSecond/1.25,arrangement.centreX());hZoomSlider.setValue(arrangement.pixelsPerSecond,juce::dontSendNotification);};
+        hZoomIn.setTooltip(i18n::tr("Acercar (zoom horizontal)"));hZoomIn.setComponentID("h-zoom-in");hZoomIn.onClick=[this]{arrangement.zoomTo(arrangement.pixelsPerSecond*1.25,arrangement.centreX());hZoomSlider.setValue(arrangement.pixelsPerSecond,juce::dontSendNotification);};
         trackHeightSlider.setRange(Arrangement::minLane,Arrangement::maxLane,1.0);trackHeightSlider.setValue(arrangement.lane,juce::dontSendNotification);
         trackHeightSlider.setTooltip(i18n::tr("Altura de pistas  ⇧H / ⇧G"));trackHeightSlider.setComponentID("track-height");trackHeightSlider.setDoubleClickReturnValue(true,60.0);
         trackZoomButton.setComponentID("track-zoom-menu");trackZoomButton.setTooltip(i18n::tr("Zoom de pistas"));trackZoomButton.onClick=[this]{trackZoomMenu();};
@@ -1847,7 +1858,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         }scan.setButtonText(plugins.isScanning()?i18n::tr("Detener búsqueda"):i18n::tr("Buscar plugins"));
         double time=engine.positionSeconds;const int mins=(int)time/60,secs=(int)time%60,ms=(int)(time*1000)%1000;transportTime.setText(juce::String(mins).paddedLeft('0',2)+":"+juce::String(secs).paddedLeft('0',2)+"."+juce::String(ms).paddedLeft('0',3),juce::dontSendNotification);
         {const auto countIn=engine.countInSamples.load();status.setText(countIn>0?i18n::tr("Precuenta… ")+juce::String((int)std::ceil(countIn/engine.currentSampleRate()*engine.tempo.load()/60.0)):notice,juce::dontSendNotification);}rightRack.tick();trackColour.setEnabled(currentTrack()!=nullptr);if(channelWindow)if(auto* panel=dynamic_cast<ChannelPanel*>(channelWindow->getContentComponent()))panel->refresh();if(tempoWindow&&tempoWindow->isVisible())if(auto* panel=dynamic_cast<ui::TempoMapPanel*>(tempoWindow->getContentComponent()))panel->setMap(engine.tempoMap,engine.tempoView().bpm);
-        const double view=juce::jmax(1.0,(arrangement.getWidth()-Arrangement::header)/arrangement.pixelsPerSecond);timelineScroll.setRangeLimits(0,juce::jmax(engine.duration()+8,arrangement.scrollSeconds+view));timelineScroll.setCurrentRange(arrangement.scrollSeconds,view,juce::dontSendNotification);
+        const double view=juce::jmax(1.0,(arrangement.getWidth()-Arrangement::header)/arrangement.pixelsPerSecond);timelineScroll.setRangeLimits(0,juce::jmax(engine.duration()+8,arrangement.scrollSeconds+view));timelineScroll.setCurrentRange(arrangement.scrollSeconds,view,juce::dontSendNotification);hZoomSlider.setValue(arrangement.pixelsPerSecond,juce::dontSendNotification);
         {bool anyMute=false,anySolo=false;for(auto& t:engine.tracks){anyMute|=t->mute.load();anySolo|=t->solo.load();}allMuteOff.setToggleState(anyMute,juce::dontSendNotification);allSoloOff.setToggleState(anySolo,juce::dontSendNotification);}
         if(channelTab)channelTab->setTrack(selected);
         if(engine.playing.load()&&autoScroll&&!arrangement.isMouseButtonDown())
@@ -1924,7 +1935,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         inspectorTab.setBounds(dx+3,top+3,tabW,25);visibilityTab.setBounds(dx+6+tabW,top+3,tabW,25);
         trackTabButton.setBounds(dx+3,inspectorRect.getBottom()-28,tabW,25);editorTabButton.setBounds(dx+6+tabW,inspectorRect.getBottom()-28,tabW,25);
         visibility.setBounds(inspectorRect.withTrimmedTop(31).withTrimmedBottom(31));rightRack.setBounds(browserRect);channelTab->setBounds(channelRect);
-        auto timeline=centreRect;auto zoomStrip=timeline.removeFromRight(16);timelineScroll.setBounds(timeline.removeFromBottom(12).withTrimmedLeft(Arrangement::header));arrangement.setBounds(timeline);
+        auto timeline=centreRect;auto zoomStrip=timeline.removeFromRight(16);{auto row=timeline.removeFromBottom(12).withTrimmedLeft(Arrangement::header);auto bar=row.removeFromRight(juce::jmin(150,row.getWidth()/3));
+            hZoomOut.setBounds(bar.removeFromLeft(14));hZoomIn.setBounds(bar.removeFromRight(14));hZoomSlider.setBounds(bar);timelineScroll.setBounds(row);}arrangement.setBounds(timeline);
         waveZoomSlider.setBounds(zoomStrip.getX(),zoomStrip.getY()+Arrangement::ruler,16,juce::jmin(90,zoomStrip.getHeight()/2-Arrangement::ruler));
         trackHeightSlider.setBounds(zoomStrip.getX(),zoomStrip.getBottom()-12-juce::jmin(110,zoomStrip.getHeight()/2),16,juce::jmin(110,zoomStrip.getHeight()/2));
         trackZoomButton.setBounds(zoomStrip.getX(),trackHeightSlider.getY()-18,16,16);
@@ -2557,6 +2569,7 @@ void MainComponent::rangeMenuItem(int id){ui->rangeMenuItem(id);}
 juce::StringArray MainComponent::editHistory()const{juce::StringArray names;for(const auto& s:ui->undoStack)names.add(s.action);return names;}
 int MainComponent::trackHeightOf(int trackIndex)const{return ui->arrangement.laneOf(trackIndex);}
 float MainComponent::projectXForTime(double seconds)const{return ui->arrangement.secondsToX(seconds);}
+float MainComponent::waveZoomValue()const{return ui->arrangement.waveZoom;}
 bool MainComponent::runCommand(const juce::String& id){if(auto a=ui->keyActions.find(id);a!=ui->keyActions.end()){a->second();return true;}return false;}
 void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}
 void MainComponent::showTapTempo(){ui->showTapTempo();}

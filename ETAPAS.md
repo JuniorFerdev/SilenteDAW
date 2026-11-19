@@ -365,3 +365,7 @@ Jerarquía en preorden en `src/domain/TrackTree.{h,cpp}` (mover, anidar, sacar d
 ## wave-height01 — Ondas visibles y altura de pistas (17-11-2026)
 
 Las ondas no se veían por dos causas medidas: los eventos del .cpr empiezan hacia 25 s, fuera de la ventana inicial, y el título de 22 px dejaba unos 10 px de onda a 60 px de pista. Ahora el título mide 15 px (22 px desde 90 px de pista) y `Arrangement::revealFirstEvent` coloca la vista en el primer evento al abrir o importar. Altura por pista: arrastrar el borde inferior en la cabecera (⌘/Ctrl = todas), menú de zoom ▾ con los presets del manual (1–4 filas, N, completo, 4/8 pistas, mínimo, ajustar) y Edición › Expandir pista seleccionada. Alturas guardadas en `layout.xml` (`trackHeights`). Verificado: motor 56/56, io 6/6, flujo 284 PASS / 0 FAIL / 1 SKIP (VST3 opcional), idiomas 1020. Sin probar a mano: cursor, arrastre con ratón, menú ▾ y revealFirstEvent por la interfaz. Pendiente: 6 avisos -Wshadow por el `lane` local.
+
+## zoom-bars01 — Barras de zoom horizontal y vertical (19-11-2026)
+
+El zoom horizontal funcionaba, pero no tenía control visible; la rueda requería ⌘/Ctrl y se anclaba al borde izquierdo. Ahora hay barra −/deslizador/+ abajo a la derecha (ids `h-zoom*`), ⌘+rueda y pellizco anclados al puntero. La barra vertical (altura y onda) ya existía y tiene prueba de arrastre y límites. Verificado: motor 56/56, io 6/6, flujo 0 FAIL / 1 SKIP (VST3 opcional), idiomas 1023. Sin probar con ratón real. La fila inferior debe medir 12 px: con 14 fallan dos pruebas de coordenadas.

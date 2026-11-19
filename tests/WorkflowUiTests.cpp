@@ -68,6 +68,7 @@ public:
             view.cubaseImportOverride=nullptr;
         }
         waveAndHeightChecks();
+        zoomBarChecks();
         engine.clear();track=engine.addAudioTrack("Workflow test");
         for(auto* format:engine.pluginFormats.getFormats())if(format->getName()=="AudioUnit")
         {
@@ -98,6 +99,46 @@ private:
     String failures,report;PluginDescription apple,vst,instrument;std::shared_ptr<Track> track;std::shared_ptr<PluginSlot> first;
     double deadline=0;int stage=0;
     void expect(bool result,const String& name){std::cout<<(result?"PASS: ":"FAIL: ")<<name.toStdString()<<std::endl;if(!result)failures+=name+"\n";else report+="PASS: "+name+"\n";}
+    void zoomBarChecks()
+    {   // Barras de zoom como Cubase: horizontal (abajo a la derecha) y vertical (borde derecho; altura y onda).
+        engine.clear();for(const char* name:{"Z1","Z2"}){auto t=engine.addAudioTrack(name);AudioClip c;c.sourceRate=48000;c.durationSeconds=4;c.startSeconds=25;c.audio=std::make_shared<AudioBuffer<float>>(1,48000*4);for(int i=0;i<48000*4;++i)c.audio->setSample(0,i,0.8f*std::sin(i*0.05f));t->clips.push_back(c);}
+        auto* a=find(view,"arrangement");auto* h=dynamic_cast<Slider*>(find(view,"h-zoom"));auto* out=dynamic_cast<TextButton*>(find(view,"h-zoom-out"));auto* in=dynamic_cast<TextButton*>(find(view,"h-zoom-in"));auto* wave=dynamic_cast<Slider*>(find(view,"wave-zoom"));
+        if(!a||!h||!out||!in||!wave){expect(false,"zoom bars: horizontal slider, buttons and wave slider exist");return;}
+        const auto pps=[&]{return (double)(view.projectXForTime(10)-view.projectXForTime(0))/10.0;};
+        expect(h->isShowing()&&out->isShowing()&&in->isShowing()&&h->getBottom()>=a->getBottom()&&h->getX()>a->getX()+a->getWidth()/2&&h->getRight()<=view.getWidth(),"zoom bars: horizontal bar sits below the event display at the right");
+        const double original=pps();view.runCommand("goStart");h->setValue(75.0,sendNotificationSync);
+        const double base=pps();expect(std::abs(base-75.0)<0.5,"zoom bars: slider value 75 gives 75 px/s ("+String(base)+")");
+        const auto before=a->createComponentSnapshot(a->getLocalBounds());
+        in->onClick();const double up=pps();expect(std::abs(up/base-1.25)<0.01&&std::abs(h->getValue()-up)<0.1,"zoom bars: + zooms in one step (x1.25) and the slider follows");
+        const auto after=a->createComponentSnapshot(a->getLocalBounds());int differing=0;for(int x=0;x<before.getWidth();x+=3)for(int y=0;y<before.getHeight();y+=3)if(before.getPixelAt(x,y)!=after.getPixelAt(x,y))++differing;
+        expect(differing>200,"zoom bars: the window repaints with the new scale ("+String(differing)+" px changed)");
+        out->onClick();out->onClick();expect(std::abs(pps()/up-1/1.25/1.25)<0.01,"zoom bars: - zooms out one step (x0.8) each time");
+        const double mid=75.0;h->setValue(mid,sendNotificationSync);
+        { // arrastre real del deslizador: del centro hacia la derecha
+            const auto y=(float)h->getHeight()*.5f;const float x0=(float)h->valueToProportionOfLength(h->getValue())*h->getWidth()*0+(float)h->getPositionOfValue(h->getValue());
+            h->mouseDown(mouse(*h,x0,y));h->mouseDrag(mouse(*h,x0+(float)h->getWidth()*.25f,y,true));h->mouseUp(mouse(*h,x0+(float)h->getWidth()*.25f,y,true));
+            expect(pps()>mid*1.2,"zoom bars: dragging the horizontal slider to the right zooms in ("+String(pps())+" px/s)"); }
+        h->setValue(1.0,sendNotificationSync);expect(std::abs(pps()-12.0)<0.01,"zoom bars: lower limit is 12 px/s");
+        h->setValue(10000.0,sendNotificationSync);expect(std::abs(pps()-480.0)<0.01,"zoom bars: upper limit is 480 px/s");
+        for(int i=0;i<5;++i)in->onClick();expect(pps()<=480.0+1e-6,"zoom bars: + stops at the limit");
+        for(int i=0;i<40;++i)out->onClick();expect(pps()>=12.0-1e-6,"zoom bars: - stops at the limit");
+        { // rueda con ⌘ y pellizco: el tiempo bajo el puntero no se mueve
+            h->setValue(75.0,sendNotificationSync);view.runCommand("goStart");
+            auto e=mouse(*a,500.0f,100.0f,false,ModifierKeys::commandModifier);const double secAt=(500.0-250.0)/pps();
+            MouseWheelDetails w{};w.deltaY=1.0f;a->mouseWheelMove(e,w);
+            expect(pps()>75.0&&std::abs((view.projectXForTime(secAt)-500.0f))<1.5f,"zoom bars: Cmd+wheel zooms keeping the time under the pointer");
+            const double p1=pps();a->mouseMagnify(mouse(*a,500.0f,100.0f),1.3f);expect(pps()>p1*1.2,"zoom bars: trackpad pinch zooms"); }
+        // Vertical: onda de todas las pistas y altura
+        wave->setValue(1.0,sendNotificationSync);expect(view.waveZoomValue()==1.0f,"zoom bars: wave zoom starts at 1");
+        const auto savedDragEnd=wave->onDragEnd;wave->onDragEnd=nullptr; // sin escribir el layout.xml del usuario
+        { const float x=(float)wave->getWidth()*.5f,y0=(float)wave->getPositionOfValue(1.0),y1=y0-(float)wave->getHeight()*.5f;
+          wave->mouseDown(mouse(*wave,x,y0));wave->mouseDrag(mouse(*wave,x,y1,true));wave->mouseUp(mouse(*wave,x,y1,true)); }
+        wave->onDragEnd=savedDragEnd;
+        expect(view.waveZoomValue()>1.5f&&std::abs(wave->getValue()-view.waveZoomValue())<1e-3,"zoom bars: dragging the wave slider enlarges the wave of every track ("+String(view.waveZoomValue())+")");
+        wave->setValue(100.0,sendNotificationSync);expect(view.waveZoomValue()==16.0f,"zoom bars: wave zoom upper limit is 16");
+        wave->setValue(0.0,sendNotificationSync);expect(view.waveZoomValue()==1.0f,"zoom bars: wave zoom lower limit is 1");
+        wave->setValue(1.0,sendNotificationSync);h->setValue(original,sendNotificationSync);view.runCommand("goStart");engine.clear();
+    }
     void waveAndHeightChecks()
     {   // Ondas visibles tras guardar y abrir, y altura de pistas como Cubase (arrastrar el borde inferior, ⌘ para todas, menú de zoom).
         engine.clear();view.runCommand("trackZoomRows1");
