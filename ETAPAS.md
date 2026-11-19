@@ -394,3 +394,8 @@ Pedido de Fer, según el tutorial de Cubase: al pintar una pista, la fila de su 
 Verificado: flujo de interfaz 305/305, con una comprobación nueva en `tests/FolderUiTests.cpp` que lee un píxel de la fila pintada. Sin probar a mano con el ratón ni con el tutorial completo.
 Entregada en `releases/macOS/Silente-Universal.app` (arm64 + x86_64, firmada, sin respaldos), SHA-256 `d74e2df9f8e149f514d47c26a717313323bd8fb8725f0f71984920614f4fc775`. Motor 57/57 y formatos 6/6 en ambas arquitecturas; interfaz 305/305 en arm64. En x86_64 (Rosetta) las pruebas de interfaz varían de una ejecución a otra (una vez 303/305, otra 305/305): comprobaciones de menú y foco sensibles al tiempo, no atribuibles a este cambio.
 Pendiente: decidir si pintar la fila también al seleccionar la pista, y si el color por defecto debe poder elegirse expresamente.
+
+## entrega-midi01 — Universal con subetapa 2 MIDI (19-11-2026)
+
+Reemplazada `releases/macOS/Silente-Universal.app` desde `36481a1` (comandos MIDI con nombre en el historial, EDITOR_MIDI subetapa 2). Universal arm64 + x86_64, firmada, sin respaldos; SHA-256 `900ec80f229e4d8a44e64bb9809ec14352d2d5aa90774997ace8f9854568537b`. Motor 57/57 en ambas arquitecturas; interfaz 313/313 en arm64.
+En x86_64 (Rosetta) la comprobación «Slot ten's real options menu bypasses only its own processor» falla de forma intermitente (2 de 4 ejecuciones). Ocurre también antes de este cambio; sin resolver. Pendiente: investigar la causa temporal antes de tomarla como aprobada.
