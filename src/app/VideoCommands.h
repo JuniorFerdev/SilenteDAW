@@ -18,6 +18,17 @@ std::shared_ptr<Track> videoTrackFor(const AudioEngine&, int selectedIndex);
 juce::Result addVideoEvent(AudioEngine&, const juce::String& trackId, const juce::File& file,
                            const io::VisualMediaInfo& info, double start, juce::String* createdId = nullptr);
 
+// Event editing on the video track `trackId` (Cubase: drag an event with the Object Selection tool,
+// drag its lower corners to size it, Erase tool / Delete). Each call is one model change under
+// modelLock; the caller records the undo step. Refused while recording.
+// The edited event as it would be after `edit` to `position`; nullopt when it does not exist.
+std::optional<domain::VideoEvent> previewVideoEdit(const AudioEngine&, const juce::String& trackId, const juce::String& eventId,
+                                                   domain::VideoEdit, double position);
+// Applies domain::editedVideoEvent. A moved event goes in front of the events it overlaps (it is
+// the one the Video Player shows there), as in Cubase.
+juce::Result editVideoEvent(AudioEngine&, const juce::String& trackId, const juce::String& eventId, domain::VideoEdit, double position);
+juce::Result deleteVideoEvent(AudioEngine&, const juce::String& trackId, const juce::String& eventId);
+
 // The picture to show at project `position`: the topmost video track with an event there.
 struct VideoFrameTarget
 {

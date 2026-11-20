@@ -47,13 +47,25 @@ juce::Rectangle<float> videoEventBounds(const domain::VideoEvent& event,const Ti
     const float x0=view.x(event.start),x1=view.x(event.start+event.length);
     return {x0,(float)view.lane.getY()+4,juce::jmax(2.0f,x1-x0),(float)view.lane.getHeight()-9};
 }
-void paintVideoEvents(juce::Graphics& g,const domain::TrackData& data,const TimelineView& view,juce::Colour trackColour)
+std::optional<VideoHit> hitVideoEvent(const domain::TrackData& data,const TimelineView& view,juce::Point<float> point)
+{
+    for(auto it=data.videoEvents.rbegin();it!=data.videoEvents.rend();++it)
+    {
+        const auto r=videoEventBounds(*it,view);if(!r.contains(point))continue;
+        // Edges: 6 px, never more than a third of a narrow event so its body stays movable.
+        const float grip=juce::jmin(6.0f,r.getWidth()/3.0f);
+        return VideoHit{it->id,point.x<r.getX()+grip?1:point.x>r.getRight()-grip?2:0};
+    }
+    return std::nullopt;
+}
+void paintVideoEvents(juce::Graphics& g,const domain::TrackData& data,const TimelineView& view,juce::Colour trackColour,const juce::String& selected)
 {
     for(const auto& event:data.videoEvents)
     {
         const auto r=videoEventBounds(event,view);if(!g.getClipBounds().toFloat().intersects(r))continue;
         g.setColour(trackColour.withAlpha(.82f));g.fillRoundedRectangle(r,2);
-        g.setColour(trackColour.brighter(.3f));g.drawRoundedRectangle(r.reduced(.5f),2,1);
+        const bool chosen=selected.isNotEmpty()&&event.id==selected;
+        g.setColour(chosen?ink:trackColour.brighter(.3f));g.drawRoundedRectangle(r.reduced(.5f),2,chosen?2.0f:1.0f);
         if(!event.still&&r.getHeight()>20)
         {   // Film strip perforations along both edges.
             g.setColour(eventInk.withAlpha(.55f));

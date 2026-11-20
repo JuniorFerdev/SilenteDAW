@@ -1766,6 +1766,75 @@ int runEngineTests(const juce::File& outputDir)
         require(trackKindFromId("video", false) == TrackKind::video && trackKindId(TrackKind::video) == "video", "Video kind id");
     });
 
+    suite.run("video events: move, trim (source offset and limits), delete, overlap order, undo snapshot, persistence", [&]
+    {
+        using namespace domain;
+        // Pure model. Movie of 5 s placed at 2 s showing source 1..4 s (offset 1, length 3), 10 fps.
+        VideoEvent movie; movie.id = "m"; movie.path = "/m.mov"; movie.start = 2; movie.length = 3; movie.offset = 1; movie.frameRate = 10; movie.sourceLength = 5;
+        auto moved = editedVideoEvent(movie, VideoEdit::move, 3.5);
+        near(moved.start, 3.5, 1e-12, "Move sets the start"); near(moved.length, 3, 1e-12, "Move keeps the length"); near(moved.offset, 1, 1e-12, "Move keeps the offset");
+        near(videoSourceTime(moved, 3.5 + 0.55), 1.5, 1e-9, "Moved event shows the same source time relative to its start");
+        near(editedVideoEvent(movie, VideoEdit::move, -4).start, 0, 0, "Move never goes before the project start");
+        // Trim the start later: the end stays, the offset follows (the picture at a fixed project time is unchanged).
+        auto trimmed = editedVideoEvent(movie, VideoEdit::trimStart, 3.0);
+        near(trimmed.start, 3, 1e-12, "Trim start position"); near(trimmed.length, 2, 1e-12, "Trim start keeps the end"); near(trimmed.offset, 2, 1e-12, "Trim start moves the offset");
+        near(videoSourceTime(trimmed, 3.55), videoSourceTime(movie, 3.55), 1e-9, "Trimming the start does not change the picture at a given time");
+        // Trim the start earlier: limited by the first source frame (offset 0 => start 1).
+        trimmed = editedVideoEvent(movie, VideoEdit::trimStart, 0.2);
+        near(trimmed.start, 1, 1e-12, "Trim start stops at the source start"); near(trimmed.offset, 0, 1e-12, "Offset reaches 0"); near(trimmed.length, 4, 1e-12, "Length grows to the end");
+        trimmed = editedVideoEvent(movie, VideoEdit::trimStart, 9.0);
+        near(trimmed.length, minimumVideoLength, 1e-12, "Trim start keeps a minimum length"); near(trimmed.start + trimmed.length, 5, 1e-12, "...and the end");
+        // Trim the end: within the source (offset 1 + length <= 5 => end <= 6).
+        trimmed = editedVideoEvent(movie, VideoEdit::trimEnd, 4.0);
+        near(trimmed.length, 2, 1e-12, "Trim end shortens"); near(trimmed.offset, 1, 1e-12, "Trim end keeps the offset");
+        near(editedVideoEvent(movie, VideoEdit::trimEnd, 30).length, 4, 1e-12, "Trim end stops at the source end");
+        near(editedVideoEvent(movie, VideoEdit::trimEnd, 0).length, minimumVideoLength, 1e-12, "Trim end keeps a minimum length");
+        auto unknown = movie; unknown.sourceLength = 0;
+        near(editedVideoEvent(unknown, VideoEdit::trimEnd, 30).length, 3, 1e-12, "Unknown source length: the end cannot grow");
+        VideoEdit edits[] { VideoEdit::move, VideoEdit::trimStart, VideoEdit::trimEnd };
+        for (auto edit : edits) for (double at : { -1.0, 0.0, 2.5, 99.0, std::numeric_limits<double>::quiet_NaN() })
+            require(validVideoEvent(editedVideoEvent(movie, edit, at)), "An edit produced an invalid event");
+        VideoEvent still; still.id = "s"; still.path = "/s.png"; still.still = true; still.start = 4; still.length = 2;
+        trimmed = editedVideoEvent(still, VideoEdit::trimStart, 0.5);
+        near(trimmed.start, 0.5, 1e-12, "Still start can grow freely"); near(trimmed.offset, 0, 0, "Still keeps offset 0"); near(trimmed.length, 5.5, 1e-12, "Still keeps its end");
+        near(editedVideoEvent(still, VideoEdit::trimEnd, 40).length, 36, 1e-12, "Still end can grow freely");
+
+        // Commands on the engine.
+        const auto movieFile = dir.getChildFile("video-edit/colores.mov"); movieFile.getParentDirectory().createDirectory();
+        requireOk(testing::writeColourMovie(movieFile, { juce::Colours::red, juce::Colours::lime, juce::Colours::blue }));
+        io::VisualMediaInfo info; requireOk(io::probeVisualMedia(movieFile, info));
+        AudioEngine engine; setup(engine);
+        auto audio = engine.addTrack(TrackKind::audio, "Audio"); auto video = engine.addTrack(TrackKind::video, "Imagen");
+        juce::String a, b; requireOk(app::addVideoEvent(engine, video->id, movieFile, info, 0.0, &a)); requireOk(app::addVideoEvent(engine, video->id, movieFile, info, 4.0, &b));
+        near(video->data.videoEvents[0].sourceLength, 3.0, 0.02, "Import stores the movie duration as source length");
+        const auto before = video->data; // what an undo snapshot copies (Track::data)
+        requireOk(app::editVideoEvent(engine, video->id, a, VideoEdit::move, 3.0));
+        // Overlap: the moved event now covers b's start; it goes in front, so the Video Player shows it.
+        require(video->data.videoEvents.size() == 2 && video->data.videoEvents.back().id == a, "Moved event is in front of the overlapped one");
+        auto frame = app::videoFrameAt(engine, 4.5);
+        require(frame && frame->eventId == a, "Overlap shows the moved event"); near(frame->sourceSeconds, 1.5, 1e-9, "Moved event source time at 4.5 s");
+        frame = app::videoFrameAt(engine, 6.5); require(frame && frame->eventId == b, "Past the moved event the other one shows again");
+        requireOk(app::editVideoEvent(engine, video->id, a, VideoEdit::trimStart, 4.0));
+        frame = app::videoFrameAt(engine, 4.0); require(frame && frame->eventId == a, "Trimmed event at its new start"); near(frame->sourceSeconds, 1.0, 1e-9, "Trim start respects the source offset");
+        requireOk(app::editVideoEvent(engine, video->id, a, VideoEdit::trimEnd, 5.0));
+        near(findVideoEvent(video->data.videoEvents, a)->length, 1.0, 1e-9, "Trim end length");
+        require(app::editVideoEvent(engine, video->id, "nada", VideoEdit::move, 1.0).failed(), "Edit of a missing event accepted");
+        require(app::editVideoEvent(engine, audio->id, a, VideoEdit::move, 1.0).failed() && app::deleteVideoEvent(engine, audio->id, a).failed(), "Video edit accepted on an audio track");
+        require(app::previewVideoEdit(engine, video->id, a, VideoEdit::move, 7.0)->start == 7.0 && findVideoEvent(video->data.videoEvents, a)->start == 4.0, "Preview changed the model");
+        engine.recording = true; require(app::editVideoEvent(engine, video->id, a, VideoEdit::move, 1.0).failed() && app::deleteVideoEvent(engine, video->id, a).failed(), "Video edits accepted while recording"); engine.recording = false;
+        requireOk(app::deleteVideoEvent(engine, video->id, b));
+        require(video->data.videoEvents.size() == 1 && video->data.videoEvents[0].id == a && app::videoFrameAt(engine, 6.5) == std::nullopt, "Delete removes only that event");
+        require(app::deleteVideoEvent(engine, video->id, b).failed(), "Deleting twice succeeded");
+        require(audio->clips.empty() && engine.tracks.size() == 2, "Video edits touched other tracks");
+        // Save / reopen keeps the edited event and its source length.
+        const auto projectFile = dir.getChildFile("video-edit/editado.silente"); requireOk(engine.saveProject(projectFile));
+        AudioEngine loaded; setup(loaded); requireOk(loaded.loadProject(projectFile));
+        auto copy = loaded.findTrack(video->id); require(copy && copy->data.videoEvents == video->data.videoEvents, "Edited video events did not round-trip");
+        // Undo is a Track::data snapshot: restoring it brings both events back unchanged.
+        video->data = before;
+        require(video->data.videoEvents.size() == 2 && findVideoEvent(video->data.videoEvents, a)->start == 0.0 && app::videoFrameAt(engine, 0.5)->eventId == a, "Undo snapshot restores the events");
+    });
+
     suite.run("media pool: grouping, usage counts, present/missing/replaced, sorting and relink", [&]
     {
         using namespace domain;

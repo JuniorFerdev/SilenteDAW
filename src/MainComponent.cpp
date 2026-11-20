@@ -133,6 +133,14 @@ public:
     juce::String selectedMarker;
     std::function<void(const juce::String&,const juce::String&,int)> markerAction;
     std::function<void()> openVideoPlayer;
+    // Video events (tool 1 moves and sizes them, tool 5 or Supr deletes them): edits go through
+    // app::editVideoEvent; `namedEdit` records one undo step before the first change of a drag.
+    juce::String selectedVideoEvent,videoDragTrack;
+    domain::VideoEvent videoOrigin;
+    int videoEdge=0;double videoDragFrom=0;bool videoDragUndo=false;
+    std::function<void(const juce::String&)> namedEdit;
+    std::function<void(const juce::String&,const juce::String&)> deleteVideoEvent;
+    static juce::String videoEditName(int edge){return edge==0?i18n::tr("Mover evento de video"):i18n::tr("Recortar evento de video");}
     // Project-wide tracks drawn without audio controls (marker, ruler, video).
     static bool timelineKind(TrackKind kind){return kind==TrackKind::marker||kind==TrackKind::ruler||kind==TrackKind::video;}
     std::function<void(const juce::String&,double,bool,double,bool)> addTimelineMarker;
@@ -216,7 +224,14 @@ public:
         if(edgeAll)setAllLanes(h);else setLaneOf(edgeDrag,h);
         if(heightsChanged)heightsChanged();repaint();
     }
-    void mouseMove(const juce::MouseEvent& e) override {setMouseCursor(e.x<header&&edgeAt(e.y)>=0?juce::MouseCursor::UpDownResizeCursor:toolCursor());}
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        if(e.x<header){setMouseCursor(edgeAt(e.y)>=0?juce::MouseCursor::UpDownResizeCursor:toolCursor());return;}
+        // Sizing grips at the start and end of a video event (Object Selection tool).
+        if(const int i=trackAt(e.y);tool==1&&i>=0&&engine.tracks[(size_t)i]->kind==TrackKind::video)
+            if(auto hit=ui::hitVideoEvent(engine.tracks[(size_t)i]->data,timelineView(i),e.position);hit&&hit->edge!=0){setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);return;}
+        setMouseCursor(toolCursor());
+    }
     void mouseExit(const juce::MouseEvent&) override {setMouseCursor(toolCursor());}
     static constexpr double minPps = 12.0, maxPps = 480.0; // límites del zoom horizontal
     void zoom(double factor) { pixelsPerSecond = juce::jlimit(minPps, maxPps, pixelsPerSecond*factor); repaint(); }
@@ -313,7 +328,7 @@ public:
                 else if(t.kind==TrackKind::video)
                 {   // Video track: picture events only (no audio channel); the chip opens the Video Player.
                     chip(g,i18n::tr("Reproductor de video"),{48,y+29,header-58,23},false,accent);
-                    if(dirtyArea.getRight()>header){juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(header,y,getWidth()-header,lane);ui::paintVideoEvents(g,t.data,timelineView(i),colour);}
+                    if(dirtyArea.getRight()>header){juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(header,y,getWidth()-header,lane);ui::paintVideoEvents(g,t.data,timelineView(i),colour,selectedVideoEvent);}
                 }
                 else
                 {
@@ -473,7 +488,18 @@ public:
                 }
                 return;
             }
-            if(t.kind==TrackKind::ruler||t.kind==TrackKind::video){engine.seek(xToSeconds(e.position.x));repaint();return;}
+            if(t.kind==TrackKind::video)
+            {   // Click an event to select it (Supr deletes it); drag its body to move it or a grip to size it.
+                const auto hit=e.mods.isPopupMenu()?std::nullopt:ui::hitVideoEvent(t.data,timelineView(i),e.position);
+                if(!hit){selectedVideoEvent.clear();if(!e.mods.isPopupMenu())engine.seek(xToSeconds(e.position.x));repaint();return;}
+                selectedVideoEvent=hit->id;
+                if(tool==5){const auto trackId=t.id,eventId=hit->id;selectedVideoEvent.clear();if(deleteVideoEvent)deleteVideoEvent(trackId,eventId);repaint();return;}
+                if(tool==1)
+                    if(const auto* event=domain::findVideoEvent(t.data.videoEvents,hit->id))
+                    {videoDragTrack=t.id;videoOrigin=*event;videoEdge=hit->edge;videoDragFrom=xToSeconds(e.position.x);videoDragUndo=false;}
+                repaint();return;
+            }
+            if(t.kind==TrackKind::ruler){engine.seek(xToSeconds(e.position.x));repaint();return;}
             if(e.mods.isPopupMenu())return;
             if(e.mods.isCommandDown()){cycleDrawFrom=snapped(xToSeconds(e.position.x));markerDragTrack=t.id;cycleRename=e.mods.isShiftDown();return;}
             if(e.mods.isAltDown()&&tool!=5&&e.getNumberOfClicks()<2){if(addTimelineMarker)addTimelineMarker(t.id,snapped(xToSeconds(e.position.x)),false,0,e.mods.isShiftDown());return;}
@@ -569,6 +595,19 @@ public:
             {const juce::ScopedLock lock(engine.modelLock);*domain::findMarker(track->data,marker.id)=marker;}
             if(changed)changed();repaint();return;
         }
+        if(videoDragTrack.isNotEmpty())
+        {   // Live preview: the model follows the pointer, so the event and the Video Player update while dragging.
+            if(!videoDragUndo&&e.getDistanceFromDragStart()<3)return;
+            const double delta=xToSeconds(e.position.x)-videoDragFrom;
+            const auto edit=videoEdge==1?domain::VideoEdit::trimStart:videoEdge==2?domain::VideoEdit::trimEnd:domain::VideoEdit::move;
+            const double target=snapped((videoEdge==2?videoOrigin.start+videoOrigin.length:videoOrigin.start)+delta);
+            const auto next=app::previewVideoEdit(engine,videoDragTrack,videoOrigin.id,edit,target);if(!next)return;
+            auto track=engine.findTrack(videoDragTrack);const auto* current=track?domain::findVideoEvent(track->data.videoEvents,videoOrigin.id):nullptr;
+            if(!current||*next==*current)return;
+            if(!videoDragUndo){if(namedEdit)namedEdit(videoEditName(videoEdge));videoDragUndo=true;}
+            if(auto result=app::editVideoEvent(engine,videoDragTrack,videoOrigin.id,edit,target);result.failed()){if(warn)warn(result.getErrorMessage());videoDragTrack.clear();return;}
+            if(changed)changed();repaint();return;
+        }
         if(rangeDragging){updateRange(snapped(xToSeconds(e.position.x)),rowAt(e.y));repaint();return;}
         if(rangeMoving)
         {
@@ -616,7 +655,7 @@ public:
             const double at=snapped(xToSeconds(e.position.x)),from=juce::jmin(cycleDrawFrom,at),to=juce::jmax(cycleDrawFrom,at);
             if(to>from&&addTimelineMarker)addTimelineMarker(markerDragTrack,from,true,to,cycleRename);
         }
-        markerDragTrack.clear();cycleDrawFrom=-1;
+        markerDragTrack.clear();cycleDrawFrom=-1;videoDragTrack.clear();videoDragUndo=false;
         if(rangeMoving){rangeMoving=false;setTool(tool);if((std::abs(moveDelta)>1e-9||moveRows!=0)&&moveRange)moveRange(moveDelta,moveRows,e.mods.isAltDown());repaint();}
         if(trackDragging&&trackDragIndex>=0&&trackDragIndex<(int)engine.tracks.size()&&moveTrack)
         {
@@ -1148,6 +1187,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         markerInspector.rename=[this](const auto& id,const auto& name){if(auto track=engine.findTrack(id);track&&track->name!=name){pushUndo(i18n::tr("Renombrar pista"));track->name=name;markDirty();refresh();}};
         arrangement.markerAction=markerInspector.act;
         arrangement.openVideoPlayer=[this]{showVideoPlayer();};
+        arrangement.namedEdit=[this](const juce::String& label){pushUndo(label);};
+        arrangement.deleteVideoEvent=[this](const juce::String& trackId,const juce::String& eventId){removeVideoEvent(trackId,eventId);};
         arrangement.addTimelineMarker=[this](const auto& id,double at,bool cycle,double end,bool rename){addMarkerAt(id,at,cycle,end,rename);};
         arrangement.deleteTimelineMarker=[this](const auto& id,const auto& marker,bool following){deleteMarker(id,marker,following);};
         visibility.setVisible(false);inspectorTab.setToggleState(true,juce::dontSendNotification);
@@ -1467,7 +1508,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         markDirty();refresh();arrangement.repaint();
     }
     std::shared_ptr<Track> currentTrack()const {return selected>=0&&selected<(int)engine.tracks.size()?engine.tracks[(size_t)selected]:nullptr;}
-    void select(int i){if(selected!=i){arrangement.selectedMarker.clear();arrangement.selectedClip=-1;}selected=i;arrangement.selectedTrack=i;piano.track=i;piano.clearSelection();automationLane.setTrack(i);owner.resized();syncInspector();owner.repaint();}
+    void select(int i){if(selected!=i){arrangement.selectedMarker.clear();arrangement.selectedVideoEvent.clear();arrangement.selectedClip=-1;}selected=i;arrangement.selectedTrack=i;piano.track=i;piano.clearSelection();automationLane.setTrack(i);owner.resized();syncInspector();owner.repaint();}
     void markDirty(){dirty=true;owner.repaint();}
     void changeListenerCallback(juce::ChangeBroadcaster*)override{if(addTrackWindow&&addTrackWindow->isVisible())updateTrackDialogOptions();}
     void updateTrackDialogOptions()
@@ -2163,6 +2204,16 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     void importPaths(const juce::StringArray& input,int trackIndex=-1,double at=0)
     {
         if(engine.recording){error(i18n::tr("Detén la grabación antes de importar archivos."));return;}
+        // Dropped on a video track: movies and images become picture events where they were dropped
+        // (one undo step, no audio extracted); any other file is imported as before, on new tracks.
+        if(juce::isPositiveAndBelow(trackIndex,(int)engine.tracks.size())&&engine.tracks[(size_t)trackIndex]->kind==TrackKind::video)
+        {
+            juce::StringArray visual,rest;
+            for(auto& path:input){const juce::File f(path);(io::isVideoFile(f)||io::isStillImageFile(f)?visual:rest).add(path);}
+            if(!visual.isEmpty())importVisualMedia(visual,engine.tracks[(size_t)trackIndex]->id,at);
+            if(!rest.isEmpty())importPaths(rest,-1,at);
+            return;
+        }
         // Videos: extract their audio track first (worker thread), then import the result.
         juce::StringArray paths,videos;for(auto& path:input)(io::isVideoFile(juce::File(path))?videos:paths).add(path);
         if(!videos.isEmpty())
@@ -2384,7 +2435,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["tapTempo"]=[this]{showTapTempo();};k["openPool"]=[this]{showPool();};k["openAutomationPanel"]=[this]{showAutomationPanel();};k["videoPlayer"]=[this]{showVideoPlayer();};
         k["quantize"]=[this]{if(pianoVisible&&currentTrack()&&currentTrack()->isMidi)piano.quantizeNotes();};
         k["undo"]=[this]{undo(false);};k["redo"]=[this]{undo(true);};
-        k["delete"]=[this]{if(selectedMarkerPtr()){deleteMarker(currentTrack()->id,arrangement.selectedMarker,false);return;}if(pianoVisible&&piano.hasKeyboardFocus(true))piano.deleteSelected();else if(rangeActive())rangeEdit(i18n::tr("Suprimir rango"),audio::deleteRange);else arrangement.deleteSelected();};
+        k["delete"]=[this]{if(selectedMarkerPtr()){deleteMarker(currentTrack()->id,arrangement.selectedMarker,false);return;}if(selectedVideoEventPtr()){removeVideoEvent(currentTrack()->id,arrangement.selectedVideoEvent);return;}if(pianoVisible&&piano.hasKeyboardFocus(true))piano.deleteSelected();else if(rangeActive())rangeEdit(i18n::tr("Suprimir rango"),audio::deleteRange);else arrangement.deleteSelected();};
         k["duplicate"]=[this]{if(pianoVisible)duplicateNote();else if(rangeActive()){rangeEdit(i18n::tr("Duplicar rango"),audio::duplicateRange);const double len=arrangement.rangeEnd-arrangement.rangeStart;arrangement.rangeStart+=len;arrangement.rangeEnd+=len;arrangement.repaint();}else arrangement.duplicateSelected();};
         k["toolRange"]=[this]{setTool(2);};
         // Empujar bordes del rango (⌥← ⌥→ inicio, ⌥⇧← ⌥⇧→ final) by the grid value.
@@ -2531,7 +2582,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     // Archivo › «Importar video o imagen en pista de video…»: each picture becomes an event on the
     // selected video track (or the first one; a new video track when the project has none), at the
     // cursor and one after another. Audio extraction keeps its own flow (Importar audio / MIDI / video).
-    juce::Result importVisualMedia(const juce::StringArray& input)
+    juce::Result importVisualMedia(const juce::StringArray& input,const juce::String& trackId={},std::optional<double> position={})
     {
         if(engine.recording)return juce::Result::fail(i18n::tr("Detén la grabación antes de importar archivos."));
         std::vector<std::pair<juce::File,io::VisualMediaInfo>> items;juce::StringArray errors;
@@ -2542,9 +2593,10 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         }
         if(items.empty()){auto message=errors.isEmpty()?i18n::tr("No hay archivos de video o imagen."):errors.joinIntoString("\n");error(message);return juce::Result::fail(message);}
         pushUndo(i18n::tr("Importar video o imagen"));
-        auto track=app::videoTrackFor(engine,selected);
+        auto track=trackId.isNotEmpty()?engine.findTrack(trackId):app::videoTrackFor(engine,selected);
+        if(track&&track->kind!=TrackKind::video)track=nullptr;
         if(!track){const juce::ScopedLock lock(engine.modelLock);track=engine.addTrack(TrackKind::video);}
-        double at=engine.positionSeconds.load();int count=0;
+        double at=position?juce::jmax(0.0,*position):engine.positionSeconds.load();int count=0;
         for(const auto& [file,info]:items)
         {
             if(auto result=app::addVideoEvent(engine,track->id,file,info,at);result.failed()){errors.add(file.getFileName()+": "+result.getErrorMessage());continue;}
@@ -2555,6 +2607,22 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         if(!errors.isEmpty())error(errors.joinIntoString("\n"));
         if(count>0)showVideoPlayer();
         return count>0?juce::Result::ok():juce::Result::fail(errors.joinIntoString("\n"));
+    }
+    // The video event selected in the event display (on the selected video track), if any.
+    domain::VideoEvent* selectedVideoEventPtr() const
+    {
+        auto track=currentTrack();return track&&track->kind==TrackKind::video&&arrangement.selectedVideoEvent.isNotEmpty()?domain::findVideoEvent(track->data.videoEvents,arrangement.selectedVideoEvent):nullptr;
+    }
+    // Herramienta Borrar or Supr on a video event: one undo step.
+    void removeVideoEvent(const juce::String& trackId,const juce::String& eventId)
+    {
+        auto track=engine.findTrack(trackId);
+        if(!track||track->kind!=TrackKind::video||!domain::findVideoEvent(track->data.videoEvents,eventId))return;
+        if(engine.recording){error(i18n::tr("Detén la grabación antes de editar eventos."));return;}
+        pushUndo(i18n::tr("Eliminar evento de video"));
+        if(auto result=app::deleteVideoEvent(engine,trackId,eventId);result.failed()){undoStack.pop_back();error(result.getErrorMessage());return;}
+        if(arrangement.selectedVideoEvent==eventId)arrangement.selectedVideoEvent.clear();
+        markDirty();refresh();arrangement.repaint();
     }
     void importVisualChooser()
     {
@@ -2644,6 +2712,7 @@ void MainComponent::rangeMenuItem(int id){ui->rangeMenuItem(id);}
 juce::StringArray MainComponent::editHistory()const{juce::StringArray names;for(const auto& s:ui->undoStack)names.add(s.action);return names;}
 int MainComponent::trackHeightOf(int trackIndex)const{return ui->arrangement.laneOf(trackIndex);}
 float MainComponent::projectXForTime(double seconds)const{return ui->arrangement.secondsToX(seconds);}
+int MainComponent::projectYForTrack(int trackIndex)const{return ui->arrangement.trackTop(trackIndex);}
 float MainComponent::waveZoomValue()const{return ui->arrangement.waveZoom;}
 bool MainComponent::runCommand(const juce::String& id){if(auto a=ui->keyActions.find(id);a!=ui->keyActions.end()){a->second();return true;}return false;}
 void MainComponent::showMetronomeSettings(){ui->showMetronomeSettings();}

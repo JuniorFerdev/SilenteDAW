@@ -17,7 +17,10 @@ std::optional<MarkerHit> hitMarker(const domain::TrackData&,const TimelineView&,
 void paintMarkers(juce::Graphics&,const domain::TrackData&,const TimelineView&,juce::Colour,const juce::String& selected);
 // Video track lane: one block per picture event (film strip edges; stills marked as images).
 juce::Rectangle<float> videoEventBounds(const domain::VideoEvent&,const TimelineView&);
-void paintVideoEvents(juce::Graphics&,const domain::TrackData&,const TimelineView&,juce::Colour);
+void paintVideoEvents(juce::Graphics&,const domain::TrackData&,const TimelineView&,juce::Colour,const juce::String& selected={});
+// Topmost video event under the pointer; edge 1/2 = within a few pixels of its start/end.
+struct VideoHit { juce::String id; int edge=0; };
+std::optional<VideoHit> hitVideoEvent(const domain::TrackData&,const TimelineView&,juce::Point<float>);
 void paintRulerTrack(juce::Graphics&,const domain::TrackData&,const TimelineView&,const domain::TempoView&,double rate);
 juce::String timelinePosition(double seconds,int format,const domain::TempoView&,double rate);
 std::optional<double> parseTimelinePosition(const juce::String&,int format,const domain::TempoView&,double rate);

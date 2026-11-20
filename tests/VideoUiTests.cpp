@@ -35,6 +35,10 @@ bool whiteTop(const Image& image)
 {
     if(!image.isValid())return false;const auto c=image.getPixelAt(image.getWidth()/2,image.getHeight()/10);return c.getRed()>220&&c.getGreen()>220&&c.getBlue()>220;
 }
+MouseEvent mouseAt(Component& c,float x,float y,Point<float> down={})
+{
+    if(down.isOrigin())down={x,y};return {Desktop::getInstance().getMainMouseSource(),{x,y},ModifierKeys(ModifierKeys::leftButtonModifier),1.0f,0,0,0,0,&c,&c,Time::getCurrentTime(),down,Time::getCurrentTime(),1,down!=Point<float>{x,y}};
+}
 File writeStill(const File& file)
 {
     Image image(Image::RGB,64,48,true);Graphics g(image);g.fillAll(Colours::yellow);g.setColour(Colours::white);g.fillRect(0,0,64,12);
@@ -99,6 +103,61 @@ void runVideoUiChecks(MainComponent& view,AudioEngine& engine,const File& output
     engine.seek(0.5);viewer->waitForFrame(5000);
     expect(viewer->showsMissingFile()&&!viewer->picture().isValid(),"video: a missing movie shows the missing-file notice");
     expect(view.runCommand("videoPlayer"),"video: F8 «Reproductor de video» is a working command");
+
+    // Stage 2: move, trim and delete events with the mouse, and drop files on the video track.
+    engine.clear();engine.tempo=120;engine.seek(0);view.runCommand("toolSelect");
+    view.addTrack(TrackKind::video);auto lane=engine.tracks.empty()?nullptr:engine.tracks.back();
+    auto* arrangement=find(view,"arrangement");
+    expect(lane&&arrangement&&view.importVisualMedia({movie.getFullPathName()}).wasOk()&&lane->data.videoEvents.size()==1,"video: movie imported for editing");
+    if(!lane||!arrangement||lane->data.videoEvents.size()!=1)return;
+    const auto eventId=lane->data.videoEvents[0].id;
+    const auto event=[&]()->const domain::VideoEvent*{for(const auto& v:lane->data.videoEvents)if(v.id==eventId)return &v;return nullptr;};
+    const int index=(int)engine.tracks.size()-1;const float y=(float)(view.projectYForTrack(index)+view.trackHeightOf(index)/2);
+    const auto x=[&](double seconds){return view.projectXForTime(seconds);};
+    const auto drag=[&](float from,float to)
+    {
+        arrangement->mouseDown(mouseAt(*arrangement,from,y));arrangement->mouseDrag(mouseAt(*arrangement,(from+to)/2,y,{from,y}));
+        arrangement->mouseDrag(mouseAt(*arrangement,to,y,{from,y}));arrangement->mouseUp(mouseAt(*arrangement,to,y,{from,y}));
+    };
+    const auto shows=[&](double at,const char* colour){engine.seek(at);return viewer->waitForFrame(5000)&&colourName(viewer->picture())==colour;};
+    expect(shows(1.5,"green"),"video: before moving, 1.5 s shows the green second");
+    auto history=view.editHistory().size();
+    drag(x(1.5),x(2.5));
+    expect(event()&&std::abs(event()->start-1.0)<1e-6&&std::abs(event()->offset)<1e-9&&view.editHistory().size()==history+1&&view.editHistory()[view.editHistory().size()-1]==i18n::tr("Mover evento de video"),
+           "video: dragging the event 1 s to the right moves it to 1 s in one named undo step");
+    expect(shows(1.5,"red")&&shows(3.5,"blue"),"video: after the move the Video Player shows the frames shifted by 1 s (1.5 s red, 3.5 s blue)");
+    view.runCommand("undo");expect(event()&&std::abs(event()->start)<1e-9&&shows(1.5,"green"),"video: undo puts the event back at 0 s and the viewer follows");
+    view.runCommand("redo");expect(event()&&std::abs(event()->start-1.0)<1e-6,"video: redo moves it again");
+    // Trim the start from 1 s to 2 s: the end stays at 4 s and the source offset becomes 1 s.
+    history=view.editHistory().size();drag(x(1.0)+2.0f,x(2.0));
+    expect(event()&&std::abs(event()->start-2.0)<1e-6&&std::abs(event()->offset-1.0)<1e-6&&std::abs(event()->length-2.0)<1e-6&&view.editHistory().size()==history+1,"video: dragging the start grip trims the event and moves its source offset");
+    expect(shows(2.5,"green")&&(engine.seek(1.5),viewer->waitForFrame(1000))&&!viewer->target(),"video: the trimmed event starts with the green second; before it there is no picture");
+    // Trim the end from 4 s to 3.5 s, then try to extend it past the source end (limited to 4 s).
+    drag(x(4.0)-2.0f,x(3.5));expect(event()&&std::abs(event()->length-1.5)<1e-6,"video: dragging the end grip shortens the event");
+    drag(x(3.5)-2.0f,x(6.0));expect(event()&&std::abs(event()->start+event()->length-4.0)<0.03,"video: the end cannot go past the end of the movie");
+    // Supr deletes the selected event; undo brings it back.
+    arrangement->mouseDown(mouseAt(*arrangement,x(3.0),y));arrangement->mouseUp(mouseAt(*arrangement,x(3.0),y));
+    history=view.editHistory().size();
+    expect(view.runCommand("delete")&&lane->data.videoEvents.empty()&&view.editHistory().size()==history+1&&view.editHistory()[view.editHistory().size()-1]==i18n::tr("Eliminar evento de video"),"video: Supr deletes the selected video event in one undo step");
+    view.runCommand("undo");expect(event()!=nullptr,"video: undo restores the deleted event");
+    // Erase tool deletes on click.
+    view.runCommand("toolErase");
+    arrangement->mouseDown(mouseAt(*arrangement,x(3.0),y));arrangement->mouseUp(mouseAt(*arrangement,x(3.0),y));
+    expect(lane->data.videoEvents.empty(),"video: the Erase tool deletes the clicked video event");
+    view.runCommand("undo");view.runCommand("toolSelect");expect(event()!=nullptr,"video: undo after the Erase tool");
+    // Drop a movie and an image on the video track: picture events where dropped, no audio track, one step.
+    auto* target=dynamic_cast<FileDragAndDropTarget*>(arrangement);
+    history=view.editHistory().size();const auto tracksBefore=engine.tracks.size();
+    if(target)target->filesDropped({movie.getFullPathName(),still.getFullPathName()},(int)x(6.0),(int)y);
+    MessageManager::getInstance()->runDispatchLoopUntil(300); // a background audio extraction would have started here
+    const auto& dropped=lane->data.videoEvents;
+    expect(target&&dropped.size()==3&&std::abs(dropped[1].start-6.0)<0.02&&!dropped[1].still&&dropped[2].still&&std::abs(dropped[2].start-dropped[1].start-dropped[1].length)<1e-9,
+           "video: a movie and an image dropped at 6 s become picture events from the drop point");
+    bool audioTrack=false;for(const auto& t:engine.tracks)audioTrack|=t->hasAudioChannel();
+    expect(engine.tracks.size()==tracksBefore&&!audioTrack&&view.editHistory().size()==history+1,"video: dropping on the video track creates no audio track and one undo step");
+    expect(shows(6.5,"red"),"video: the dropped movie shows its first second at 6.5 s");
+    view.runCommand("undo");expect(lane->data.videoEvents.size()==1,"video: one undo removes both dropped events");
+    if(auto out=dir.getChildFile("video-edit.png").createOutputStream()){out->setPosition(0);out->truncate();PNGImageFormat().writeImageToStream(arrangement->createComponentSnapshot(arrangement->getLocalBounds()),*out);}
     viewer->getTopLevelComponent()->setVisible(false);
     engine.clear();
 }

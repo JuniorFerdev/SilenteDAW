@@ -34,7 +34,8 @@ juce::var writeTrackData(const domain::TrackData& data,const juce::File& project
             juce::var value(new juce::DynamicObject());set(value,"id",event.id);set(value,"path",event.path);set(value,"name",event.name);
             if(projectFolder!=juce::File()&&juce::File::isAbsolutePath(event.path))set(value,"relativePath",juce::File(event.path).getRelativePathFrom(projectFolder));
             set(value,"start",event.start);set(value,"length",event.length);set(value,"offset",event.offset);set(value,"still",event.still);
-            set(value,"width",event.width);set(value,"height",event.height);set(value,"frameRate",event.frameRate);events.add(value);
+            set(value,"width",event.width);set(value,"height",event.height);set(value,"frameRate",event.frameRate);
+            if(event.sourceLength>0.0)set(value,"sourceLength",event.sourceLength);events.add(value);
         }
         set(object,"videoEvents",events);
     }
@@ -73,6 +74,7 @@ domain::TrackData readTrackData(const juce::var& object,const juce::File& projec
             if(const auto moved=projectFolder.getChildFile(relative);moved.exists()||event.path.isEmpty())event.path=moved.getFullPathName();
         event.start=finite(value,"start",0.0);event.length=finite(value,"length",0.0);event.offset=finite(value,"offset",0.0);
         event.still=(bool)value.getProperty("still",false);event.frameRate=finite(value,"frameRate",0.0);
+        event.sourceLength=juce::jmax(0.0,finite(value,"sourceLength",0.0)); // older projects: unknown
         event.width=juce::jmax(0,(int)value.getProperty("width",0));event.height=juce::jmax(0,(int)value.getProperty("height",0));
         if(event.name.isEmpty())event.name=juce::File::createFileWithoutCheckingPath(event.path).getFileName();
         if(!domain::validVideoEvent(event))continue;

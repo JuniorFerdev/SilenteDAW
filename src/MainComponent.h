@@ -52,6 +52,7 @@ public:
     int trackHeightOf(int trackIndex) const; // Height in pixels of a track row in the event display.
     float waveZoomValue() const; // Zoom de forma de onda de todas las pistas (1–16).
     float projectXForTime(double seconds) const; // Event-display geometry at the current horizontal zoom.
+    int projectYForTrack(int trackIndex) const; // Top of a track row in the event display.
     void showMetronomeSettings();
     void showTapTempo();
     void showTempoMap(); // «Mapa de tempo y de compás» window (tempo and signature events)
