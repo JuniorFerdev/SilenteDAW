@@ -563,6 +563,71 @@ private:
         expect(only.size()==1&&engine.tracks[(size_t)only[0]]==gtr,"Shift-click in Visibility shows only that track");
         engine.clear();
     }
+    static std::vector<int> itemIds(ComboBox& box){std::vector<int> ids;for(int i=0;i<box.getNumItems();++i)ids.push_back(box.getItemId(i));return ids;}
+    void exportWindowChecks(ui::ExportDialog& dialog)
+    {
+        auto* type=dynamic_cast<ComboBox*>(find(dialog,"format-type"));auto* rate=dynamic_cast<ComboBox*>(find(dialog,"format-rate"));
+        auto* bits=dynamic_cast<ComboBox*>(find(dialog,"format-bits"));auto* bitrate=dynamic_cast<ComboBox*>(find(dialog,"format-bitrate"));
+        auto* range=dynamic_cast<ComboBox*>(find(dialog,"export-range"));auto* conflict=dynamic_cast<ComboBox*>(find(dialog,"export-conflict"));
+        if(!type||!rate||!bits||!bitrate||!range||!conflict){expect(false,"export window exposes format, range and conflict controls");return;}
+        for(int f=0;f<io::fileFormatCount;++f)
+        {
+            const auto format=(io::FileFormat)f;type->setSelectedId(f+1,sendNotificationSync);
+            const auto rates=io::supportedRates(format);
+            bool every=itemIds(*rate).size()==rates.size();String why=every?"":"count "+String(itemIds(*rate).size());
+            for(int id:itemIds(*rate)){rate->setSelectedId(id,sendNotificationSync);const auto s=dialog.buildJob().settings;every=every&&io::validate(s).wasOk();if(!every&&why.isEmpty())why="validate "+String(id)+" "+io::validate(s).getErrorMessage();
+                const bool lossy=format==io::FileFormat::mp3||format==io::FileFormat::m4a;
+                const auto offered=itemIds(lossy?*bitrate:*bits);const auto valid=lossy?io::supportedBitRates(format,id):io::supportedBitDepths(format);
+                every=every&&offered==valid&&bitrate->isVisible()==lossy&&bits->isVisible()==!lossy;if(!every&&why.isEmpty())why="options "+String(id)+" got "+String(offered.size())+" want "+String(valid.size())+" vis "+String((int)bitrate->isVisible());}
+            expect(every,"export window offers only valid rates/depths/bit rates for "+io::displayName(format)+" "+why);
+        }
+        type->setSelectedId((int)io::FileFormat::mp3+1,sendNotificationSync);
+        const auto mp3Rates=itemIds(*rate);expect(!mp3Rates.empty()&&*std::max_element(mp3Rates.begin(),mp3Rates.end())==48000,"MP3 offers no rate above 48 kHz");
+        rate->setSelectedId(22050,sendNotificationSync);expect(!itemIds(*bitrate).empty()&&itemIds(*bitrate).back()==160,"MP3 at 22.05 kHz tops out at 160 kbit/s (MPEG-2)");
+        rate->setSelectedId(44100,sendNotificationSync);expect(itemIds(*bitrate).size()==14&&itemIds(*bitrate).front()==32&&itemIds(*bitrate).back()==320,"MP3 at 44.1 kHz offers 32 to 320 kbit/s");
+        type->setSelectedId((int)io::FileFormat::flac+1,sendNotificationSync);expect(itemIds(*bits)==std::vector<int>({16,24})&&itemIds(*rate).size()==11,"FLAC offers 16/24 bit and 11 rates");
+        type->setSelectedId((int)io::FileFormat::wav+1,sendNotificationSync);expect(itemIds(*bits)==std::vector<int>({16,24,32}),"WAV offers 16, 24 and 32-bit float");
+        type->setSelectedId((int)io::FileFormat::aiff+1,sendNotificationSync);expect(itemIds(*bits)==std::vector<int>({16,24}),"AIFF offers 16 and 24 bit (no float writer)");
+        // Cycle-marker range export through the dialog's own job.
+        const auto dir=output.getChildFile("export-window");dir.deleteRecursively();dir.createDirectory();
+        AudioEngine local;local.prepareForOffline(48000.0,512);local.masterGain=1.0f;
+        juce::AudioBuffer<float> ramp(1,4*48000);for(int i=0;i<ramp.getNumSamples();++i)ramp.setSample(0,i,0.1f*(float)i/48000.0f);
+        io::EncodeSettings fixture;fixture.format=io::FileFormat::wav;fixture.sampleRate=48000.0;fixture.bitDepth=32;
+        io::EncodedFileWriter writer;const auto source=dir.getChildFile("source.wav");
+        const bool wrote=writer.open(source,fixture,1).wasOk()&&writer.write(ramp,0,ramp.getNumSamples())&&writer.finish().wasOk()&&local.importAudio(source).wasOk();
+        expect(wrote,"export window fixture audio imports");if(!wrote)return;
+        local.tracks[0]->gain=1.0f;local.tracks[0]->pan=-1.0f;for(auto& t:local.tracks)for(auto& c:t->clips){c.fadeIn=0;c.fadeOut=0;}
+        auto markers=local.addTrack(TrackKind::marker);
+        domain::Marker one;one.description="Verso";one.number=1;one.position=1.0;one.end=2.0;one.cycle=true;
+        domain::Marker two;two.description="Coro";two.number=2;two.position=2.5;two.end=3.0;two.cycle=true;
+        markers->data.markers={one,two};
+        ui::ExportDialog window(local,0);window.setSize(820,520);window.setFolder(dir.getChildFile("out"));
+        auto* wrange=dynamic_cast<ComboBox*>(find(window,"export-range"));auto* wconflict=dynamic_cast<ComboBox*>(find(window,"export-conflict"));
+        auto* wname=dynamic_cast<TextEditor*>(find(window,"export-name"));auto* each=dynamic_cast<ToggleButton*>(find(window,"export-per-range"));
+        if(!wrange||!wconflict||!wname||!each){expect(false,"export window exposes name, range and one-file-per-range controls");return;}
+        wname->setText("Mezcla",dontSendNotification);wrange->setSelectedId(3,sendNotificationSync);wconflict->setSelectedId(3,sendNotificationSync);
+        expect(each->isVisible(),"one-file-per-range toggle appears with cycle markers");
+        auto job=window.buildJob();juce::StringArray written;
+        const bool ok=io::exportChannels(local,job,{},written).wasOk()&&written.size()==2;
+        expect(ok&&File(written[0]).getFileName()=="Mezcla - Verso.wav"&&File(written[1]).getFileName()=="Mezcla - Coro.wav","cycle markers export one file per range, named after the marker");
+        if(ok)
+        {
+            AudioFormatManager formats;formats.registerBasicFormats();bool right=true;const double starts[]{1.0,2.5},lengths[]{1.0,0.5};
+            for(int n=0;n<2;++n)
+            {
+                std::unique_ptr<AudioFormatReader> reader(formats.createReaderFor(File(written[n])));
+                if(!reader){right=false;break;}
+                AudioBuffer<float> got(2,(int)reader->lengthInSamples);reader->read(&got,0,got.getNumSamples(),0,true,true);
+                right=right&&std::abs(got.getNumSamples()-lengths[n]*48000.0)<=2&&std::abs(got.getSample(0,100)-0.1f*(float)(starts[n]+100.0/48000.0))<2e-3f;
+            }
+            expect(right,"each cycle-marker file holds exactly its section of the mix");
+        }
+        each->setToggleState(false,sendNotificationSync);job=window.buildJob();written.clear();
+        const bool joined=io::exportChannels(local,job,{},written).wasOk()&&written.size()==1;
+        expect(joined&&job.ranges.size()==1&&job.ranges[0].start==1.0&&job.ranges[0].end==3.0,"without one-file-per-range the cycle ranges export as a single file from first start to last end");
+        wconflict->setSelectedId(1,sendNotificationSync);expect(window.buildJob().conflict==io::NameConflict::ask,"existing-file conflict defaults to asking");
+        dir.deleteRecursively();
+    }
     void mixConsoleChecks()
     {
         engine.clear();
@@ -625,6 +690,7 @@ private:
             ui::ExportDialog exportDialog(engine,0);exportDialog.setSize(820,520);capture(exportDialog,output.getChildFile("export-dialog.png"));
             ui::ConversionPanel conversion(engine.formatManager);conversion.setSize(860,540);capture(conversion,output.getChildFile("conversion.png"));
             expect(exportDialog.getWidth()==820&&conversion.getWidth()==860,"export and conversion windows build");
+            exportWindowChecks(exportDialog);
         }
         if(auto* search=dynamic_cast<TextEditor*>(find(console,"mix-search"))){search->setText("FX",false);if(search->onTextChange)search->onTextChange();expect(console.visibleStripCount()==2,"MixConsole search filters channels by name");}
         engine.clear();

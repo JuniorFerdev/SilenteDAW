@@ -33,7 +33,7 @@ juce::Result Mp3Encoder::open(double sampleRate, int channelCount, int kilobitsP
     lame_set_num_channels(gfp, channels);
     lame_set_mode(gfp, channels == 1 ? MONO : JOINT_STEREO);
     lame_set_VBR(gfp, vbr_off);
-    lame_set_brate(gfp, juce::jlimit(32, 320, kilobitsPerSecond));
+    lame_set_brate(gfp, juce::jlimit(8, 320, kilobitsPerSecond));
     lame_set_quality(gfp, 2);
     if (lame_init_params(gfp) < 0) return juce::Result::fail(i18n::tr("Ajustes MP3 no válidos."));
     return juce::Result::ok();

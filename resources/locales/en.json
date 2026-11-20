@@ -1081,5 +1081,19 @@
   "Sin envíos": "No sends",
   "Modo": "Mode",
   "Mostrar": "Show",
-  "Modo de automatización": "Automation mode"
+  "Modo de automatización": "Automation mode",
+  "Rango de exportación": "Export range",
+  "Si el archivo ya existe": "If the file already exists",
+  "Proyecto completo": "Whole project",
+  "Entre localizadores izquierdo y derecho": "Between left and right locators",
+  "Marcadores de ciclo": "Cycle markers",
+  "Un archivo por rango": "One file per range",
+  "Preguntar": "Ask",
+  "Crear nombre único": "Create unique name",
+  "Sobrescribir": "Overwrite",
+  "El archivo ya existe": "The file already exists",
+  " archivo(s) de destino ya existen en la carpeta.": " target file(s) already exist in the folder.",
+  "La pista de marcadores activa no tiene rangos de ciclo.": "The active marker track has no cycle ranges.",
+  "Tasa de bits no admitida para este formato y frecuencia.": "Bit rate not supported for this format and sample rate.",
+  "AIFF admite 16 o 24 bits.": "AIFF supports 16 or 24 bits."
 }

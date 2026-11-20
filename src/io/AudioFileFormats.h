@@ -2,6 +2,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace silente::io
 {
@@ -14,7 +15,7 @@ struct EncodeSettings
 {
     FileFormat format = FileFormat::wav;
     double sampleRate = 48000.0;
-    int bitDepth = 24;          // WAV/AIFF 16, 24 or 32 (32 = float); FLAC 16 or 24
+    int bitDepth = 24;          // WAV 16, 24 or 32 (32 = float); AIFF and FLAC 16 or 24
     int kilobitsPerSecond = 320; // MP3 and M4A/AAC
 };
 
@@ -22,6 +23,14 @@ juce::String extensionFor(FileFormat);
 juce::String displayName(FileFormat);
 juce::String readableWildcard(juce::AudioFormatManager&); // audio + video files Silente can open
 juce::Result validate(const EncodeSettings&);
+
+// What each format really accepts (the dialog offers only these; validate() rejects the rest).
+// Lossless: 8–192 kHz. MP3 (LAME, MPEG-1/2/2.5 Layer III) and M4A (afconvert AAC-LC): 8–48 kHz;
+// afconvert silently resamples anything above 48 kHz, so it is refused. 352.8/384 kHz are not
+// offered: the offline renderer is limited to 192 kHz.
+std::vector<double> supportedRates(FileFormat);
+std::vector<int> supportedBitDepths(FileFormat);          // empty for MP3/M4A
+std::vector<int> supportedBitRates(FileFormat, double sampleRate); // kbit/s; empty for lossless
 
 // Streams audio blocks into any supported format. WAV, AIFF and FLAC use JUCE writers, MP3 uses
 // LAME and M4A/AAC is encoded by macOS (afconvert) from an intermediate WAV. Writes go to a

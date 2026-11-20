@@ -17,6 +17,6 @@ public:
 private:
     juce::ComboBox format, rate, bits, bitrate;
     juce::Label formatLabel, rateLabel, bitsLabel, bitrateLabel;
-    void update();
+    void update(bool rebuildRates);
 };
 }

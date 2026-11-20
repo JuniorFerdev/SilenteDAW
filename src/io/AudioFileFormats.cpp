@@ -3,6 +3,7 @@
 #include "VideoAudio.h"
 #include "../audio/BandlimitedInterpolator.h"
 #include "../i18n/Translations.h"
+#include <algorithm>
 
 namespace silente::io
 {
@@ -37,14 +38,59 @@ juce::String readableWildcard(juce::AudioFormatManager& formats)
     return formats.getWildcardForAllFormats() + ";*.m4a;*.mp3;*.aac;*.caf;" + videoWildcard();
 }
 
+std::vector<double> supportedRates(FileFormat f)
+{
+    if (f == FileFormat::mp3 || f == FileFormat::m4a) return { 8000.0, 11025.0, 12000.0, 16000.0, 22050.0, 24000.0, 32000.0, 44100.0, 48000.0 };
+    return { 8000.0, 11025.0, 16000.0, 22050.0, 32000.0, 44100.0, 48000.0, 88200.0, 96000.0, 176400.0, 192000.0 };
+}
+
+std::vector<int> supportedBitDepths(FileFormat f)
+{
+    if (f == FileFormat::flac || f == FileFormat::aiff) return { 16, 24 }; // JUCE's AIFF writer has no 32-bit float
+    if (f == FileFormat::wav) return { 16, 24, 32 };
+    return {};
+}
+
+std::vector<int> supportedBitRates(FileFormat f, double rate)
+{
+    if (f == FileFormat::mp3) // LAME: MPEG-1 (32/44.1/48 kHz), MPEG-2 (16/22.05/24), MPEG-2.5 (8/11.025/12)
+    {
+        if (rate >= 31999.0) return { 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320 };
+        if (rate >= 15999.0) return { 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160 };
+        return { 8, 16, 24, 32, 40, 48, 56, 64 };
+    }
+    if (f == FileFormat::m4a)
+    {
+        // afconvert AAC-LC stereo, measured on macOS: below `low` it silently lowers the sample rate
+        // of the file, above `high` it refuses. Only bit rates that keep the requested rate are offered.
+        std::vector<int> all { 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320 };
+        const int high = rate >= 44099.0 ? 320 : rate >= 31999.0 ? 192 : rate >= 22049.0 ? 128 : rate >= 15999.0 ? 96 : rate >= 11024.0 ? 64 : 48;
+        const int low = rate >= 44099.0 ? 96 : rate >= 31999.0 ? 56 : rate >= 22049.0 ? 48 : rate >= 15999.0 ? 40 : rate >= 11024.0 ? 32 : 16;
+        all.erase(std::remove_if(all.begin(), all.end(), [low, high](int b) { return b < low || b > high; }), all.end());
+        return all;
+    }
+    return {};
+}
+
 juce::Result validate(const EncodeSettings& s)
 {
-    if (s.sampleRate < 8000.0 || s.sampleRate > 192000.0) return juce::Result::fail(i18n::tr("Frecuencia de exportación no válida."));
-    if (s.format == FileFormat::mp3 && ! Mp3Encoder::supportsRate(s.sampleRate)) return juce::Result::fail(i18n::tr("MP3 admite frecuencias de hasta 48 kHz (44,1 o 48 kHz recomendadas)."));
-    if (s.format == FileFormat::m4a && s.sampleRate > 48000.0) return juce::Result::fail(i18n::tr("M4A/AAC admite frecuencias de hasta 48 kHz."));
-    if ((s.format == FileFormat::wav || s.format == FileFormat::aiff) && s.bitDepth != 16 && s.bitDepth != 24 && s.bitDepth != 32)
-        return juce::Result::fail(i18n::tr("La profundidad debe ser 16, 24 o 32 bits."));
-    if (s.format == FileFormat::flac && s.bitDepth != 16 && s.bitDepth != 24) return juce::Result::fail(i18n::tr("FLAC admite 16 o 24 bits."));
+    const auto rates = supportedRates(s.format);
+    if (std::none_of(rates.begin(), rates.end(), [&s](double r) { return std::abs(r - s.sampleRate) < 0.5; }))
+    {
+        if (s.format == FileFormat::mp3) return juce::Result::fail(i18n::tr("MP3 admite frecuencias de hasta 48 kHz (44,1 o 48 kHz recomendadas)."));
+        if (s.format == FileFormat::m4a) return juce::Result::fail(i18n::tr("M4A/AAC admite frecuencias de hasta 48 kHz."));
+        return juce::Result::fail(i18n::tr("Frecuencia de exportación no válida."));
+    }
+    if (s.format == FileFormat::mp3 || s.format == FileFormat::m4a)
+    {
+        const auto rates2 = supportedBitRates(s.format, s.sampleRate);
+        if (std::find(rates2.begin(), rates2.end(), s.kilobitsPerSecond) == rates2.end())
+            return juce::Result::fail(i18n::tr("Tasa de bits no admitida para este formato y frecuencia."));
+        return juce::Result::ok();
+    }
+    const auto depths = supportedBitDepths(s.format);
+    if (std::find(depths.begin(), depths.end(), s.bitDepth) == depths.end())
+        return juce::Result::fail(s.format == FileFormat::flac ? i18n::tr("FLAC admite 16 o 24 bits.") : s.format == FileFormat::aiff ? i18n::tr("AIFF admite 16 o 24 bits.") : i18n::tr("La profundidad debe ser 16, 24 o 32 bits."));
     return juce::Result::ok();
 }
 

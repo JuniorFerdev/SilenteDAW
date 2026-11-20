@@ -178,6 +178,99 @@ int runIoTests(const juce::File& dir)
         require(juce::File(written[0]).hasFileExtension("mp3") && juce::File(written[0]).getSize() > 1000, "MP3 mix export");
     });
 
+    // One case per format and sample rate; inside, every bit depth or bit rate that format lists.
+    for (int fi = 0; fi < io::fileFormatCount; ++fi)
+        for (double r : io::supportedRates((io::FileFormat) fi))
+            t.run(io::displayName((io::FileFormat) fi) + " at " + juce::String(r) + " Hz writes every offered depth/bit rate", [&, fi, r]
+            {
+                const auto f = (io::FileFormat) fi;
+                const bool lossy = f == io::FileFormat::mp3 || f == io::FileFormat::m4a;
+                const auto options = lossy ? io::supportedBitRates(f, r) : io::supportedBitDepths(f);
+                require(! options.empty(), "No options offered");
+                const auto matrixDir = dir.getChildFile("matrix"); matrixDir.createDirectory();
+                const auto tone = tones(r, 0.5, 1000.0, 3000.0, 0.5f);
+                for (int option : options)
+                {
+                    io::EncodeSettings s; s.format = f; s.sampleRate = r;
+                    if (lossy) s.kilobitsPerSecond = option; else s.bitDepth = option;
+                    const auto file = matrixDir.getChildFile("m" + io::extensionFor(f));
+                    file.deleteFile();
+                    requireOk(io::validate(s));
+                    requireOk(writeFile(file, tone, s));
+                    const auto d = readFile(formats, file);
+                    require(std::abs(d.rate - r) < 0.5, "Rate " + juce::String(d.rate) + " option " + juce::String(option));
+                    require(std::abs(d.audio.getNumSamples() / d.rate - 0.5) < (lossy ? 0.05 + 4000.0 / r : 0.001), "Length option " + juce::String(option));
+                    require(file.getSize() > 200, "Empty file");
+                }
+            });
+
+    t.run("every unsupported format/rate/depth/bit rate is refused without a partial file", [&]
+    {
+        const auto bad = dir.getChildFile("invalid"); bad.deleteRecursively(); bad.createDirectory();
+        struct Case { io::FileFormat f; double rate; int bits, kbps; };
+        const Case cases[] {
+            { io::FileFormat::wav, 12000.0, 24, 0 }, { io::FileFormat::wav, 384000.0, 24, 0 }, { io::FileFormat::wav, 352800.0, 24, 0 }, { io::FileFormat::wav, 48000.0, 8, 0 }, { io::FileFormat::wav, 48000.0, 20, 0 },
+            { io::FileFormat::aiff, 48000.0, 12, 0 }, { io::FileFormat::aiff, 48000.0, 32, 0 }, { io::FileFormat::aiff, 7999.0, 16, 0 },
+            { io::FileFormat::flac, 48000.0, 32, 0 }, { io::FileFormat::flac, 384000.0, 24, 0 },
+            { io::FileFormat::mp3, 88200.0, 24, 128 }, { io::FileFormat::mp3, 192000.0, 24, 128 }, { io::FileFormat::mp3, 44100.0, 24, 8 }, { io::FileFormat::mp3, 44100.0, 24, 321 },
+            { io::FileFormat::mp3, 22050.0, 24, 320 }, { io::FileFormat::mp3, 11025.0, 24, 128 },
+            { io::FileFormat::m4a, 96000.0, 24, 128 }, { io::FileFormat::m4a, 64000.0, 24, 128 }, { io::FileFormat::m4a, 22050.0, 24, 320 }, { io::FileFormat::m4a, 8000.0, 24, 128 },
+            { io::FileFormat::m4a, 44100.0, 24, 64 }, { io::FileFormat::m4a, 22050.0, 24, 32 } };
+        for (const auto& c : cases)
+        {
+            io::EncodeSettings s; s.format = c.f; s.sampleRate = c.rate; s.bitDepth = c.bits; s.kilobitsPerSecond = c.kbps;
+            const auto file = bad.getChildFile("x" + io::extensionFor(c.f));
+            const auto label = io::displayName(c.f) + " " + juce::String(c.rate) + " Hz " + juce::String(c.bits) + " bit " + juce::String(c.kbps) + " kbit/s";
+            require(io::validate(s).failed(), label + " accepted by validate");
+            io::EncodedFileWriter writer;
+            require(writer.open(file, s, 2).failed(), label + " accepted by open");
+            require(bad.getNumberOfChildFiles(juce::File::findFilesAndDirectories) == 0, label + " left a file behind");
+        }
+    });
+
+    t.run("export cycle-marker ranges: one file per range with the right section; unique names and overwrite", [&]
+    {
+        const auto ramp = dir.getChildFile("ramp.wav");
+        io::EncodeSettings s; s.format = io::FileFormat::wav; s.sampleRate = rate; s.bitDepth = 32;
+        juce::AudioBuffer<float> r(1, 6 * 48000);
+        for (int i = 0; i < r.getNumSamples(); ++i) r.setSample(0, i, 0.1f * (float) i / 48000.0f);
+        requireOk(writeFile(ramp, r, s));
+        AudioEngine engine; engine.prepareForOffline(rate, 512); engine.masterGain = 1.0f;
+        requireOk(engine.importAudio(ramp));
+        engine.tracks[0]->gain = 1.0f; engine.tracks[0]->pan = -1.0f;
+        for (auto& tr : engine.tracks) for (auto& c : tr->clips) { c.fadeIn = 0; c.fadeOut = 0; }
+        auto markers = engine.addTrack(TrackKind::marker);
+        domain::Marker a; a.description = "A"; a.number = 1; a.position = 1.0; a.end = 2.0; a.cycle = true;
+        domain::Marker b; b.number = 2; b.position = 3.5; b.end = 4.0; b.cycle = true;
+        domain::Marker point; point.number = 3; point.position = 5.0; // not a cycle: ignored
+        markers->data.markers = { b, point, a };
+        const auto ranges = io::cycleMarkerRanges(engine);
+        require(ranges.size() == 2 && ranges[0].name == "A" && ranges[1].name == "Ciclo 2" && ranges[0].start == 1.0 && ranges[1].end == 4.0, "Cycle ranges listing");
+        io::ExportJob job; job.folder = dir.getChildFile("ranges"); job.folder.deleteRecursively(); job.baseName = "Prueba"; job.settings = s; job.mix = true; job.ranges = ranges;
+        juce::StringArray written;
+        requireOk(io::exportChannels(engine, job, {}, written));
+        require(written.size() == 2, "Expected 2 files, got " + juce::String(written.size()));
+        require(juce::File(written[0]).getFileName() == "Prueba - A.wav" && juce::File(written[1]).getFileName() == "Prueba - Ciclo 2.wav", "Names " + written.joinIntoString(","));
+        const double starts[] { 1.0, 3.5 }, lengths[] { 1.0, 0.5 };
+        for (int n = 0; n < 2; ++n)
+        {
+            const auto d = readFile(formats, juce::File(written[n]));
+            require(std::abs(d.audio.getNumSamples() - lengths[n] * rate) <= 2, "Range " + juce::String(n) + " length " + juce::String(d.audio.getNumSamples()));
+            const int at = 100;
+            const float expected = 0.1f * (float) (starts[n] + at / rate);
+            require(std::abs(d.audio.getSample(0, at) - expected) < 2e-3f, "Range " + juce::String(n) + " content " + juce::String(d.audio.getSample(0, at)) + " vs " + juce::String(expected));
+        }
+        require(io::plannedTargets(engine, job).size() == 2, "Planned targets");
+        job.conflict = io::NameConflict::uniqueName; written.clear();
+        requireOk(io::exportChannels(engine, job, {}, written));
+        require(juce::File(written[0]).getFileName() == "Prueba - A 2.wav" && juce::File(written[1]).getFileName() == "Prueba - Ciclo 2 2.wav", "Unique names " + written.joinIntoString(","));
+        job.conflict = io::NameConflict::overwrite; written.clear();
+        requireOk(io::exportChannels(engine, job, {}, written));
+        require(written[0].endsWith("Prueba - A.wav") && job.folder.getNumberOfChildFiles(juce::File::findFiles, "*.wav") == 4, "Overwrite kept the same names");
+        job.ranges[1].end = job.ranges[1].start; written.clear();
+        require(io::exportChannels(engine, job, {}, written).failed(), "Empty range accepted");
+    });
+
     dir.getChildFile("io-tests.txt").replaceWithText(t.report + juce::String(t.passed) + "/" + juce::String(t.passed + t.failures) + " io passed\n");
     std::cout << t.passed << "/" << (t.passed + t.failures) << " io passed" << std::endl;
     return t.failures;

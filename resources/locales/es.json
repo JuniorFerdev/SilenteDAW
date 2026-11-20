@@ -1081,5 +1081,19 @@
   "Sin envíos": "Sin envíos",
   "Modo": "Modo",
   "Mostrar": "Mostrar",
-  "Modo de automatización": "Modo de automatización"
+  "Modo de automatización": "Modo de automatización",
+  "Rango de exportación": "Rango de exportación",
+  "Si el archivo ya existe": "Si el archivo ya existe",
+  "Proyecto completo": "Proyecto completo",
+  "Entre localizadores izquierdo y derecho": "Entre localizadores izquierdo y derecho",
+  "Marcadores de ciclo": "Marcadores de ciclo",
+  "Un archivo por rango": "Un archivo por rango",
+  "Preguntar": "Preguntar",
+  "Crear nombre único": "Crear nombre único",
+  "Sobrescribir": "Sobrescribir",
+  "El archivo ya existe": "El archivo ya existe",
+  " archivo(s) de destino ya existen en la carpeta.": " archivo(s) de destino ya existen en la carpeta.",
+  "La pista de marcadores activa no tiene rangos de ciclo.": "La pista de marcadores activa no tiene rangos de ciclo.",
+  "Tasa de bits no admitida para este formato y frecuencia.": "Tasa de bits no admitida para este formato y frecuencia.",
+  "AIFF admite 16 o 24 bits.": "AIFF admite 16 o 24 bits."
 }
