@@ -1315,6 +1315,48 @@ int runEngineTests(const juce::File& outputDir)
         require(selectAllNotes(notes).size() == 4, "select all");
     });
 
+    suite.run("MIDI editor tools: split and glue rules", [&]
+    {
+        using namespace domain;
+        std::vector<MidiNote> notes(4);
+        notes[0].pitch = 60; notes[0].startBeats = 0.0; notes[0].lengthBeats = 2.0; notes[0].velocity = 90; notes[0].muted = true;
+        notes[1].pitch = 64; notes[1].startBeats = 0.5; notes[1].lengthBeats = 2.0;
+        notes[2].pitch = 60; notes[2].startBeats = 3.0; notes[2].lengthBeats = 1.0; notes[2].velocity = 40;
+        notes[3].pitch = 60; notes[3].startBeats = 6.0; notes[3].lengthBeats = 1.0;
+        auto cut = notes; std::vector<std::pair<juce::String, juce::String>> parts;
+        require(splitNotes(cut, { 0, 1, 2 }, 1.0, 0.0625, &parts) == 2 && cut.size() == 6 && parts.size() == 2, "split cuts only the notes that contain the point");
+        near(cut[0].lengthBeats, 1.0, 1e-12, "left part ends at the cut"); near(cut[4].startBeats, 1.0, 1e-12, "right part starts at the cut"); near(cut[4].lengthBeats, 1.0, 1e-12, "right part keeps the rest");
+        require(cut[4].pitch == 60 && cut[4].velocity == 90 && cut[4].muted && cut[4].id != cut[0].id && parts[0].first == cut[0].id && parts[0].second == cut[4].id, "right part keeps pitch, velocity and mute with a new id");
+        near(cut[5].startBeats, 1.0, 1e-12, "second note split at the same point"); near(cut[1].lengthBeats, 0.5, 1e-12, "second note left part");
+        require(cut[2].lengthBeats == 1.0 && cut[2].startBeats == 3.0, "note outside the cut is untouched");
+        auto edge = notes; require(splitNotes(edge, { 0 }, 0.0) == 0 && splitNotes(edge, { 0 }, 2.0) == 0 && splitNotes(edge, { 0 }, 1.97) == 0 && edge.size() == 4, "no cut at the edges or below the minimum part");
+        require(nextNoteWithSamePitch(notes, 0) == 2 && nextNoteWithSamePitch(notes, 2) == 3 && nextNoteWithSamePitch(notes, 3) == -1 && nextNoteWithSamePitch(notes, 1) == -1, "glue finds the next note of the same pitch");
+        auto glued = notes; const auto removed = glueWithNext(glued, 0);
+        require(removed == notes[2].id && glued.size() == 3 && glued[0].velocity == 90 && glued[0].muted, "glue removes the second note and keeps the first one's properties");
+        near(glued[0].startBeats, 0.0, 0, "glued note keeps its start"); near(glued[0].lengthBeats, 4.0, 1e-12, "glued note spans to the end of the second");
+        auto last = notes; require(glueWithNext(last, 3).isEmpty() && last.size() == 4, "the last note of a pitch cannot be glued");
+    });
+
+    suite.run("muted MIDI notes are silent, release, and survive save/load", [&]
+    {
+        AudioEngine engine; setup(engine); auto track = engine.addMidiTrack("Muted");
+        track->gain = 1.0f;
+        MidiNote note; note.pitch = 69; note.startBeats = 0; note.lengthBeats = 4; note.muted = true;
+        track->notes.push_back(note);
+        engine.play(); near(peak(render(engine, 8192)), 0, 0.00001, "Muted note sounded");
+        engine.stop(); engine.seek(0);
+        { const juce::ScopedLock lock(engine.modelLock); track->notes[0].muted = false; }
+        engine.play(); const auto sounding = peak(render(engine, 8192));
+        { const juce::ScopedLock lock(engine.modelLock); track->notes[0].muted = true; }
+        render(engine, static_cast<int>(rate * 3));
+        require(sounding > 0.001, "Unmuted note is silent");
+        near(peak(render(engine, 4096)), 0, 0.00001, "Muting a sounding note left it hanging");
+        engine.stop();
+        const auto file = dir.getChildFile("muted-note.silente"); requireOk(engine.saveProject(file));
+        AudioEngine restored; setup(restored); requireOk(restored.loadProject(file));
+        require(restored.tracks.size() == 1 && restored.tracks[0]->notes.size() == 1 && restored.tracks[0]->notes[0].muted, "Mute flag lost on save/load");
+    });
+
     suite.run("tempo map: jumps, ramps, signatures and the single-tempo identity", [&]
     {
         using namespace domain;

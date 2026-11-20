@@ -25,11 +25,12 @@ std::vector<ProjectToolDefinition> projectToolDefinitions()
         {13,I::palette,i18n::tr("Color"),{},{}}
     };
 }
-int adjacentProjectTool(int active,int direction)
+int adjacentProjectTool(int active,int direction){return adjacentTool(projectToolDefinitions(),active,direction);}
+int adjacentTool(const std::vector<ProjectToolDefinition>& definitions,int active,int direction)
 {
     if(direction==0)return active;
     std::vector<int> tools;
-    for(const auto& tool:projectToolDefinitions())if(tool.available())tools.push_back(tool.id);
+    for(const auto& tool:definitions)if(tool.available())tools.push_back(tool.id);
     if(tools.empty())return active;
     std::sort(tools.begin(),tools.end());
     const auto found=std::find(tools.begin(),tools.end(),active);
@@ -45,26 +46,30 @@ bool opensProjectToolbox(bool showByDefault,juce::ModifierKeys mods)
     if(!mods.isRightButtonDown())flags&=~juce::ModifierKeys::ctrlModifier;
     return showByDefault!=(flags!=0);
 }
-ProjectToolbox::ProjectToolbox(int active,std::function<void(int)> choose,bool showOnRightClick):chosen(std::move(choose)),activeTool(active)
+ProjectToolbox::ProjectToolbox(int active,std::function<void(int)> choose,bool showOnRightClick)
+    :ProjectToolbox(projectToolDefinitions(),"project-toolbox",active,std::move(choose),showOnRightClick){}
+ProjectToolbox::ProjectToolbox(std::vector<ProjectToolDefinition> definitions,const juce::String& componentId,int active,std::function<void(int)> choose,bool showOnRightClick)
+    :tools(std::move(definitions)),prefix(componentId),chosen(std::move(choose)),activeTool(active)
 {
     contextHint=showOnRightClick?i18n::tr("Tecla modificadora + clic derecho: menú contextual"):i18n::tr("Clic derecho: menú contextual");
-    setLookAndFeel(&look);setComponentID("project-toolbox");
-    for(const auto& tool:projectToolDefinitions())
+    setLookAndFeel(&look);setComponentID(prefix);
+    for(const auto& tool:tools)
     {
         auto button=std::make_unique<juce::TextButton>();
         theme::setButtonIcon(*button,tool.icon);button->setName(tool.name);
-        button->setComponentID("project-toolbox-tool-"+juce::String(tool.id));
+        button->setComponentID(prefix+"-tool-"+juce::String(tool.id));
         button->setTooltip(tool.name+(tool.shortcut.isNotEmpty()?" · "+tool.shortcut:juce::String())+(tool.available()?juce::String():"\n"+tool.unavailableReason));
         button->setEnabled(tool.available());button->setToggleState(tool.id==active,juce::dontSendNotification);
         if(tool.available())button->onClick=[this,id=tool.id]{chooseAndDismiss(id);};
         addAndMakeVisible(*button);buttons.push_back(std::move(button));
     }
-    setSize(16+30*(int)buttons.size(),66);
+    // Wide enough for the hint even with few tools (the MIDI editor has six).
+    setSize(juce::jmax(16+30*(int)buttons.size(),250),66);
 }
 void ProjectToolbox::chooseAndDismiss(int id)
 {
     activeTool=id;
-    for(auto& button:buttons)button->setToggleState(button->getComponentID()=="project-toolbox-tool-"+juce::String(id),juce::dontSendNotification);
+    for(auto& button:buttons)button->setToggleState(button->getComponentID()==prefix+"-tool-"+juce::String(id),juce::dontSendNotification);
     auto callback=chosen;
     if(auto* popup=findParentComponentOfClass<juce::CallOutBox>())popup->dismiss();
     if(callback)callback(id);
@@ -74,7 +79,7 @@ bool ProjectToolbox::keyPressed(const juce::KeyPress& key)
     const auto* command=app::findKeyCommand(key);if(!command)return false;
     const int direction=command->id=="toolNext"?1:command->id=="toolPrevious"?-1:0;
     if(direction==0)return false;
-    chooseAndDismiss(adjacentProjectTool(activeTool,direction));return true;
+    chooseAndDismiss(adjacentTool(tools,activeTool,direction));return true;
 }
 void ProjectToolbox::resized()
 {

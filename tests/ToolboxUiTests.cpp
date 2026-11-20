@@ -4,6 +4,7 @@
 #include "../src/app/KeyCommands.h"
 #include "../src/ui/keys/KeyCommandsPanel.h"
 #include "../src/ui/project/ProjectToolbox.h"
+#include "../src/ui/midi/PianoRoll.h"
 
 namespace silente
 {
@@ -81,7 +82,7 @@ void navigationChecks(MainComponent& view,AudioEngine& engine,Component& arrange
         expect(focused&&!handled&&unchanged&&editor.getText()==textBeforeKey,"F10 leaves the project tool unchanged while editing text (focus="+String((int)focused)+", handled="+String((int)handled)+", unchanged="+String((int)unchanged)+")");
     }
     view.runCommand("toolSelect");
-    // The editor's own tool navigation is a separate pending feature.
+    // The MIDI editor traverses its own tools in PianoRoll::keyPressed; the project view must not.
     engine.addMidiTrack("Navigation focus fixture");view.runCommand("trackBottom");view.runCommand("openEditor");
     auto* piano=find(view,"piano-roll");auto* keyboard=find(view,"midi-keyboard");
     if(piano&&keyboard)
@@ -92,6 +93,41 @@ void navigationChecks(MainComponent& view,AudioEngine& engine,Component& arrange
     }
     else expect(false,"MIDI focus surfaces exist for navigation checks");
     view.showMixer();engine.removeTrack((int)engine.tracks.size()-1);view.runCommand("trackTop");view.runCommand("eventRight");arrangement.grabKeyboardFocus();
+}
+
+// MIDI editor (subetapa 3): right click opens the editor's own toolbox, which sets the tool
+// that the next left click uses; a modifier or the preference off opens the context menu instead.
+void midiToolboxChecks(MainComponent& view,AudioEngine& engine,const File& output,const std::function<void(bool,const String&)>& expect)
+{
+    engine.clear();engine.addMidiTrack("MIDI toolbox fixture");view.runCommand("trackTop");view.runCommand("openEditor");drain();
+    auto* roll=dynamic_cast<ui::PianoRoll*>(find(view,"piano-roll"));
+    if(!roll){expect(false,"Piano roll exists for MIDI toolbox checks");return;}
+    roll->track=0;roll->setTool(ui::midiToolSelect);roll->clearSelection();
+    {const ScopedLock lock(engine.modelLock);MidiNote n;n.pitch=60;n.startBeats=0;n.lengthBeats=1;engine.tracks[0]->notes.push_back(n);}
+    const float nx=52.f+(float)((0.5-roll->scrollBeats)*roll->pixelsPerBeat),ny=24.f+(float)((roll->topPitch-60)*12)+5.f;
+    if(auto* bar=find(view,"midi-toolbar"))capture(*bar,output.getChildFile("midi-toolbar.png"));
+    app::saveShowToolboxOnRightClick(true);const auto history=view.editHistory().size();
+    roll->mouseDown(click(*roll,nx,ny,ModifierKeys::rightButtonModifier));drain();
+    auto* popup=desktop("midi-toolbox");int count=0;
+    if(popup)for(int id:{1,8,5,3,4,7})count+=find(*popup,"midi-toolbox-tool-"+String(id))!=nullptr;
+    const bool kept=engine.tracks[0]->notes.size()==1&&view.editHistory().size()==history;
+    expect(popup&&count==6&&kept,"Right-click in the MIDI editor opens its toolbox with the six tools and no longer deletes the note");
+    if(popup)
+    {
+        capture(*popup,output.getChildFile("midi-toolbox.png"));
+        if(auto* erase=dynamic_cast<TextButton*>(find(*popup,"midi-toolbox-tool-5")))if(erase->onClick)erase->onClick();
+        drain();
+    }
+    auto* toolButton=dynamic_cast<TextButton*>(find(view,"midi-tool-5"));
+    expect(roll->tool==ui::midiToolErase&&desktop("midi-toolbox")==nullptr&&toolButton&&toolButton->getToggleState(),"Choosing Erase in the MIDI toolbox sets the tool, closes the box and updates the toolbar");
+    roll->mouseDown(click(*roll,nx,ny,ModifierKeys::leftButtonModifier));roll->mouseUp(click(*roll,nx,ny,ModifierKeys::leftButtonModifier));
+    expect(engine.tracks[0]->notes.empty(),"After choosing Erase in the toolbox, a left click deletes the note");
+    roll->mouseDown(click(*roll,nx,ny,ModifierKeys::rightButtonModifier|ModifierKeys::shiftModifier));drain();
+    expect(desktop("midi-toolbox")==nullptr&&PopupMenu::dismissAllActiveMenus(),"Shift-right-click in the MIDI editor opens the context menu");drain();
+    app::saveShowToolboxOnRightClick(false);
+    roll->mouseDown(click(*roll,nx,ny,ModifierKeys::rightButtonModifier));drain();
+    expect(desktop("midi-toolbox")==nullptr&&PopupMenu::dismissAllActiveMenus(),"With the toolbox preference off, right-click in the MIDI editor opens the context menu");drain();
+    roll->setTool(ui::midiToolSelect);view.showMixer();
 }
 }
 void runToolboxUiChecks(MainComponent& view,AudioEngine& engine,const juce::File& output,const std::function<void(bool,const juce::String&)>& expect)
@@ -213,6 +249,7 @@ void runToolboxUiChecks(MainComponent& view,AudioEngine& engine,const juce::File
     expect(desktop("project-toolbox")==nullptr&&PopupMenu::dismissAllActiveMenus(),"Disabling the toolbox makes ordinary right-click open event actions");drain();
     arrangement->mouseDown(click(*arrangement,330,50,ModifierKeys::rightButtonModifier|ModifierKeys::shiftModifier));drain();
     popup=desktop("project-toolbox");expect(popup!=nullptr,"With toolbox disabled, Shift-right-click opens it instead");closePopup(popup);
+    midiToolboxChecks(view,engine,output,expect);
     app::saveShowToolboxOnRightClick(oldPreference);engine.clear();view.resized();
 }
 }

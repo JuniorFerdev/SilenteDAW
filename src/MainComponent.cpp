@@ -1001,6 +1001,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     SilenteLookAndFeel look;
     Arrangement arrangement;
     ui::PianoRoll piano;
+    ui::MidiToolBar midiTools;
     ui::AutomationLane automationLane { engine }; // lower zone «Automatización»
     ui::MarkerInspector markerInspector;
     ui::MarkerInfoLine markerInfo;
@@ -1288,7 +1289,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         mute.setTooltip(i18n::tr("Silenciar"));solo.setTooltip(i18n::tr("Solo"));arm.setTooltip(i18n::tr("Activar grabación"));monitor.setTooltip(i18n::tr("Monitorizar"));
         arm.setColour(juce::TextButton::buttonOnColourId,coral);monitor.setColour(juce::TextButton::buttonOnColourId,meterWarning);
         mixerTab.setToggleState(true,juce::dontSendNotification); snapButton.setToggleState(true,juce::dontSendNotification);
-        piano.setVisible(false); keyboard.setVisible(false);
+        piano.setVisible(false); keyboard.setVisible(false); owner.addChildComponent(midiTools);
         projectTitle.setFont(juce::Font(juce::FontOptions(17,juce::Font::bold))); projectTitle.setEditable(false,true,false);projectTitle.setTooltip(i18n::tr("Doble clic para cambiar el nombre de la sesión."));
         projectTitle.onTextChange=[this]{if(syncing)return;engine.projectName=projectTitle.getText().trim();markDirty();};
         transportTime.setFont(juce::Font(juce::FontOptions(19)));transportTime.setJustificationType(juce::Justification::centred);
@@ -1404,7 +1405,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             };
             juce::CallOutBox::launchAsynchronously(std::move(finder),arrangement.localAreaToGlobal(Arrangement::searchButton()),nullptr);
         };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.warn=[this](const juce::String& m){error(m);};arrangement.eventColour=[this]{colourMenu();};arrangement.moveRange=[this](double d,int rows,bool copy){moveRangeContent(d,rows,copy);};arrangement.rangeMenu=[this]{rangeMenu().showMenuAsync(juce::PopupMenu::Options(),[safe=juce::Component::SafePointer<MainComponent>(&owner)](int r){if(safe&&r)safe->ui->rangeMenuItem(r);});};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
-        piano.beforeEdit=[this]{pushUndo(piano.editName);piano.editName={};};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
+        piano.beforeEdit=[this]{pushUndo(piano.editName);piano.editName={};};
+        midiTools.chooseTool=[this](int id){piano.setTool(id);};piano.toolChanged=[this](int id){midiTools.setActiveTool(id);};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
         plugins.onChange=[this]{markDirty();refresh();};
         plugins.onTrackCreated=[this](int index){select(index);};
         keyboard.setAvailableRange(24,108);keyboard.setLowestVisibleKey(48);keyboard.setKeyWidth(20);keyboard.setVelocity(.8f,true);
@@ -1634,7 +1636,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     void pushUndo(const juce::String& action={}){auto s=snapshot();s.action=action.isEmpty()?i18n::tr("Edición"):action;s.time=juce::Time::getCurrentTime();undoStack.push_back(std::move(s));if(undoStack.size()>100)undoStack.pop_front();redoStack.clear();}
     void undo(bool redo){auto& from=redo?redoStack:undoStack;auto& to=redo?undoStack:redoStack;if(from.empty())return;to.push_back(snapshot());to.back().action=from.back().action;to.back().time=from.back().time;auto s=std::move(from.back());from.pop_back();restore(s);notice=redo?i18n::tr("Edición restaurada."):i18n::tr("Edición deshecha.");}
     void duplicateNote(){piano.duplicateSelected();}
-    void setPiano(bool show){pianoVisible=show;automationVisible=false;piano.setVisible(show);keyboard.setVisible(show);mixer.setVisible(!show);mixerTab.setToggleState(!show,juce::dontSendNotification);pianoTab.setToggleState(show,juce::dontSendNotification);automationTab.setToggleState(false,juce::dontSendNotification);owner.resized();owner.repaint();}
+    void setPiano(bool show){pianoVisible=show;automationVisible=false;piano.setVisible(show);midiTools.setVisible(show);keyboard.setVisible(show);mixer.setVisible(!show);mixerTab.setToggleState(!show,juce::dontSendNotification);pianoTab.setToggleState(show,juce::dontSendNotification);automationTab.setToggleState(false,juce::dontSendNotification);owner.resized();owner.repaint();}
     // Lower zone «Automatización»: the automation lane of the selected track.
     void setAutomation(){pianoVisible=false;automationVisible=true;automationLane.setTrack(selected);mixerTab.setToggleState(false,juce::dontSendNotification);pianoTab.setToggleState(false,juce::dontSendNotification);automationTab.setToggleState(true,juce::dontSendNotification);owner.resized();owner.repaint();}
     // Transport options of the Transporte menu (manual pp. 311–331), saved per user.
@@ -2010,7 +2012,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         if(showLower)
         {
             mixerTab.setBounds(lowerRect.getX()+5,lowerRect.getBottom()-28,101,25);pianoTab.setBounds(lowerRect.getX()+109,lowerRect.getBottom()-28,101,25);automationTab.setBounds(lowerRect.getX()+213,lowerRect.getBottom()-28,121,25);
-            auto lowerContent=lowerRect.withTrimmedBottom(31);mixer.setBounds(lowerContent);automationLane.setBounds(lowerContent);lowerConsole->setBounds(lowerContent);piano.setBounds(lowerContent.withTrimmedBottom(46));keyboard.setBounds(lowerContent.removeFromBottom(44));
+            auto lowerContent=lowerRect.withTrimmedBottom(31);mixer.setBounds(lowerContent);automationLane.setBounds(lowerContent);lowerConsole->setBounds(lowerContent);{auto pianoArea=lowerContent.withTrimmedBottom(46);midiTools.setBounds(pianoArea.removeFromTop(30));piano.setBounds(pianoArea);}keyboard.setBounds(lowerContent.removeFromBottom(44));
         }
         layoutInspector(dx,top,left,inspectorRect.getBottom()-32);
         markerInspector.setBounds(inspectorRect.withTrimmedTop(31).withTrimmedBottom(31));markerInfo.setBounds(infoRect);
@@ -2062,7 +2064,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         if(!shown){instrument.setVisible(false);inputRouting.setVisible(false);}
         for(auto* c:std::initializer_list<juce::Component*>{&inspectorTab,&visibilityTab,&trackTabButton,&editorTabButton})c->setVisible(showLeft);
         visibility.setVisible(showLeft&&visibilityVisible);rightRack.setVisible(showRight);channelTab->setVisible(showChannel);
-        mixerTab.setVisible(showLower);pianoTab.setVisible(showLower);automationTab.setVisible(showLower);automationLane.setVisible(showLower&&automationVisible);mixer.setVisible(false);lowerConsole->setVisible(showLower&&!pianoVisible&&!automationVisible);piano.setVisible(showLower&&pianoVisible);keyboard.setVisible(showLower&&pianoVisible);
+        mixerTab.setVisible(showLower);pianoTab.setVisible(showLower);automationTab.setVisible(showLower);automationLane.setVisible(showLower&&automationVisible);mixer.setVisible(false);lowerConsole->setVisible(showLower&&!pianoVisible&&!automationVisible);piano.setVisible(showLower&&pianoVisible);midiTools.setVisible(showLower&&pianoVisible);keyboard.setVisible(showLower&&pianoVisible);
         for(auto* c:std::initializer_list<juce::Component*>{&rewind,&stop,&play,&record,&loop,&click,&clickOptions,&tapButton,&transportTime,&tempo})c->setVisible(showTransport);
         // Language, audio setup and import live in the menus (Idioma, Estudio, Archivo), as in Cubase.
         for(auto* c:std::initializer_list<juce::Component*>{&languageButton,&settings,&importButton,&projectTitle})c->setVisible(false);

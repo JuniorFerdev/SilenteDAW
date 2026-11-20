@@ -10,5 +10,7 @@ struct MidiNote
     juce::String id { juce::Uuid().toString() };
     int pitch = 60, velocity = 100;
     double startBeats = 0.0, lengthBeats = 1.0;
+    // Muted notes stay in the project but are neither played nor exported (Cubase Mute tool).
+    bool muted = false;
 };
 }

@@ -54,12 +54,22 @@ int resizeSelection(const MidiEditContext& c, double deltaBeats)
 
 int deleteSelection(const MidiEditContext& c)
 {
+    const auto targets = c.selection;
+    const int n = deleteNotes(c, targets);
+    if (n > 0) c.selection.clear();
+    return n;
+}
+
+int deleteNotes(const MidiEditContext& c, const domain::NoteSelection& targets)
+{
     const juce::ScopedLock lock(c.engine.modelLock);
     auto* notes = notesOf(c);
-    if (!notes || domain::selectedIndices(*notes, c.selection).empty()) return 0;
+    if (!notes) return 0;
+    const auto indices = domain::selectedIndices(*notes, targets);
+    if (indices.empty()) return 0;
     record(c, i18n::tr("Borrar notas"));
-    const int n = domain::eraseNotes(*notes, c.selection);
-    c.selection.clear();
+    for (int i : indices) c.selection.remove((*notes)[(size_t) i].id);
+    const int n = domain::eraseNotes(*notes, targets);
     done(c);
     return n;
 }
@@ -122,5 +132,70 @@ int transposeSelection(const MidiEditContext& c, int semitones)
     for (int i : indices) (*notes)[(size_t) i].pitch += shift;
     done(c);
     return (int) indices.size();
+}
+
+int createNote(const MidiEditContext& c, int pitch, double startBeats, double lengthBeats, int* newIndex)
+{
+    const juce::ScopedLock lock(c.engine.modelLock);
+    auto* notes = notesOf(c);
+    if (!notes || lengthBeats <= 0.0) return 0;
+    MidiNote n;
+    n.pitch = std::clamp(pitch, 0, 127);
+    n.startBeats = std::max(0.0, startBeats);
+    n.lengthBeats = lengthBeats;
+    record(c, i18n::tr("Crear nota"));
+    c.selection.clear();
+    c.selection.add(n.id);
+    notes->push_back(std::move(n));
+    if (newIndex) *newIndex = (int) notes->size() - 1;
+    done(c);
+    return 1;
+}
+
+int splitNotesAt(const MidiEditContext& c, const domain::NoteSelection& targets, double atBeat)
+{
+    const juce::ScopedLock lock(c.engine.modelLock);
+    auto* notes = notesOf(c);
+    if (!notes) return 0;
+    const auto indices = domain::selectedIndices(*notes, targets);
+    auto copy = *notes;
+    std::vector<std::pair<juce::String, juce::String>> parts;
+    const int cuts = domain::splitNotes(copy, indices, atBeat, 0.0625, &parts);
+    if (cuts == 0) return 0;
+    record(c, i18n::tr("Dividir notas"));
+    // A selected note stays selected as two parts.
+    for (const auto& [left, right] : parts)
+        if (c.selection.contains(left)) c.selection.add(right);
+    *notes = std::move(copy);
+    done(c);
+    return cuts;
+}
+
+int glueNote(const MidiEditContext& c, const juce::String& id)
+{
+    const juce::ScopedLock lock(c.engine.modelLock);
+    auto* notes = notesOf(c);
+    if (!notes) return 0;
+    int index = -1;
+    for (int i = 0; i < (int) notes->size(); ++i) if ((*notes)[(size_t) i].id == id) { index = i; break; }
+    if (domain::nextNoteWithSamePitch(*notes, index) < 0) return 0;
+    record(c, i18n::tr("Pegar notas"));
+    c.selection.remove(domain::glueWithNext(*notes, index));
+    done(c);
+    return 1;
+}
+
+int setNotesMuted(const MidiEditContext& c, const domain::NoteSelection& targets, bool muted)
+{
+    const juce::ScopedLock lock(c.engine.modelLock);
+    auto* notes = notesOf(c);
+    if (!notes) return 0;
+    std::vector<int> changing;
+    for (int i : domain::selectedIndices(*notes, targets)) if ((*notes)[(size_t) i].muted != muted) changing.push_back(i);
+    if (changing.empty()) return 0;
+    record(c, muted ? i18n::tr("Enmudecer notas") : i18n::tr("Desenmudecer notas"));
+    for (int i : changing) (*notes)[(size_t) i].muted = muted;
+    done(c);
+    return (int) changing.size();
 }
 }

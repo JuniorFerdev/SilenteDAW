@@ -39,15 +39,34 @@ Páginas leídas: 1170–1171 (funciones comunes) y pasajes del Editor de teclas
 | Borde derecho | Aplica el mismo cambio de longitud a todo el grupo (mínimo 1/64). |
 | Supr / Retroceso | Borra la selección. |
 | Q | Cuantiza la selección, o todas las notas si no hay selección. |
-| Clic derecho | Sigue borrando la nota pulsada; en la subetapa 3 se sustituirá por el menú o la caja de herramientas. |
+| Clic derecho | Caja de herramientas del editor (o menú contextual con la preferencia desactivada o con una tecla modificadora). Ya no borra la nota. |
 
 El primer cambio real de cada gesto genera un solo paso de deshacer. Un clic sin arrastre no crea ninguno.
+
+## Herramientas (subetapa 3, implementada)
+
+Contrastado con el manual, pp. 1233 (botones de herramientas), 1253–1254 (Dibujar, Borrar, doble clic, ⌥ con Seleccionar) y 1257 (Dividir, Pegar). La herramienta es estado de `PianoRoll::tool` (ids y teclas iguales a las del proyecto); `ui/midi/MidiTools` define la lista, la barra `midi-toolbar` y las teclas; las ediciones pasan por `app/MidiEditCommands` con un paso de historial con nombre.
+
+| Herramienta | Clic sobre nota | Clic en vacío |
+|---|---|---|
+| Seleccionar (1) | Selección y arrastre de la subetapa 1. ⌥ + clic dibuja. Doble clic en vacío inserta una nota de 1 tiempo. | Marquesina |
+| Dibujar (8) | Edita como Seleccionar | Nota de 1/16 en la rejilla; arrastrar a la derecha alarga en múltiplos de 1/16 (un solo paso de deshacer) |
+| Borrar (5) | Borra la nota pulsada | Nada |
+| Dividir (3) | Corta en la posición de la rejilla; si la nota está seleccionada, corta toda la selección en el mismo punto | Nada |
+| Pegar (4) | Une con la siguiente nota de la misma altura; conserva las propiedades de la primera | Nada |
+| Enmudecer (7) | Alterna el enmudecimiento; sobre una nota seleccionada actúa en toda la selección | Nada |
+
+Teclas con el foco en el editor: 1, 8, 5, 3, 4, 7 y F9/F10 (recorren solo estas seis). Clic derecho: caja `midi-toolbox` (reutiliza `ProjectToolbox`) según la preferencia «Mostrar caja de herramientas con clic derecho»; con modificador o con la preferencia desactivada, menú con «Herramientas», Borrar, Duplicar y Cuantizar.
+
+Las notas enmudecidas (`MidiNote::muted`) se dibujan solo con contorno, se guardan en el proyecto (`"muted": true`), no envían note-on al motor ni se exportan a SMF; conservan su note-off para que enmudecer una nota que suena no la deje colgada.
+
+**Diferencias pendientes con Cubase:** Selección de rango, Trim, Línea, Zoom y Baqueta no están en el editor; Dibujar no edita velocidad/tono/posición al arrastrar (p. 1254); Borrar y Enmudecer no actúan por arrastre; doble clic sobre una nota con Seleccionar no la borra (p. 1253); la duración de dibujo es fija en 1/16 (falta «Cuantizar duración»); no hay cursor propio por herramienta.
 
 ## Plan de subetapas (cada una con su prueba de aceptación)
 
 1. **Selección múltiple** (hecha): dominio `NoteEdit`, cuantización de la selección y pruebas de motor e interacción.
 2. **Comandos de edición** (hecha; transponer aún sin atajo ni menú, llegan con la subetapa 4): crear `app/MidiEditCommands.{h,cpp}` (mover, redimensionar, borrar, cuantizar, duplicar y transponer, todo sobre la selección) con nombre en el historial (`i18n::tr`). Duplicar (⌘D) debe actuar sobre el grupo. Aceptación: `editHistory()` muestra el nombre y deshacer/rehacer funcionan para cada comando en WorkflowUiTests.
-3. **Herramientas del editor**: Seleccionar, Dibujar, Borrar, Dividir, Pegar y Enmudecer, en una barra del piano roll y en la caja al clic derecho. Aceptación: cada herramienta cambia el resultado del clic en una prueba de interacción.
+3. **Herramientas del editor** (hecha, ver abajo): Seleccionar, Dibujar, Borrar, Dividir, Pegar y Enmudecer, en una barra del piano roll y en la caja al clic derecho. Aceptación: cada herramienta cambia el resultado del clic en una prueba de interacción.
 4. **Portapapeles y empuje**: copiar, cortar y pegar en el cursor; flechas para empujar por la rejilla (tono con ↑/↓, ⇧ = octava). Aceptación: valores exactos tras pegar o empujar, más deshacer.
 5. **Línea de información**: inicio, longitud, tono y velocidad de la selección, editables (con valores relativos si hay varias notas). Aceptación: editar un campo cambia todas las notas seleccionadas.
 6. **Carril de velocidad**: barras por nota y edición con arrastre o línea; el modelo ya guarda `velocity`. Aceptación: el motor genera eventos noteOn con la velocidad editada (prueba sin dispositivo).

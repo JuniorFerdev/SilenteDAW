@@ -4,6 +4,7 @@
 #include "../../domain/Quantize.h"
 #include "../../domain/NoteEdit.h"
 #include "../../app/MidiEditCommands.h"
+#include "MidiTools.h"
 #include <functional>
 
 namespace silente::ui
@@ -14,6 +15,9 @@ namespace silente::ui
 // Selection: click selects one note, Shift+click toggles, dragging on empty space draws a
 // marquee (Shift adds), Cmd+A selects all, Cmd+Shift+A deselects. Moving or resizing a selected
 // note acts on the whole selection.
+// Tools (subetapa 3): the active tool decides what a left click does (Select, Draw, Erase, Split,
+// Glue, Mute); the edits go through app/MidiEditCommands. Right click opens the toolbox or, with
+// the preference off (or a modifier), the context menu.
 class PianoRoll final : public juce::Component
 {
 public:
@@ -45,8 +49,16 @@ public:
     // Transposes the selection by semitones (group limited to 0..127).
     int transposeSelected(int semitones);
     bool keyPressed(const juce::KeyPress& k)override;
+    // Active tool (MidiToolId). setTool notifies toolChanged so the toolbar follows keys and the toolbox.
+    int tool=midiToolSelect;
+    void setTool(int id);
+    std::function<void(int)> toolChanged;
 private:
-    enum class Gesture{none,move,resize,marquee};
+    enum class Gesture{none,move,resize,marquee,draw};
+    void openContextTools(const juce::MouseEvent& e,int hit);
+    // Length of a note drawn with one click (Cubase: the quantize length, 1/16 here).
+    double drawLength()const;
+    double beatAt(float x)const;
     static constexpr int row=12;
     juce::Point<float> dragStart;int previewPitch=-1;
     Gesture gesture=Gesture::none;bool gestureRecorded=false;

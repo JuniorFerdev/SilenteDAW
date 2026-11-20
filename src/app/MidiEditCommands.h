@@ -32,4 +32,16 @@ int quantizeSelection(const MidiEditContext&, const domain::QuantizeSettings&);
 int duplicateSelection(const MidiEditContext&, int* newAnchor = nullptr);
 // Transposes by semitones, limiting the shift so the whole group stays within 0..127.
 int transposeSelection(const MidiEditContext&, int semitones);
+
+// Editor tools (subetapa 3). `targets` are explicit notes (the clicked one or the selection).
+// Draw/double click: adds one note and makes it the only selected note; `newIndex` receives it.
+int createNote(const MidiEditContext&, int pitch, double startBeats, double lengthBeats, int* newIndex = nullptr);
+// Erase: removes the target notes and drops them from the selection.
+int deleteNotes(const MidiEditContext&, const domain::NoteSelection& targets);
+// Split: cuts the target notes that contain `atBeat`; the right parts of selected notes are selected too.
+int splitNotesAt(const MidiEditContext&, const domain::NoteSelection& targets, double atBeat);
+// Glue: joins the note `id` with the next note of the same pitch (Cubase Glue tool).
+int glueNote(const MidiEditContext&, const juce::String& id);
+// Mute: sets the mute state of the target notes; returns how many changed.
+int setNotesMuted(const MidiEditContext&, const domain::NoteSelection& targets, bool muted);
 }

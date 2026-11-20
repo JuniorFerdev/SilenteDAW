@@ -415,3 +415,8 @@ Verificado solo con video H.264 sintético y PNG. Pendiente: videos reales (HEVC
 
 Reemplazada `releases/macOS/Silente-Universal.app` desde `a0024fc` (panel F6 con modos Desactivado, Leer, Escribir, Touch y Latch; suspender lectura y escritura). Universal arm64 + x86_64, firmada, sin respaldos; SHA-256 `70f7228974ea3ac06623f5356a6142453a12d6a9cade2703f7aebda7650ce6f5`. Motor 59/59 y io 6/6 en ambas; interfaz 351/351 en arm64 y en x86_64.
 Pendiente: Cross-Over, Trim, Fill, suspender por categoría, automatizar plugins e instrumentos; probar Touch/Latch con el ratón en la app.
+
+## midi-sub3 — Herramientas del editor MIDI (19-11-2026)
+
+Subetapa 3 de `docs/EDITOR_MIDI.md`: barra del piano roll con Seleccionar, Dibujar, Borrar, Dividir, Pegar y Enmudecer; caja de herramientas al clic derecho (respeta la preferencia existente). Cada edición es un paso de deshacer con nombre. Enmudecer añade `muted` a la nota: no suena, se guarda y no se exporta a SMF.
+Verificado: motor 62/62, io 59/59, interfaz 401/401 en arm64, textos ES/EN correctos. Pendiente: Selección de rango, Trim, Línea, Zoom y Baqueta; dibujar y borrar por arrastre; cursor propio por herramienta; enmudecer en el resumen de pista (atenuado); comprobar con audio de instrumento real.

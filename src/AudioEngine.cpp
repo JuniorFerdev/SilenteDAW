@@ -719,6 +719,9 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
                                              : juce::MidiMessage::noteOff(1, juce::jlimit(0, 127, note.pitch)), index);
                     }
                 };
+                // A muted note sends no note-on but keeps its note-off, so muting a sounding note
+                // during playback cannot leave it hanging.
+                if (note.muted) { add(off, false); continue; }
                 if (rt.chase && on < start && off > start) rt.midi.addEvent(juce::MidiMessage::noteOn(1, juce::jlimit(0, 127, note.pitch), static_cast<juce::uint8>(juce::jlimit(1, 127, note.velocity))), 0);
                 add(on, true); add(off, false);
             }
@@ -1090,6 +1093,7 @@ juce::Result AudioEngine::exportMidi(const juce::File& file, int trackIndex)
             double last = 0.0;
             for (const auto& note : track.notes)
             {
+                if (note.muted) continue;
                 const double on = std::round(juce::jmax(0.0, note.startBeats) * midiExportPpq);
                 const double off = on + juce::jmax(1.0, std::round(note.lengthBeats * midiExportPpq));
                 const auto pitch = juce::jlimit(0, 127, note.pitch);
@@ -1271,7 +1275,9 @@ juce::var AudioEngine::projectToJson(const juce::File& destination)
         for (const auto& note : track->notes)
         {
             auto n = object(); set(n, "id", note.id); set(n, "pitch", note.pitch); set(n, "velocity", note.velocity);
-            set(n, "startBeats", note.startBeats); set(n, "lengthBeats", note.lengthBeats); notes.add(n);
+            set(n, "startBeats", note.startBeats); set(n, "lengthBeats", note.lengthBeats);
+            if (note.muted) set(n, "muted", true);
+            notes.add(n);
         }
         for (const auto& slot : track->plugins)
         {
@@ -1360,7 +1366,8 @@ juce::Result AudioEngine::loadProject(const juce::File& file)
         {
             MidiNote note; note.id = n.getProperty("id", juce::Uuid().toString()).toString();
             note.pitch = juce::jlimit(0, 127, static_cast<int>(n["pitch"])); note.velocity = juce::jlimit(1, 127, static_cast<int>(n["velocity"]));
-            note.startBeats = juce::jmax(0.0, number(n, "startBeats", 0.0)); note.lengthBeats = juce::jmax(0.001, number(n, "lengthBeats", 1.0)); track->notes.push_back(note);
+            note.startBeats = juce::jmax(0.0, number(n, "startBeats", 0.0)); note.lengthBeats = juce::jmax(0.001, number(n, "lengthBeats", 1.0));
+            note.muted = static_cast<bool>(n.getProperty("muted", false)); track->notes.push_back(note);
         }
         if (auto* plugins = t["plugins"].getArray()) for (const auto& p : *plugins)
         {

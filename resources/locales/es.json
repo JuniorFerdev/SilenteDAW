@@ -1100,5 +1100,11 @@
   " archivo(s) de destino ya existen en la carpeta.": " archivo(s) de destino ya existen en la carpeta.",
   "La pista de marcadores activa no tiene rangos de ciclo.": "La pista de marcadores activa no tiene rangos de ciclo.",
   "Tasa de bits no admitida para este formato y frecuencia.": "Tasa de bits no admitida para este formato y frecuencia.",
-  "AIFF admite 16 o 24 bits.": "AIFF admite 16 o 24 bits."
+  "AIFF admite 16 o 24 bits.": "AIFF admite 16 o 24 bits.",
+  "Herramientas": "Herramientas",
+  "Dividir notas": "Dividir notas",
+  "Pegar notas": "Pegar notas",
+  "Enmudecer notas": "Enmudecer notas",
+  "Desenmudecer notas": "Desenmudecer notas",
+  "Cuantizar": "Cuantizar"
 }

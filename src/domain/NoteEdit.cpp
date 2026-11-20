@@ -106,4 +106,54 @@ int eraseNotes(std::vector<MidiNote>& notes, const NoteSelection& selection)
     notes.erase(std::remove_if(notes.begin(), notes.end(), [&](const MidiNote& n) { return selection.contains(n.id); }), notes.end());
     return (int) (before - notes.size());
 }
+
+int splitNotes(std::vector<MidiNote>& notes, const std::vector<int>& indices, double atBeat, double minLength,
+               std::vector<std::pair<juce::String, juce::String>>* parts)
+{
+    int cuts = 0;
+    const auto count = notes.size();
+    for (int i : indices)
+    {
+        if (i < 0 || (size_t) i >= count) continue;
+        auto& n = notes[(size_t) i];
+        const double end = n.startBeats + n.lengthBeats;
+        if (atBeat - n.startBeats < minLength || end - atBeat < minLength) continue;
+        MidiNote right = n;
+        right.id = juce::Uuid().toString();
+        right.startBeats = atBeat;
+        right.lengthBeats = end - atBeat;
+        n.lengthBeats = atBeat - n.startBeats;
+        if (parts) parts->emplace_back(n.id, right.id);
+        notes.push_back(std::move(right));   // may reallocate: `n` is not used afterwards
+        ++cuts;
+    }
+    return cuts;
+}
+
+int nextNoteWithSamePitch(const std::vector<MidiNote>& notes, int index)
+{
+    if (index < 0 || (size_t) index >= notes.size()) return -1;
+    const auto& first = notes[(size_t) index];
+    int best = -1;
+    for (int i = 0; i < (int) notes.size(); ++i)
+    {
+        const auto& n = notes[(size_t) i];
+        if (i == index || n.pitch != first.pitch || n.startBeats < first.startBeats) continue;
+        if (best < 0 || n.startBeats < notes[(size_t) best].startBeats) best = i;
+    }
+    return best;
+}
+
+juce::String glueWithNext(std::vector<MidiNote>& notes, int index)
+{
+    const int next = nextNoteWithSamePitch(notes, index);
+    if (next < 0) return {};
+    auto& first = notes[(size_t) index];
+    const auto& second = notes[(size_t) next];
+    const double end = std::max(first.startBeats + first.lengthBeats, second.startBeats + second.lengthBeats);
+    first.lengthBeats = end - first.startBeats;
+    const auto removed = second.id;
+    notes.erase(notes.begin() + next);
+    return removed;
+}
 }

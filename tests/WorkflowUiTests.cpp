@@ -312,6 +312,7 @@ private:
         roll->beforeEdit=savedBefore;roll->changed=savedChanged;
         pianoRollUndoCheck(*roll,notes);
         midiEditCommandChecks(*roll,notes);
+        midiToolChecks(*roll,notes);
         roll->clearSelection();engine.clear();
     }
     // Multiple selection (subetapa 1 of the MIDI editor): marquee, Shift+click, Cmd+A, group move,
@@ -382,6 +383,69 @@ private:
         expect(app::moveSelection(ctx,1.0,0)==0&&app::deleteSelection(ctx)==0&&app::transposeSelection(ctx,1)==0&&view.editHistory().size()==h,"MIDI edit commands with an empty selection change nothing and record no history step");
         roll.selectAll();expect(app::transposeSelection(ctx,100)==3&&notes()[2].pitch==127&&notes()[0].pitch==120,"Transpose limits the whole group to pitch 127 keeping intervals");
         view.runCommand("undo");
+    }
+    // Subetapa 3: the active editor tool decides what one click does. Toolbar, number keys and
+    // F9/F10 choose the tool; every edit is one named history step.
+    template<typename Notes> void midiToolChecks(ui::PianoRoll& roll,const Notes& notes)
+    {
+        roll.scrollBeats=0;roll.snap=true;roll.track=0;
+        const auto x=[&](double beat){return 52.f+(float)(beat*roll.pixelsPerBeat);};
+        const auto y=[&](int pitch){return 24.f+(float)((roll.topPitch-pitch)*12)+5.f;};
+        const auto setNotes=[&](std::initializer_list<std::pair<int,double>> list){{const ScopedLock lock(engine.modelLock);auto& n=engine.tracks[0]->notes;n.clear();for(auto [pitch,beat]:list){MidiNote m;m.pitch=pitch;m.startBeats=beat;m.lengthBeats=1;n.push_back(m);}}roll.clearSelection();};
+        const auto last=[&]{const auto h=view.editHistory();return h.isEmpty()?String():h[h.size()-1];};
+        const auto grew=[&](int before,int steps){return view.editHistory().size()==jmin(100,before+steps);};
+        const auto click=[&](float px,float py,int mods=0){roll.mouseDown(mouse(roll,px,py,false,mods));roll.mouseUp(mouse(roll,px,py,false,mods));};
+        // Toolbar and keys.
+        auto* bar=find(view,"midi-toolbar");
+        int buttons=0;if(bar)for(int id:{1,8,5,3,4,7})buttons+=dynamic_cast<TextButton*>(find(*bar,"midi-tool-"+String(id)))!=nullptr;
+        expect(bar!=nullptr&&buttons==6,"MIDI editor toolbar shows Select, Draw, Erase, Split, Glue and Mute");if(!bar)return;
+        const auto active=[&](int id){bool ok=roll.tool==id;for(int t:{1,8,5,3,4,7})if(auto* b=dynamic_cast<TextButton*>(find(*bar,"midi-tool-"+String(t))))ok&=b->getToggleState()==(t==id);return ok;};
+        if(auto* draw=dynamic_cast<TextButton*>(find(*bar,"midi-tool-8")))if(draw->onClick)draw->onClick();
+        const bool byButton=active(8);
+        const bool byKey=roll.keyPressed(KeyPress('5'))&&active(5)&&roll.keyPressed(KeyPress('3'))&&active(3);
+        roll.setTool(7);const bool next=roll.keyPressed(KeyPress(KeyPress::F10Key))&&active(8);
+        roll.setTool(1);const bool previous=roll.keyPressed(KeyPress(KeyPress::F9Key))&&active(8);
+        expect(byButton&&byKey&&next&&previous,"MIDI tools: toolbar button, keys 5/3 and F10/F9 choose the tool and the toolbar follows");
+        // Select: a click on a note selects it without editing.
+        roll.setTool(1);setNotes({{60,0.0}});int h=view.editHistory().size();
+        click(x(0.5),y(60));
+        expect(notes().size()==1&&roll.selection.size()==1&&grew(h,0),"Select tool: a click selects the note without an edit");
+        // Draw: one click creates a 1/16 note on the grid; dragging lengthens it in 1/16 steps.
+        setNotes({});roll.setTool(8);h=view.editHistory().size();
+        click(x(2.1),y(62));auto n=notes();
+        const bool drawn=n.size()==1&&n[0].pitch==62&&std::abs(n[0].startBeats-2.0)<1e-9&&std::abs(n[0].lengthBeats-0.25)<1e-9&&grew(h,1)&&last()==i18n::tr("Crear nota");
+        roll.mouseDown(mouse(roll,x(3.05),y(64)));roll.mouseDrag(mouse(roll,x(4.1),y(64),true));roll.mouseUp(mouse(roll,x(4.1),y(64)));n=notes();
+        expect(drawn&&n.size()==2&&std::abs(n[1].startBeats-3.0)<1e-9&&std::abs(n[1].lengthBeats-1.25)<1e-9&&grew(h,2),"Draw tool: click draws a 1/16 note at beat 2 (pitch 62); click-drag draws 1.25 beats; one step each");
+        // The same click on a note with the Select tool vs. Erase.
+        setNotes({{60,0.0},{62,1.0}});roll.setTool(5);h=view.editHistory().size();
+        click(x(1.5),y(62));n=notes();
+        expect(n.size()==1&&n[0].pitch==60&&grew(h,1)&&last()==i18n::tr("Borrar notas"),"Erase tool: a click deletes only the clicked note in one step");
+        click(x(3.0),y(70));expect(notes().size()==1&&grew(h,1),"Erase tool: a click on empty space changes nothing");
+        // Split at the snapped click position; a selected group is split at the same point.
+        setNotes({{60,0.0},{64,0.0},{67,2.0}});roll.setTool(3);h=view.editHistory().size();
+        click(x(0.55),y(60));n=notes();
+        const bool one=n.size()==4&&std::abs(n[0].lengthBeats-0.5)<1e-9&&n[3].pitch==60&&std::abs(n[3].startBeats-0.5)<1e-9&&std::abs(n[3].lengthBeats-0.5)<1e-9&&n[1].lengthBeats==1.0&&last()==i18n::tr("Dividir notas");
+        view.runCommand("undo");const bool undone=notes().size()==3&&notes()[0].lengthBeats==1.0;
+        setNotes({{60,0.0},{64,0.0},{67,2.0}});roll.selectAll();
+        {const ScopedLock lock(engine.modelLock);roll.selection.remove(engine.tracks[0]->notes[2].id);}
+        click(x(0.3),y(64));n=notes();
+        expect(one&&undone&&n.size()==5&&std::abs(n[0].lengthBeats-0.25)<1e-9&&std::abs(n[1].lengthBeats-0.25)<1e-9&&n[2].lengthBeats==1.0&&roll.selection.size()==4,"Split tool: one click splits the note at the grid (beat 0.5), Undo restores it; with a selection both selected notes split at beat 0.25");
+        // Glue joins the clicked note with the next one of the same pitch.
+        setNotes({{60,0.0},{62,1.0},{60,2.0}});roll.setTool(4);h=view.editHistory().size();
+        click(x(0.5),y(60));n=notes();
+        expect(n.size()==2&&n[0].pitch==60&&std::abs(n[0].lengthBeats-3.0)<1e-9&&n[1].pitch==62&&grew(h,1)&&last()==i18n::tr("Pegar notas"),"Glue tool: a click joins beat 0 and beat 2 (pitch 60) into one 3-beat note, other pitch intact");
+        // Mute toggles; on a selected note it acts on the whole selection.
+        setNotes({{60,0.0},{64,1.0},{67,2.0}});roll.setTool(7);h=view.editHistory().size();
+        click(x(0.5),y(60));n=notes();const bool muted=n[0].muted&&!n[1].muted&&last()==i18n::tr("Enmudecer notas");
+        click(x(0.5),y(60));n=notes();const bool unmuted=!n[0].muted&&last()==i18n::tr("Desenmudecer notas")&&grew(h,2);
+        roll.selectAll();click(x(1.5),y(64));n=notes();
+        expect(muted&&unmuted&&n[0].muted&&n[1].muted&&n[2].muted&&grew(h,3),"Mute tool: a click mutes, a second click unmutes, a click on a selected note mutes the whole selection");
+        // Option-click with Select draws (manual p. 1254); double click only inserts with Select.
+        setNotes({});roll.setTool(1);click(x(1.0),y(65),ModifierKeys::altModifier);
+        const bool alt=notes().size()==1&&notes()[0].pitch==65;
+        roll.setTool(5);roll.mouseDoubleClick(mouse(roll,x(3.0),y(65)));
+        expect(alt&&notes().size()==1,"Option+click with Select draws a note; double click with another tool does not insert");
+        roll.setTool(1);
     }
     // Real history: one group move is undone in one step and redone in one step.
     template<typename Notes> void pianoRollUndoCheck(ui::PianoRoll& roll,const Notes& notes)

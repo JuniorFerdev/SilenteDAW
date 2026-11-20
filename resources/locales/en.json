@@ -1100,5 +1100,11 @@
   " archivo(s) de destino ya existen en la carpeta.": " target file(s) already exist in the folder.",
   "La pista de marcadores activa no tiene rangos de ciclo.": "The active marker track has no cycle ranges.",
   "Tasa de bits no admitida para este formato y frecuencia.": "Bit rate not supported for this format and sample rate.",
-  "AIFF admite 16 o 24 bits.": "AIFF supports 16 or 24 bits."
+  "AIFF admite 16 o 24 bits.": "AIFF supports 16 or 24 bits.",
+  "Herramientas": "Tools",
+  "Dividir notas": "Split notes",
+  "Pegar notas": "Glue notes",
+  "Enmudecer notas": "Mute notes",
+  "Desenmudecer notas": "Unmute notes",
+  "Cuantizar": "Quantize"
 }
