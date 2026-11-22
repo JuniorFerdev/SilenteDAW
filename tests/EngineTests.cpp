@@ -19,6 +19,8 @@
 #include "../src/ui/project/TimelineTracks.h"
 #include "../src/app/VideoCommands.h"
 #include "../src/app/AutomationCommands.h"
+#include "../src/app/MidiEditCommands.h"
+#include "../src/i18n/Translations.h"
 #include "../src/io/VideoFrames.h"
 #include "VideoFixture.h"
 #include <limits>
@@ -1335,6 +1337,58 @@ int runEngineTests(const juce::File& outputDir)
         require(removed == notes[2].id && glued.size() == 3 && glued[0].velocity == 90 && glued[0].muted, "glue removes the second note and keeps the first one's properties");
         near(glued[0].startBeats, 0.0, 0, "glued note keeps its start"); near(glued[0].lengthBeats, 4.0, 1e-12, "glued note spans to the end of the second");
         auto last = notes; require(glueWithNext(last, 3).isEmpty() && last.size() == 4, "the last note of a pitch cannot be glued");
+    });
+
+    suite.run("MIDI editor clipboard and nudge commands (subetapa 4)", [&]
+    {
+        AudioEngine engine; setup(engine); auto track = engine.addMidiTrack("Clipboard");
+        const auto setNotes = [&](std::initializer_list<std::pair<int, double>> list)
+        {
+            track->notes.clear();
+            for (auto [pitch, beat] : list) { MidiNote m; m.pitch = pitch; m.startBeats = beat; m.lengthBeats = 0.5; m.velocity = 70 + pitch % 10; track->notes.push_back(m); }
+        };
+        domain::NoteSelection selection; std::vector<juce::String> steps; int dirty = 0;
+        std::vector<std::vector<MidiNote>> undo;
+        app::MidiEditContext ctx { engine, 0, selection, [&](const juce::String& name) { steps.push_back(name); undo.push_back(track->notes); }, [&] { ++dirty; } };
+        const auto selectPitches = [&](std::initializer_list<int> pitches) { selection.clear(); for (auto& n : track->notes) for (int p : pitches) if (n.pitch == p) selection.add(n.id); };
+        app::NoteClipboard clip;
+
+        // Copy keeps the intervals relative to the earliest note; no undo step.
+        setNotes({ { 60, 1.0 }, { 64, 1.5 }, { 67, 3.25 }, { 72, 8.0 } }); selectPitches({ 60, 64, 67 });
+        require(app::copySelection(ctx, clip) == 3 && steps.empty() && dirty == 0, "copy takes three notes without an undo step");
+        near(clip.notes[0].startBeats, 0.0, 0, "copied group starts at 0"); near(clip.notes[1].startBeats, 0.5, 1e-12, "copied interval 0.5"); near(clip.notes[2].startBeats, 2.25, 1e-12, "copied interval 2.25");
+        // Paste at beat 4 keeps intervals, pitch, length and velocity; new ids become the selection.
+        require(app::pasteNotes(ctx, clip, 4.0) == 3 && track->notes.size() == 7 && steps.size() == 1 && steps.back() == i18n::tr("Pegar notas del portapapeles"), "paste adds three notes in one named step");
+        const auto& pasted = track->notes;
+        near(pasted[4].startBeats, 4.0, 1e-12, "pasted first note at the cursor"); near(pasted[5].startBeats, 4.5, 1e-12, "pasted second keeps +0.5"); near(pasted[6].startBeats, 6.25, 1e-12, "pasted third keeps +2.25");
+        require(pasted[4].pitch == 60 && pasted[6].pitch == 67 && pasted[5].velocity == pasted[1].velocity && pasted[4].lengthBeats == 0.5 && pasted[4].id != pasted[0].id
+                && selection.size() == 3 && selection.contains(pasted[4].id) && ! selection.contains(pasted[0].id), "pasted notes keep pitch, length and velocity, get new ids and are selected");
+        track->notes = undo.back(); undo.pop_back(); require(track->notes.size() == 4, "undo snapshot restores the notes before paste");
+        // Paste twice gives distinct ids; a negative cursor is clamped to 0.
+        app::pasteNotes(ctx, clip, -3.0); near(track->notes[4].startBeats, 0.0, 0, "paste before beat 0 lands on 0");
+        // Empty clipboard and empty selection do nothing.
+        setNotes({ { 60, 0.0 } }); selection.clear(); const auto before = steps.size(); app::NoteClipboard empty;
+        require(app::pasteNotes(ctx, empty, 2.0) == 0 && app::copySelection(ctx, clip) == 0 && clip.notes.size() == 3 && app::cutSelection(ctx, clip) == 0 && app::nudgeSelection(ctx, 0.25) == 0
+                && steps.size() == before && track->notes.size() == 1, "empty clipboard or selection changes nothing, keeps the clipboard and records no step");
+        // Cut copies and removes in one step.
+        setNotes({ { 60, 2.0 }, { 62, 2.75 }, { 65, 5.0 } }); selectPitches({ 60, 62 });
+        require(app::cutSelection(ctx, clip) == 2 && track->notes.size() == 1 && track->notes[0].pitch == 65 && selection.empty() && steps.back() == i18n::tr("Cortar notas") && clip.notes.size() == 2, "cut removes the selection in one named step");
+        near(clip.notes[1].startBeats, 0.75, 1e-12, "cut keeps the interval");
+        track->notes = undo.back(); undo.pop_back(); require(track->notes.size() == 3 && track->notes[1].pitch == 62, "undo of cut restores both notes");
+        // Nudge by the grid without snapping; the group stops at beat 0.
+        setNotes({ { 60, 0.3 }, { 64, 1.0 }, { 67, 2.0 } }); selectPitches({ 60, 64 });
+        require(app::nudgeSelection(ctx, 0.25) == 2 && steps.back() == i18n::tr("Empujar notas"), "nudge right is one named step");
+        near(track->notes[0].startBeats, 0.55, 1e-12, "nudge keeps an off-grid start off the grid"); near(track->notes[1].startBeats, 1.25, 1e-12, "nudge moves the group"); near(track->notes[2].startBeats, 2.0, 0, "unselected note stays");
+        app::nudgeSelection(ctx, -0.25); app::nudgeSelection(ctx, -0.25); app::nudgeSelection(ctx, -0.25);
+        near(track->notes[0].startBeats, 0.0, 1e-12, "nudge left stops the group at beat 0"); near(track->notes[1].startBeats, 0.70, 1e-12, "the group keeps its interval at beat 0");
+        const auto atZero = steps.size(); require(app::nudgeSelection(ctx, -0.25) == 0 && steps.size() == atZero, "nudge left at beat 0 records no step");
+        // Up/Down: semitones and octaves, the group limited to 0..127 without changing its shape.
+        setNotes({ { 120, 0.0 }, { 124, 1.0 } }); selectPitches({ 120, 124 });
+        require(app::transposeSelection(ctx, 12) == 2 && track->notes[0].pitch == 123 && track->notes[1].pitch == 127, "octave up stops the group at 127 keeping its interval");
+        const auto atTop = steps.size(); require(app::transposeSelection(ctx, 1) == 0 && steps.size() == atTop, "semitone up at 127 records no step");
+        setNotes({ { 2, 0.0 }, { 5, 1.0 } }); selectPitches({ 2, 5 });
+        require(app::transposeSelection(ctx, -12) == 2 && track->notes[0].pitch == 0 && track->notes[1].pitch == 3, "octave down stops the group at 0 keeping its interval");
+        require(app::transposeSelection(ctx, -1) == 0, "semitone down at 0 does nothing");
     });
 
     suite.run("muted MIDI notes are silent, release, and survive save/load", [&]

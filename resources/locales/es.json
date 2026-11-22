@@ -1121,5 +1121,16 @@
   "Seleccionar la pista para Rellenar": "Seleccionar la pista para Rellenar",
   "Trim de ": "Trim de ",
   ": escala la curva leída sin reescribirla": ": escala la curva leída sin reescribirla",
-  "El panorama no tiene Trim": "El panorama no tiene Trim"
+  "El panorama no tiene Trim": "El panorama no tiene Trim",
+  "Hacia arriba": "Hacia arriba",
+  "Hacia abajo": "Hacia abajo",
+  "Desplazar más hacia arriba": "Desplazar más hacia arriba",
+  "Desplazar más hacia abajo": "Desplazar más hacia abajo",
+  "Transpone la selección media nota hacia arriba": "Transpone la selección media nota hacia arriba",
+  "Transpone la selección media nota hacia abajo": "Transpone la selección media nota hacia abajo",
+  "Transpone la selección una octava hacia arriba": "Transpone la selección una octava hacia arriba",
+  "Transpone la selección una octava hacia abajo": "Transpone la selección una octava hacia abajo",
+  "Pegar notas del portapapeles": "Pegar notas del portapapeles",
+  "Cortar notas": "Cortar notas",
+  "Empujar notas": "Empujar notas"
 }

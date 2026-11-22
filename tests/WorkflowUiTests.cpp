@@ -313,6 +313,7 @@ private:
         pianoRollUndoCheck(*roll,notes);
         midiEditCommandChecks(*roll,notes);
         midiToolChecks(*roll,notes);
+        midiClipboardChecks(*roll,notes);
         roll->clearSelection();engine.clear();
     }
     // Multiple selection (subetapa 1 of the MIDI editor): marquee, Shift+click, Cmd+A, group move,
@@ -446,6 +447,63 @@ private:
         roll.setTool(5);roll.mouseDoubleClick(mouse(roll,x(3.0),y(65)));
         expect(alt&&notes().size()==1,"Option+click with Select draws a note; double click with another tool does not insert");
         roll.setTool(1);
+    }
+    // Subetapa 4: Cmd+C/X/V paste at the project cursor keeping intervals; arrows nudge by the grid
+    // and transpose (Shift = octave); the transpose palette runs the same commands. One named step each.
+    template<typename Notes> void midiClipboardChecks(ui::PianoRoll& roll,const Notes& notes)
+    {
+        roll.scrollBeats=0;roll.snap=true;roll.track=0;roll.setTool(1);
+        const auto setNotes=[&](std::initializer_list<std::pair<int,double>> list){{const ScopedLock lock(engine.modelLock);auto& n=engine.tracks[0]->notes;n.clear();for(auto [pitch,beat]:list){MidiNote m;m.pitch=pitch;m.startBeats=beat;m.lengthBeats=0.5;n.push_back(m);}}roll.clearSelection();};
+        const auto last=[&]{const auto h=view.editHistory();return h.isEmpty()?String():h[h.size()-1];};
+        const auto grew=[&](int before,int steps){return view.editHistory().size()==jmin(100,before+steps);};
+        const auto starts=[&](std::initializer_list<double> want){auto n=notes();if(n.size()!=want.size())return false;size_t i=0;for(double b:want)if(std::abs(n[i++].startBeats-b)>1e-9)return false;return true;};
+        const auto pitches=[&](std::initializer_list<int> want){auto n=notes();if(n.size()!=want.size())return false;size_t i=0;for(int p:want)if(n[i++].pitch!=p)return false;return true;};
+        const auto cmd=[](int c,int extra=0){return KeyPress(c,ModifierKeys::commandModifier|extra,0);};
+        const double savedPosition=engine.positionSeconds.load();
+        // Copy + paste at the cursor (beat 4).
+        setNotes({{60,1.0},{64,1.5},{67,3.25}});roll.selectAll();int h=view.editHistory().size();
+        engine.positionSeconds=4.0*60.0/engine.tempoView().bpm;
+        const bool cursor=std::abs(roll.cursorBeat()-4.0)<1e-9;
+        const bool copied=roll.keyPressed(cmd('c'))&&grew(h,0)&&roll.clipboard.notes.size()==3;
+        roll.keyPressed(cmd('v'));
+        const bool pasted=starts({1.0,1.5,3.25,4.0,4.5,6.25})&&pitches({60,64,67,60,64,67})&&grew(h,1)&&last()==i18n::tr("Pegar notas del portapapeles")&&roll.selection.size()==3&&!roll.selection.contains(notes()[0].id);
+        view.runCommand("undo");const bool undone=starts({1.0,1.5,3.25});
+        view.runCommand("redo");const bool redone=starts({1.0,1.5,3.25,4.0,4.5,6.25});
+        expect(cursor&&copied&&pasted&&undone&&redone,"Piano roll: Cmd+C then Cmd+V pastes three notes at the cursor (beat 4) keeping +0.5/+2.25, one named step, Undo/Redo");
+        // Cut, then paste with an empty clipboard does nothing.
+        setNotes({{60,2.0},{62,2.75},{65,5.0}});roll.selectAll();
+        {const ScopedLock lock(engine.modelLock);roll.selection.remove(engine.tracks[0]->notes[2].id);}
+        h=view.editHistory().size();roll.keyPressed(cmd('x'));
+        const bool cut=pitches({65})&&roll.selection.empty()&&grew(h,1)&&last()==i18n::tr("Cortar notas");
+        engine.positionSeconds=0.0;roll.keyPressed(cmd('v'));
+        const bool cutPaste=starts({5.0,0.0,0.75})&&pitches({65,60,62})&&grew(h,2);
+        roll.clipboard={};h=view.editHistory().size();roll.keyPressed(cmd('v'));
+        expect(cut&&cutPaste&&grew(h,0)&&notes().size()==3,"Piano roll: Cmd+X removes the selection in one step, Cmd+V at beat 0 keeps +0.75; an empty clipboard pastes nothing");
+        // Arrows: Right/Left by the grid (1/16), Up/Down a semitone, Shift an octave, one step each.
+        setNotes({{60,0.3},{64,1.0},{67,2.0}});
+        {const ScopedLock lock(engine.modelLock);roll.selection.add(engine.tracks[0]->notes[0].id);roll.selection.add(engine.tracks[0]->notes[1].id);}
+        h=view.editHistory().size();
+        roll.keyPressed(KeyPress(KeyPress::rightKey));const bool right=starts({0.55,1.25,2.0})&&grew(h,1)&&last()==i18n::tr("Empujar notas");
+        roll.keyPressed(KeyPress(KeyPress::leftKey));roll.keyPressed(KeyPress(KeyPress::leftKey));const bool left=starts({0.05,0.75,2.0})&&grew(h,3);
+        roll.keyPressed(KeyPress(KeyPress::upKey));const bool up=pitches({61,65,67})&&grew(h,4)&&last()==i18n::tr("Transponer notas");
+        roll.keyPressed(KeyPress(KeyPress::downKey,ModifierKeys::shiftModifier,0));const bool octave=pitches({49,53,67})&&grew(h,5);
+        view.runCommand("undo");const bool undoOne=pitches({61,65,67})&&starts({0.05,0.75,2.0});
+        expect(right&&left&&up&&octave&&undoOne,"Piano roll: Right/Left nudge the selection by 1/16, Up a semitone, Shift+Down an octave; one named step per key and Undo reverts only the last");
+        // Limits 0..127 keep the group shape.
+        setNotes({{120,0.0},{124,1.0}});roll.selectAll();h=view.editHistory().size();
+        roll.keyPressed(KeyPress(KeyPress::upKey,ModifierKeys::shiftModifier,0));const bool top=pitches({123,127})&&grew(h,1);
+        roll.keyPressed(KeyPress(KeyPress::upKey));
+        expect(top&&pitches({123,127})&&grew(h,1),"Piano roll: Shift+Up stops the group at 127 keeping its interval; Up at the top records no step");
+        // Transpose palette (manual p. 1236).
+        auto* bar=find(view,"midi-toolbar");
+        const auto press=[&](const char* idText){if(bar)if(auto* b=dynamic_cast<TextButton*>(find(*bar,idText)))if(b->onClick){b->onClick();return true;}return false;};
+        setNotes({{60,0.0},{64,1.0}});roll.selectAll();h=view.editHistory().size();
+        const bool p1=press("midi-transpose-up")&&pitches({61,65});
+        const bool p2=press("midi-transpose-down")&&pitches({60,64});
+        const bool p3=press("midi-transpose-octave-up")&&pitches({72,76});
+        const bool p4=press("midi-transpose-octave-down")&&pitches({60,64});
+        expect(p1&&p2&&p3&&p4&&grew(h,4)&&last()==i18n::tr("Transponer notas"),"Transpose palette: Up/Down move a semitone and Up/Down More an octave, one named step each");
+        engine.positionSeconds=savedPosition;roll.clearSelection();
     }
     // Real history: one group move is undone in one step and redone in one step.
     template<typename Notes> void pianoRollUndoCheck(ui::PianoRoll& roll,const Notes& notes)

@@ -33,6 +33,25 @@ int duplicateSelection(const MidiEditContext&, int* newAnchor = nullptr);
 // Transposes by semitones, limiting the shift so the whole group stays within 0..127.
 int transposeSelection(const MidiEditContext&, int semitones);
 
+// Clipboard and nudge (subetapa 4). The clipboard holds copies whose starts are relative to the
+// earliest copied note, so a paste keeps the intervals of the group. It lives on the message thread.
+struct NoteClipboard
+{
+    std::vector<MidiNote> notes;
+    bool empty() const { return notes.empty(); }
+};
+// Copies the selection into `clipboard` (no undo step). With nothing selected the clipboard is kept.
+int copySelection(const MidiEditContext&, NoteClipboard& clipboard);
+// Copies the selection and removes it in one undo step ("Cortar notas").
+int cutSelection(const MidiEditContext&, NoteClipboard& clipboard);
+// Pastes the clipboard with its earliest note at `atBeat` (clamped to >= 0) in one undo step;
+// the pasted notes get new ids and become the selection. An empty clipboard does nothing.
+// `newAnchor` (optional) receives the index of the last pasted note.
+int pasteNotes(const MidiEditContext&, const NoteClipboard& clipboard, double atBeat, int* newAnchor = nullptr);
+// Nudge: moves the selection by deltaBeats without snapping (the group stops at beat 0) in one
+// undo step ("Empujar notas").
+int nudgeSelection(const MidiEditContext&, double deltaBeats);
+
 // Editor tools (subetapa 3). `targets` are explicit notes (the clicked one or the selection).
 // Draw/double click: adds one note and makes it the only selected note; `newIndex` receives it.
 int createNote(const MidiEditContext&, int pitch, double startBeats, double lengthBeats, int* newIndex = nullptr);

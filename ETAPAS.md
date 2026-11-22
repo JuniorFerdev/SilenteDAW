@@ -425,3 +425,8 @@ Verificado: motor 62/62, io 59/59, interfaz 401/401 en arm64, textos ES/EN corre
 
 Panel F6: modo Cross-Over (sigue la curva anterior tras el cruce); Trim por volumen y por envío (valor = curva × trim, sin reescribir la curva; el panorama no tiene trim); Relleno con cinco acciones (Hasta punch, Hasta inicio, Hasta final, Bucle, Huecos), cada una con un paso de deshacer. Persistencia retrocompatible (trims y modo solo se escriben si no son los valores por defecto).
 Verificado: motor 63/63, io 59/59, interfaz 415/415 en arm64, textos ES/EN correctos. Pendiente: relleno automático al cerrar un pase; cerrar Cross-Over en el localizador derecho en ciclo; trim con curva editable; «Hasta punch» no se guarda; probar con audio y fader real.
+
+## midi-sub4 — Portapapeles, empuje y paleta de transposición del editor MIDI (21-11-2026)
+
+Subetapa 4 de `docs/EDITOR_MIDI.md`: copiar, cortar y pegar notas en el cursor conservando intervalos; ↑/↓ un semitono, ⇧+↑/↓ una octava, ←/→ un paso de rejilla; paleta de transposición (media nota y octava). Cada operación es un paso de deshacer con nombre; copiar no crea paso.
+Verificado: motor 64/64, io 59/59, interfaz 420/420 en arm64, textos ES/EN correctos. Cambio de pruebas: cuatro comprobaciones de video ahora usan `jmin(100, history+1)` porque el historial llegaba al tope de 100 pasos (no cambia la app). Pendiente: Ajustes de empujar, Empujar inicio/final, Pegar al origen, ver la paleta en la app, comprobar foco del menú Edición.

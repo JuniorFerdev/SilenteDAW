@@ -22,7 +22,9 @@ void done(const MidiEditContext& c)
 }
 }
 
-int moveSelection(const MidiEditContext& c, double deltaBeats, int deltaPitch)
+namespace
+{
+int moveNamed(const MidiEditContext& c, double deltaBeats, int deltaPitch, const juce::String& name)
 {
     const juce::ScopedLock lock(c.engine.modelLock);
     auto* notes = notesOf(c);
@@ -31,10 +33,67 @@ int moveSelection(const MidiEditContext& c, double deltaBeats, int deltaPitch)
     if (indices.empty() || (deltaBeats == 0.0 && deltaPitch == 0)) return 0;
     auto target = *notes;
     if (!domain::moveNotes(*notes, target, indices, indices.front(), deltaBeats, deltaPitch, 0.0)) return 0;
-    record(c, i18n::tr("Mover notas"));
+    record(c, name);
     for (int i : indices) (*notes)[(size_t) i] = target[(size_t) i];
     done(c);
     return (int) indices.size();
+}
+}
+
+int moveSelection(const MidiEditContext& c, double deltaBeats, int deltaPitch)
+{
+    return moveNamed(c, deltaBeats, deltaPitch, i18n::tr("Mover notas"));
+}
+
+int nudgeSelection(const MidiEditContext& c, double deltaBeats)
+{
+    return moveNamed(c, deltaBeats, 0, i18n::tr("Empujar notas"));
+}
+
+int copySelection(const MidiEditContext& c, NoteClipboard& clipboard)
+{
+    const juce::ScopedLock lock(c.engine.modelLock);
+    auto* notes = notesOf(c);
+    if (!notes) return 0;
+    auto copies = domain::copyNotesRelative(*notes, domain::selectedIndices(*notes, c.selection));
+    if (copies.empty()) return 0;
+    clipboard.notes = std::move(copies);
+    return (int) clipboard.notes.size();
+}
+
+int cutSelection(const MidiEditContext& c, NoteClipboard& clipboard)
+{
+    const juce::ScopedLock lock(c.engine.modelLock);
+    auto* notes = notesOf(c);
+    if (!notes) return 0;
+    auto copies = domain::copyNotesRelative(*notes, domain::selectedIndices(*notes, c.selection));
+    if (copies.empty()) return 0;
+    record(c, i18n::tr("Cortar notas"));
+    clipboard.notes = std::move(copies);
+    const int n = domain::eraseNotes(*notes, c.selection);
+    c.selection.clear();
+    done(c);
+    return n;
+}
+
+int pasteNotes(const MidiEditContext& c, const NoteClipboard& clipboard, double atBeat, int* newAnchor)
+{
+    const juce::ScopedLock lock(c.engine.modelLock);
+    auto* notes = notesOf(c);
+    if (!notes || clipboard.empty()) return 0;
+    const double origin = std::max(0.0, atBeat);
+    record(c, i18n::tr("Pegar notas del portapapeles"));
+    c.selection.clear();
+    for (auto copy : clipboard.notes)
+    {
+        copy.id = juce::Uuid().toString();
+        copy.startBeats += origin;
+        c.selection.add(copy.id);
+        notes->push_back(std::move(copy));
+    }
+    if (newAnchor) *newAnchor = (int) notes->size() - 1;
+    done(c);
+    return (int) clipboard.notes.size();
 }
 
 int resizeSelection(const MidiEditContext& c, double deltaBeats)

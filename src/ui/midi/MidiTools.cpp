@@ -31,6 +31,16 @@ int midiToolForKey(const juce::KeyPress& key,int active)
     if(id=="toolMute")return midiToolMute;
     return 0;
 }
+std::vector<MidiTransposeDefinition> midiTransposeDefinitions()
+{
+    using I=theme::ToolIcon;
+    return {
+        {"midi-transpose-up",I::transposeUp,i18n::tr("Hacia arriba"),i18n::tr("Transpone la selección media nota hacia arriba"),1},
+        {"midi-transpose-down",I::transposeDown,i18n::tr("Hacia abajo"),i18n::tr("Transpone la selección media nota hacia abajo"),-1},
+        {"midi-transpose-octave-up",I::transposeOctaveUp,i18n::tr("Desplazar más hacia arriba"),i18n::tr("Transpone la selección una octava hacia arriba"),12},
+        {"midi-transpose-octave-down",I::transposeOctaveDown,i18n::tr("Desplazar más hacia abajo"),i18n::tr("Transpone la selección una octava hacia abajo"),-12}
+    };
+}
 MidiToolBar::MidiToolBar()
 {
     setComponentID("midi-toolbar");
@@ -43,6 +53,15 @@ MidiToolBar::MidiToolBar()
         button->onClick=[this,id=tool.id]{setActiveTool(id);if(chooseTool)chooseTool(id);};
         addAndMakeVisible(*button);buttons.push_back(std::move(button));ids.push_back(tool.id);
     }
+    for(const auto& step:midiTransposeDefinitions())
+    {
+        auto button=std::make_unique<juce::TextButton>();
+        theme::setButtonIcon(*button,step.icon);button->setName(step.name);
+        button->setComponentID(step.componentId);
+        button->setTooltip(step.name+" · "+step.description);
+        button->onClick=[this,semitones=step.semitones]{if(transpose)transpose(semitones);};
+        addAndMakeVisible(*button);transposeButtons.push_back(std::move(button));
+    }
     setActiveTool(midiToolSelect);
 }
 void MidiToolBar::setActiveTool(int tool)
@@ -53,5 +72,7 @@ void MidiToolBar::paint(juce::Graphics& g){g.fillAll(theme::panel);g.setColour(t
 void MidiToolBar::resized()
 {
     int x=6;for(auto& button:buttons){button->setBounds(x,2,26,getHeight()-5);x+=28;}
+    x+=14; // Transpose palette, separated from the tools.
+    for(auto& button:transposeButtons){button->setBounds(x,2,26,getHeight()-5);x+=28;}
 }
 }

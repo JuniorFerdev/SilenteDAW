@@ -1406,7 +1406,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             juce::CallOutBox::launchAsynchronously(std::move(finder),arrangement.localAreaToGlobal(Arrangement::searchButton()),nullptr);
         };arrangement.openChannel=[this](int i){openChannelSettings(i);};arrangement.warn=[this](const juce::String& m){error(m);};arrangement.eventColour=[this]{colourMenu();};arrangement.moveRange=[this](double d,int rows,bool copy){moveRangeContent(d,rows,copy);};arrangement.rangeMenu=[this]{rangeMenu().showMenuAsync(juce::PopupMenu::Options(),[safe=juce::Component::SafePointer<MainComponent>(&owner)](int r){if(safe&&r)safe->ui->rangeMenuItem(r);});};arrangement.import=[this](const juce::StringArray& f,int i,double s){importPaths(f,i,s);};
         piano.beforeEdit=[this]{pushUndo(piano.editName);piano.editName={};};
-        midiTools.chooseTool=[this](int id){piano.setTool(id);};piano.toolChanged=[this](int id){midiTools.setActiveTool(id);};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
+        midiTools.chooseTool=[this](int id){piano.setTool(id);};midiTools.transpose=[this](int semitones){piano.transposeSelected(semitones);};piano.toolChanged=[this](int id){midiTools.setActiveTool(id);};piano.changed=[this]{markDirty();};mixer.changed=[this]{markDirty();};mixer.select=[this](int i){select(i);};
         plugins.onChange=[this]{markDirty();refresh();};
         plugins.onTrackCreated=[this](int index){select(index);};
         keyboard.setAvailableRange(24,108);keyboard.setLowestVisibleKey(48);keyboard.setKeyWidth(20);keyboard.setVelocity(.8f,true);
@@ -1636,6 +1636,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
     void pushUndo(const juce::String& action={}){auto s=snapshot();s.action=action.isEmpty()?i18n::tr("Edición"):action;s.time=juce::Time::getCurrentTime();undoStack.push_back(std::move(s));if(undoStack.size()>100)undoStack.pop_front();redoStack.clear();}
     void undo(bool redo){auto& from=redo?redoStack:undoStack;auto& to=redo?undoStack:redoStack;if(from.empty())return;to.push_back(snapshot());to.back().action=from.back().action;to.back().time=from.back().time;auto s=std::move(from.back());from.pop_back();restore(s);notice=redo?i18n::tr("Edición restaurada."):i18n::tr("Edición deshecha.");}
     void duplicateNote(){piano.duplicateSelected();}
+    // The key editor owns Cut/Copy/Paste while it has the keyboard focus (menu Edit and key commands).
+    bool pianoFocused(){return pianoVisible&&piano.isShowing()&&piano.hasKeyboardFocus(true);}
     void setPiano(bool show){pianoVisible=show;automationVisible=false;piano.setVisible(show);midiTools.setVisible(show);keyboard.setVisible(show);mixer.setVisible(!show);mixerTab.setToggleState(!show,juce::dontSendNotification);pianoTab.setToggleState(show,juce::dontSendNotification);automationTab.setToggleState(false,juce::dontSendNotification);owner.resized();owner.repaint();}
     // Lower zone «Automatización»: the automation lane of the selected track.
     void setAutomation(){pianoVisible=false;automationVisible=true;automationLane.setTrack(selected);mixerTab.setToggleState(false,juce::dontSendNotification);pianoTab.setToggleState(false,juce::dontSendNotification);automationTab.setToggleState(true,juce::dontSendNotification);owner.resized();owner.repaint();}
@@ -2455,8 +2457,8 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         k["truncateRange"]=[this]{rangeEdit(i18n::tr("Truncar"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,const domain::TempoView&){audio::truncate(c,r);});};
         k["adjustFades"]=[this]{rangeEdit(i18n::tr("Ajustar fundidos al rango"),[](std::vector<AudioClip>& c,std::vector<MidiNote>&,audio::TimeRange r,const domain::TempoView&){audio::adjustFadesToRange(c,r);});};k["repeat"]=[this]{arrangement.duplicateSelected();};
         k["splitAtCursor"]=[this]{arrangement.splitSelected();};
-        k["copy"]=[this]{if(rangeActive()){copyRangeToClipboard();notice=i18n::tr("Rango copiado.");return;}if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);rangeClipboard.clear();notice=i18n::tr("Evento copiado.");}};
-        k["cut"]=[this]{if(rangeActive()){copyRangeToClipboard();rangeEdit(i18n::tr("Cortar rango"),audio::deleteRange);notice=i18n::tr("Rango cortado.");return;}if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);rangeClipboard.clear();arrangement.deleteSelected();notice=i18n::tr("Evento cortado.");}};
+        k["copy"]=[this]{if(pianoFocused()){piano.copySelected();return;}if(rangeActive()){copyRangeToClipboard();notice=i18n::tr("Rango copiado.");return;}if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);rangeClipboard.clear();notice=i18n::tr("Evento copiado.");}};
+        k["cut"]=[this]{if(pianoFocused()){piano.cutSelected();return;}if(rangeActive()){copyRangeToClipboard();rangeEdit(i18n::tr("Cortar rango"),audio::deleteRange);notice=i18n::tr("Rango cortado.");return;}if(auto* c=selectedClipPtr()){clipboard=std::make_pair(*c,selected);rangeClipboard.clear();arrangement.deleteSelected();notice=i18n::tr("Evento cortado.");}};
         const auto paste=[this](bool atOrigin)
         {
             if(!rangeClipboard.empty()){pasteRangeClipboard(atOrigin);return;}
@@ -2464,7 +2466,7 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
             pushUndo(i18n::tr("Pegar"));AudioClip c=clipboard->first;c.id=juce::Uuid().toString();if(!atOrigin)c.startSeconds=engine.positionSeconds.load();
             {const juce::ScopedLock lock(engine.modelLock);t->clips.push_back(c);}arrangement.selectedClip=(int)t->clips.size()-1;markDirty();refresh();
         };
-        k["paste"]=[paste]{paste(false);};k["history"]=[this]{showHistory();};k["pasteOrigin"]=[paste]{paste(true);};
+        k["paste"]=[this,paste]{if(pianoFocused()){piano.pasteAtCursor();return;}paste(false);};k["history"]=[this]{showHistory();};k["pasteOrigin"]=[paste]{paste(true);};
         k["moveToCursor"]=[this]{if(auto* c=selectedClipPtr()){pushUndo();const juce::ScopedLock lock(engine.modelLock);c->startSeconds=engine.positionSeconds.load();markDirty();refresh();}};
         k["muteTracks"]=[this]{if(auto t=currentTrack()){pushUndo(i18n::tr("Enmudecer"));t->mute=!t->mute.load();markDirty();refresh();}};
         k["soloTracks"]=[this]{if(auto t=currentTrack()){pushUndo(i18n::tr("Solo"));t->solo=!t->solo.load();markDirty();refresh();}};

@@ -156,4 +156,20 @@ juce::String glueWithNext(std::vector<MidiNote>& notes, int index)
     notes.erase(notes.begin() + next);
     return removed;
 }
+
+std::vector<MidiNote> copyNotesRelative(const std::vector<MidiNote>& notes, const std::vector<int>& indices)
+{
+    std::vector<MidiNote> result;
+    double first = 0.0;
+    bool any = false;
+    for (int i : indices)
+    {
+        if (i < 0 || i >= (int) notes.size()) continue;
+        first = any ? std::min(first, notes[(size_t) i].startBeats) : notes[(size_t) i].startBeats;
+        any = true;
+        result.push_back(notes[(size_t) i]);
+    }
+    for (auto& n : result) n.startBeats -= first;
+    return result;
+}
 }

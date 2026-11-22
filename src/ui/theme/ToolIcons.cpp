@@ -104,6 +104,15 @@ void drawToolIcon(juce::Graphics& g, ToolIcon icon, juce::Rectangle<float> bound
         case ToolIcon::timeWarpTool:
             g.drawLine(4,4,4,20,1.6f);g.drawLine(12,4,12,20,1.6f);g.drawLine(20,4,20,20,1.6f);
             p.addTriangle(5,9,10,12,5,15);p.addTriangle(19,9,14,12,19,15);g.fillPath(p);break;
+        // Transpose palette: a triangle for a semitone, an arrow with a double head for an octave.
+        case ToolIcon::transposeUp:
+            p.addTriangle(12.0f, 6.0f, 19.0f, 15.0f, 5.0f, 15.0f); g.fillPath(p); g.drawLine(5.0f, 18.5f, 19.0f, 18.5f, 1.6f); break;
+        case ToolIcon::transposeDown:
+            p.addTriangle(5.0f, 9.0f, 19.0f, 9.0f, 12.0f, 18.0f); g.fillPath(p); g.drawLine(5.0f, 5.5f, 19.0f, 5.5f, 1.6f); break;
+        case ToolIcon::transposeOctaveUp:
+            g.drawLine(12.0f, 20.5f, 12.0f, 8.0f, 2.0f); p.addTriangle(12.0f, 2.5f, 17.5f, 8.5f, 6.5f, 8.5f); p.addTriangle(12.0f, 7.5f, 17.0f, 13.0f, 7.0f, 13.0f); g.fillPath(p); break;
+        case ToolIcon::transposeOctaveDown:
+            g.drawLine(12.0f, 3.5f, 12.0f, 16.0f, 2.0f); p.addTriangle(12.0f, 21.5f, 17.5f, 15.5f, 6.5f, 15.5f); p.addTriangle(12.0f, 16.5f, 17.0f, 11.0f, 7.0f, 11.0f); g.fillPath(p); break;
         case ToolIcon::lineTool:
             g.drawLine(4,19,20,5,2.0f);g.fillEllipse(2.5f,17.5f,3,3);g.fillEllipse(18.5f,3.5f,3,3);break;
         case ToolIcon::layout:

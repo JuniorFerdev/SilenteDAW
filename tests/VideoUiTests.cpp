@@ -123,14 +123,14 @@ void runVideoUiChecks(MainComponent& view,AudioEngine& engine,const File& output
     expect(shows(1.5,"green"),"video: before moving, 1.5 s shows the green second");
     auto history=view.editHistory().size();
     drag(x(1.5),x(2.5));
-    expect(event()&&std::abs(event()->start-1.0)<1e-6&&std::abs(event()->offset)<1e-9&&view.editHistory().size()==history+1&&view.editHistory()[view.editHistory().size()-1]==i18n::tr("Mover evento de video"),
+    expect(event()&&std::abs(event()->start-1.0)<1e-6&&std::abs(event()->offset)<1e-9&&view.editHistory().size()==jmin(100,history+1)&&view.editHistory()[view.editHistory().size()-1]==i18n::tr("Mover evento de video"),
            "video: dragging the event 1 s to the right moves it to 1 s in one named undo step");
     expect(shows(1.5,"red")&&shows(3.5,"blue"),"video: after the move the Video Player shows the frames shifted by 1 s (1.5 s red, 3.5 s blue)");
     view.runCommand("undo");expect(event()&&std::abs(event()->start)<1e-9&&shows(1.5,"green"),"video: undo puts the event back at 0 s and the viewer follows");
     view.runCommand("redo");expect(event()&&std::abs(event()->start-1.0)<1e-6,"video: redo moves it again");
     // Trim the start from 1 s to 2 s: the end stays at 4 s and the source offset becomes 1 s.
     history=view.editHistory().size();drag(x(1.0)+2.0f,x(2.0));
-    expect(event()&&std::abs(event()->start-2.0)<1e-6&&std::abs(event()->offset-1.0)<1e-6&&std::abs(event()->length-2.0)<1e-6&&view.editHistory().size()==history+1,"video: dragging the start grip trims the event and moves its source offset");
+    expect(event()&&std::abs(event()->start-2.0)<1e-6&&std::abs(event()->offset-1.0)<1e-6&&std::abs(event()->length-2.0)<1e-6&&view.editHistory().size()==jmin(100,history+1),"video: dragging the start grip trims the event and moves its source offset");
     expect(shows(2.5,"green")&&(engine.seek(1.5),viewer->waitForFrame(1000))&&!viewer->target(),"video: the trimmed event starts with the green second; before it there is no picture");
     // Trim the end from 4 s to 3.5 s, then try to extend it past the source end (limited to 4 s).
     drag(x(4.0)-2.0f,x(3.5));expect(event()&&std::abs(event()->length-1.5)<1e-6,"video: dragging the end grip shortens the event");
@@ -138,7 +138,7 @@ void runVideoUiChecks(MainComponent& view,AudioEngine& engine,const File& output
     // Supr deletes the selected event; undo brings it back.
     arrangement->mouseDown(mouseAt(*arrangement,x(3.0),y));arrangement->mouseUp(mouseAt(*arrangement,x(3.0),y));
     history=view.editHistory().size();
-    expect(view.runCommand("delete")&&lane->data.videoEvents.empty()&&view.editHistory().size()==history+1&&view.editHistory()[view.editHistory().size()-1]==i18n::tr("Eliminar evento de video"),"video: Supr deletes the selected video event in one undo step");
+    expect(view.runCommand("delete")&&lane->data.videoEvents.empty()&&view.editHistory().size()==jmin(100,history+1)&&view.editHistory()[view.editHistory().size()-1]==i18n::tr("Eliminar evento de video"),"video: Supr deletes the selected video event in one undo step");
     view.runCommand("undo");expect(event()!=nullptr,"video: undo restores the deleted event");
     // Erase tool deletes on click.
     view.runCommand("toolErase");
@@ -154,7 +154,7 @@ void runVideoUiChecks(MainComponent& view,AudioEngine& engine,const File& output
     expect(target&&dropped.size()==3&&std::abs(dropped[1].start-6.0)<0.02&&!dropped[1].still&&dropped[2].still&&std::abs(dropped[2].start-dropped[1].start-dropped[1].length)<1e-9,
            "video: a movie and an image dropped at 6 s become picture events from the drop point");
     bool audioTrack=false;for(const auto& t:engine.tracks)audioTrack|=t->hasAudioChannel();
-    expect(engine.tracks.size()==tracksBefore&&!audioTrack&&view.editHistory().size()==history+1,"video: dropping on the video track creates no audio track and one undo step");
+    expect(engine.tracks.size()==tracksBefore&&!audioTrack&&view.editHistory().size()==jmin(100,history+1),"video: dropping on the video track creates no audio track and one undo step");
     expect(shows(6.5,"red"),"video: the dropped movie shows its first second at 6.5 s");
     view.runCommand("undo");expect(lane->data.videoEvents.size()==1,"video: one undo removes both dropped events");
     if(auto out=dir.getChildFile("video-edit.png").createOutputStream()){out->setPosition(0);out->truncate();PNGImageFormat().writeImageToStream(arrangement->createComponentSnapshot(arrangement->getLocalBounds()),*out);}

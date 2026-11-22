@@ -1121,5 +1121,16 @@
   "Seleccionar la pista para Rellenar": "Select the track for Fill",
   "Trim de ": "Trim of ",
   ": escala la curva leída sin reescribirla": ": scales the curve being read without rewriting it",
-  "El panorama no tiene Trim": "Pan has no Trim"
+  "El panorama no tiene Trim": "Pan has no Trim",
+  "Hacia arriba": "Up",
+  "Hacia abajo": "Down",
+  "Desplazar más hacia arriba": "Up More",
+  "Desplazar más hacia abajo": "Down More",
+  "Transpone la selección media nota hacia arriba": "Transposes the selection up a semitone",
+  "Transpone la selección media nota hacia abajo": "Transposes the selection down a semitone",
+  "Transpone la selección una octava hacia arriba": "Transposes the selection up an octave",
+  "Transpone la selección una octava hacia abajo": "Transposes the selection down an octave",
+  "Pegar notas del portapapeles": "Paste notes",
+  "Cortar notas": "Cut notes",
+  "Empujar notas": "Nudge notes"
 }

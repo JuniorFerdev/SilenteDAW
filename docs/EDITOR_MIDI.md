@@ -7,8 +7,8 @@ Referencia UX: Cubase Pro 15, capítulo Editores MIDI (manual, págs. 1170–130
 Páginas leídas: 1170–1171 (funciones comunes) y pasajes del Editor de teclas (1229–1262) sobre selección, transposición, empuje, cuantización y escalas. **Pendiente:** leer la sección «Operaciones con el editor de teclas» completa y las páginas 1263–1304 (percusión, lista, in-place).
 
 - **Selección (subetapa 1):** las páginas leídas no describen ⇧-clic, marquesina ni ⌘A con el detalle de la tabla de arriba. Queda sin contrastar.
-- **Transposición:** la paleta de transposición mueve ½ tono y una octava (p. 1236). Silente no lo tiene: pendiente en la subetapa 2.
-- **Teclas de cursor:** mueven el evento por semitonos y ⇧+flecha por octavas (p. 1247). Silente no las tiene: pendiente en la subetapa 4.
+- **Transposición:** la paleta de transposición mueve ½ tono y una octava (p. 1236). Implementada en la subetapa 4.
+- **Teclas de cursor:** mueven el evento por semitonos y ⇧+flecha por octavas (p. 1247). Implementado en la subetapa 4.
 - **Empujar:** inicio y final a izquierda y derecha, y mover por el valor de la rejilla de empuje (p. 1235). Ajustes de empujar son una rejilla propia y separada de la de cuantización. Subetapa 4; la rejilla de empuje no está en el plan.
 - **Cuantizar:** presets de cuantización y de groove, cuantización suave, panel y «Cuantizar duración» (pp. 1235–1236). Subetapa 8, ampliada con cuantización suave y de duración y presets de groove.
 - **Escalas y tonos (no están en el plan):** Cuantizar tonos, Ajustar edición de tonos y visibilidad de tonos por escala. Son funciones avanzadas; registrarlas como pendientes nuevas, sin prometerlas en la subetapa 9.
@@ -62,12 +62,29 @@ Las notas enmudecidas (`MidiNote::muted`) se dibujan solo con contorno, se guard
 
 **Diferencias pendientes con Cubase:** Selección de rango, Trim, Línea, Zoom y Baqueta no están en el editor; Dibujar no edita velocidad/tono/posición al arrastrar (p. 1254); Borrar y Enmudecer no actúan por arrastre; doble clic sobre una nota con Seleccionar no la borra (p. 1253); la duración de dibujo es fija en 1/16 (falta «Cuantizar duración»); no hay cursor propio por herramienta.
 
+## Portapapeles y empuje (subetapa 4, implementada)
+
+Contrastado con el manual, pp. 1235 (Empujar), 1236 (Paleta de transposición) y 1247 (teclas de cursor). Operaciones en `app/MidiEditCommands` (`copySelection`, `cutSelection`, `pasteNotes`, `nudgeSelection`, `transposeSelection`), cada una con un paso de historial con nombre; el portapapeles (`app::NoteClipboard`) guarda copias con el inicio relativo a la primera nota (`domain::copyNotesRelative`) y lo conserva `PianoRoll::clipboard`, común a todas las pistas MIDI del editor.
+
+| Tecla o control (foco en el editor) | Efecto | Historial |
+|---|---|---|
+| ⌘C | Copia la selección; sin selección no cambia el portapapeles | Ninguno |
+| ⌘X | Copia y borra la selección | «Cortar notas» |
+| ⌘V | Pega con la primera nota en el cursor del proyecto (mapa de tempo), conservando intervalos, altura, duración y velocidad; las copias quedan seleccionadas. Portapapeles vacío: nada | «Pegar notas del portapapeles» |
+| ← / → (también ⌘← / ⌘→) | Desplaza la selección por la rejilla (1/16 con Ajustar; si no, la de cuantización), sin forzar la rejilla; el grupo se detiene en el tiempo 0 | «Empujar notas» |
+| ↑ / ↓, ⇧+↑ / ⇧+↓ | Semitono / octava; el grupo se limita a 0–127 sin deformarse | «Transponer notas» |
+| Paleta de transposición (barra del editor) | Hacia arriba/abajo (½ tono), Desplazar más hacia arriba/abajo (octava) | «Transponer notas» |
+
+Los menús Edición › Cortar/Copiar/Pegar actúan en el editor cuando este tiene el foco. Cada pulsación es un paso; sin cambio real (límite alcanzado o selección vacía) no hay paso.
+
+**Diferencias pendientes con Cubase:** no hay «Ajustes de empujar» ni rejilla de empuje propia (p. 1235); faltan Empujar inicio/final (⌥← / ⌥⇧← siguen con los comandos de rango del proyecto); ← / → sin selección no recorren notas; «Pegar al origen» (⌥V) y «Pegar tiempo» no están en el editor; los iconos de la paleta son propios.
+
 ## Plan de subetapas (cada una con su prueba de aceptación)
 
 1. **Selección múltiple** (hecha): dominio `NoteEdit`, cuantización de la selección y pruebas de motor e interacción.
 2. **Comandos de edición** (hecha; transponer aún sin atajo ni menú, llegan con la subetapa 4): crear `app/MidiEditCommands.{h,cpp}` (mover, redimensionar, borrar, cuantizar, duplicar y transponer, todo sobre la selección) con nombre en el historial (`i18n::tr`). Duplicar (⌘D) debe actuar sobre el grupo. Aceptación: `editHistory()` muestra el nombre y deshacer/rehacer funcionan para cada comando en WorkflowUiTests.
 3. **Herramientas del editor** (hecha, ver abajo): Seleccionar, Dibujar, Borrar, Dividir, Pegar y Enmudecer, en una barra del piano roll y en la caja al clic derecho. Aceptación: cada herramienta cambia el resultado del clic en una prueba de interacción.
-4. **Portapapeles y empuje**: copiar, cortar y pegar en el cursor; flechas para empujar por la rejilla (tono con ↑/↓, ⇧ = octava). Aceptación: valores exactos tras pegar o empujar, más deshacer.
+4. **Portapapeles y empuje** (hecha, ver arriba): copiar, cortar y pegar en el cursor; flechas para empujar por la rejilla (tono con ↑/↓, ⇧ = octava). Aceptación: valores exactos tras pegar o empujar, más deshacer.
 5. **Línea de información**: inicio, longitud, tono y velocidad de la selección, editables (con valores relativos si hay varias notas). Aceptación: editar un campo cambia todas las notas seleccionadas.
 6. **Carril de velocidad**: barras por nota y edición con arrastre o línea; el modelo ya guarda `velocity`. Aceptación: el motor genera eventos noteOn con la velocidad editada (prueba sin dispositivo).
 7. **Controladores (CC, inflexión de tono)**: crear `domain::MidiController` y persistirlo, con carriles seleccionables y exportación SMF. Aceptación: ida y vuelta guardar/abrir y exportar/importar sin pérdida.

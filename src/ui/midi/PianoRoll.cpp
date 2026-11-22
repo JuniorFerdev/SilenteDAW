@@ -161,11 +161,33 @@ void PianoRoll::deleteSelected(){if(app::deleteSelection(context())>0)selected=-
 int PianoRoll::quantizeNotes(){return app::quantizeSelection(context(),quantizeSettings)>0?1:0;}
 int PianoRoll::duplicateSelected(){int anchor=-1;const int n=app::duplicateSelection(context(),&anchor);if(n>0)selected=anchor;return n;}
 int PianoRoll::transposeSelected(int semitones){return app::transposeSelection(context(),semitones);}
+int PianoRoll::copySelected(){return app::copySelection(context(),clipboard);}
+int PianoRoll::cutSelected(){const int n=app::cutSelection(context(),clipboard);if(n>0)selected=-1;return n;}
+int PianoRoll::pasteAtCursor(){int anchor=-1;const int n=app::pasteNotes(context(),clipboard,cursorBeat(),&anchor);if(n>0)selected=anchor;return n;}
+int PianoRoll::nudgeSelected(int steps){return steps==0?0:app::nudgeSelection(context(),steps*nudgeStep());}
+double PianoRoll::nudgeStep()const{return snap?grid():domain::gridBeats(quantizeSettings.division,quantizeSettings.triplet);}
+double PianoRoll::cursorBeat()const{const auto timeline=engine.tempoView();const double s=engine.positionSeconds.load();return timeline.isConstant()?s*timeline.bpm/60.0:timeline.beatsAt(s);}
 bool PianoRoll::keyPressed(const juce::KeyPress& k)
 {
     if(k==juce::KeyPress::deleteKey||k==juce::KeyPress::backspaceKey){deleteSelected();return true;}
     if(const int chosen=midiToolForKey(k,tool)){setTool(chosen);return true;}
-    const int code=k.getKeyCode();
+    const int code=k.getKeyCode();const auto mods=k.getModifiers();
+    // Clipboard: Cmd+C / Cmd+X / Cmd+V (no other modifier).
+    if(mods.isCommandDown()&&!mods.isAltDown()&&!mods.isShiftDown()&&!mods.isCtrlDown())
+    {
+        if(code=='C'||code=='c'){copySelected();return true;}
+        if(code=='X'||code=='x'){cutSelected();return true;}
+        if(code=='V'||code=='v'){pasteAtCursor();return true;}
+    }
+    // Up/Down: a semitone; Shift: an octave (manual p. 1247). Left/Right (also Cmd+Left/Right, the
+    // project's Nudge keys): the grid value. Option+arrows stay with the project commands.
+    if(!mods.isAltDown()&&!mods.isCtrlDown())
+    {
+        if((code==juce::KeyPress::upKey||code==juce::KeyPress::downKey)&&!mods.isCommandDown())
+        {transposeSelected((code==juce::KeyPress::upKey?1:-1)*(mods.isShiftDown()?12:1));return true;}
+        if((code==juce::KeyPress::leftKey||code==juce::KeyPress::rightKey)&&!mods.isShiftDown())
+        {nudgeSelected(code==juce::KeyPress::rightKey?1:-1);return true;}
+    }
     if((code=='D'||code=='d')&&k.getModifiers().isCommandDown()&&!k.getModifiers().isAltDown()&&!k.getModifiers().isShiftDown()){duplicateSelected();return true;}
     if((code=='A'||code=='a')&&k.getModifiers().isCommandDown()&&!k.getModifiers().isAltDown()){if(k.getModifiers().isShiftDown())clearSelection();else selectAll();return true;}
     return false;

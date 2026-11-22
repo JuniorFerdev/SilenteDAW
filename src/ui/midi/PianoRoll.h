@@ -48,6 +48,19 @@ public:
     int duplicateSelected();
     // Transposes the selection by semitones (group limited to 0..127).
     int transposeSelected(int semitones);
+    // Subetapa 4: clipboard (Cmd+C/X/V) and nudge (arrows). Paste puts the earliest copied note on
+    // the project cursor; Left/Right nudge by nudgeStep(); Up/Down transpose by a semitone, with
+    // Shift by an octave. Every edit is one named undo step through app/MidiEditCommands.
+    int copySelected();
+    int cutSelected();
+    int pasteAtCursor();
+    int nudgeSelected(int steps);
+    // The drawn grid (1/16) when snap is on; otherwise the quantize grid.
+    double nudgeStep()const;
+    // Project cursor in beats (follows the tempo map).
+    double cursorBeat()const;
+    // Notes copied or cut in this editor; shared by every MIDI track shown here.
+    app::NoteClipboard clipboard;
     bool keyPressed(const juce::KeyPress& k)override;
     // Active tool (MidiToolId). setTool notifies toolChanged so the toolbar follows keys and the toolbox.
     int tool=midiToolSelect;

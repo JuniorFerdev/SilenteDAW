@@ -57,4 +57,7 @@ int nextNoteWithSamePitch(const std::vector<MidiNote>& notes, int index);
 // from its start to the end of the later of both; the second one is removed. Returns the removed
 // note's id, or an empty string when there is nothing to glue.
 juce::String glueWithNext(std::vector<MidiNote>& notes, int index);
+// Clipboard copy: the notes at `indices` with their starts made relative to the earliest one
+// (which lands on beat 0), so pasting at any beat keeps the intervals. Ids are kept.
+std::vector<MidiNote> copyNotesRelative(const std::vector<MidiNote>& notes, const std::vector<int>& indices);
 }
