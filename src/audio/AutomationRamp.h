@@ -17,13 +17,15 @@ struct ParameterRamp
 
 // `last` is NaN before the first segment after preparing the track: then the ramp starts at the
 // curve (or static) value at `beatFrom`, so an export begins exactly on the curve.
-inline ParameterRamp automationRamp(float& last, const domain::AutomationCurve& curve, bool reading,
+// While reading, the track's Trim for `target` scales the curve (TrackAutomation::readValue);
+// trim 1 leaves the value bit-identical.
+inline ParameterRamp automationRamp(float& last, const domain::TrackAutomation& automation, domain::AutomationTarget target, bool reading,
                                     double beatFrom, double beatTo, float staticValue) noexcept
 {
-    const float target = reading ? static_cast<float>(domain::evaluate(curve, beatTo, staticValue)) : staticValue;
+    const float value = reading ? static_cast<float>(automation.readValue(target, beatTo, staticValue)) : staticValue;
     float from = last;
-    if (std::isnan(from)) from = reading ? static_cast<float>(domain::evaluate(curve, beatFrom, staticValue)) : staticValue;
-    last = target;
-    return { from, target };
+    if (std::isnan(from)) from = reading ? static_cast<float>(automation.readValue(target, beatFrom, staticValue)) : staticValue;
+    last = value;
+    return { from, value };
 }
 }

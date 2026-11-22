@@ -10,9 +10,12 @@ using domain::AutomationTarget;
 
 // Static (non-automated) value of the parameter in the curve's unit: fader gain, pan −1…1, send dB.
 double staticValue(const Track&, AutomationTarget);
-// What the mixer shows: in Read mode with points, the curve at the project cursor (the fader
-// follows playback); otherwise the static value.
+// What the mixer shows: in Read mode with points, the curve × trim at the project cursor (the
+// fader follows playback); otherwise the static value.
 double displayedValue(const AudioEngine&, const Track&, AutomationTarget);
+// The control's current value in the curve's unit without the trim (what Fill writes, so the
+// filled span sounds as the control does now).
+double controlValue(const AudioEngine&, const Track&, AutomationTarget);
 // R/W buttons. Turning Write on also turns Read on (Cubase habit); turning Read off turns Write off.
 void setReadMode(AudioEngine&, Track&, bool read);
 void setWriteMode(AudioEngine&, Track&, bool write);
@@ -27,7 +30,10 @@ void setSuspendRead(AudioEngine&, bool);
 void setSuspendWrite(AudioEngine&, bool);
 // A control of the track is grabbed / released (slider drag start / end). In Touch mode writing
 // lasts while the control is held and the track goes back to reading on release; in Latch mode
-// it continues with the last value until the transport stops. Ignored in other modes.
+// it continues with the last value until the transport stops. Cross-Over continues like Latch;
+// touching the control again and moving it across the curve that existed before the pass
+// punches out at the crossing (the crossing value is written and the old curve continues).
+// Ignored in other modes. A finished pass is remembered in AudioEngine::automationLastPass.
 void beginGesture(AudioEngine&, Track&, AutomationTarget);
 void endGesture(AudioEngine&, Track&, AutomationTarget);
 // Called by a message-thread timer: while playing, held and latched controls keep writing their
@@ -35,8 +41,18 @@ void endGesture(AudioEngine&, Track&, AutomationTarget);
 void tickAutomation(AudioEngine&);
 // Writes (or replaces) a point at the project cursor for a control change. Normal Write: only with
 // the transport stopped. Touch/Latch: only while the control is held or latched, also during
-// playback. Returns false when nothing was written (not writing, write suspended, invalid target).
+// playback. `value` is what the control shows; under a trim the curve stores value / trim.
+// Returns false when nothing was written (not writing, write suspended, invalid target).
 bool writeAtCursor(AudioEngine&, Track&, AutomationTarget, double value);
+// Trim of a level parameter (volume or a send): the curve read is scaled, not rewritten. False
+// for pan, an invalid target or no change (so the caller records no undo step).
+bool setTrim(AudioEngine&, Track&, AutomationTarget, double factor);
+// Fill actions (one undo step each, recorded by the caller when canFill is true). The span is
+// filled with controlValue: toStart = project start … cursor; toEnd = cursor … end of project;
+// loop = left … right locator; gaps = before the first and after the last point; toPunch = the
+// span of the last live pass of this track and parameter, with the value found in that pass.
+bool canFill(const AudioEngine&, const Track&, AutomationTarget, domain::AutomationFill);
+bool fill(AudioEngine&, Track&, AutomationTarget, domain::AutomationFill);
 // Lane edits. Return the affected point index (-1 / false on refusal).
 int addPoint(AudioEngine&, Track&, AutomationTarget, double beat, double value);
 bool movePoint(AudioEngine&, Track&, AutomationTarget, int index, double beat, double value);

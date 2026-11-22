@@ -198,13 +198,22 @@ void AutomationLane::paint(juce::Graphics& g)
     }
     else
     {
-        juce::Path path;
-        for (int step = 0; (float) step * 2.0f <= area.getWidth() + 2.0f; ++step)
+        // With a Trim (manual p. 920) the original curve is drawn lighter and the result
+        // (curve × trim, what is heard) in the full colour; the points stay on the original.
+        const bool trimmed = t->automation.trim(target) != 1.0;
+        const auto stroke = [&](bool result)
         {
-            const float x = area.getX() + (float) step * 2.0f, y = valueToY(domain::evaluate(curve, xToBeat(x), 0.0));
-            if (step == 0) path.startNewSubPath(x, y); else path.lineTo(x, y);
-        }
-        g.setColour(curveColour); g.strokePath(path, juce::PathStrokeType(1.6f));
+            juce::Path path;
+            for (int step = 0; (float) step * 2.0f <= area.getWidth() + 2.0f; ++step)
+            {
+                const double beat = xToBeat(area.getX() + (float) step * 2.0f);
+                const float x = area.getX() + (float) step * 2.0f, y = valueToY(result ? t->automation.readValue(target, beat, 0.0) : domain::evaluate(curve, beat, 0.0));
+                if (step == 0) path.startNewSubPath(x, y); else path.lineTo(x, y);
+            }
+            g.setColour(trimmed && ! result ? curveColour.withAlpha(.35f) : curveColour); g.strokePath(path, juce::PathStrokeType(1.6f));
+        };
+        stroke(false);
+        if (trimmed) stroke(true);
         for (int i = 0; i < (int) curve.points.size(); ++i)
         {
             const auto& p = curve.points[(size_t) i];

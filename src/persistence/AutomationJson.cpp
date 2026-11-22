@@ -39,6 +39,17 @@ juce::var writeAutomation(const domain::TrackAutomation& automation)
     // Write style only when it is not the default, so projects without touch/latch stay identical.
     if (automation.style == domain::AutomationWriteStyle::touch) set(object, "style", "touch");
     else if (automation.style == domain::AutomationWriteStyle::latch) set(object, "style", "latch");
+    else if (automation.style == domain::AutomationWriteStyle::crossOver) set(object, "style", "crossover");
+    // Trims only when not 1, for the same reason.
+    if (automation.volumeTrim != 1.0) set(object, "volumeTrim", automation.volumeTrim);
+    juce::Array<juce::var> trims;
+    for (int k = 0; k < domain::automationSendCount; ++k)
+        if (automation.sendTrims[(size_t) k] != 1.0)
+        {
+            juce::var trim(new juce::DynamicObject());
+            set(trim, "slot", k); set(trim, "trim", automation.sendTrims[(size_t) k]); trims.add(trim);
+        }
+    if (! trims.isEmpty()) set(object, "sendTrims", trims);
     if (! automation.volume.empty()) set(object, "volume", writePoints(automation.volume));
     if (! automation.pan.empty()) set(object, "pan", writePoints(automation.pan));
     juce::Array<juce::var> sends;
@@ -60,7 +71,18 @@ domain::TrackAutomation readAutomation(const juce::var& object)
     automation.read = static_cast<bool>(object.getProperty("read", false));
     automation.write = static_cast<bool>(object.getProperty("write", false));
     const auto style = object.getProperty("style", {}).toString();
-    automation.style = style == "touch" ? domain::AutomationWriteStyle::touch : style == "latch" ? domain::AutomationWriteStyle::latch : domain::AutomationWriteStyle::normal;
+    automation.style = style == "touch"       ? domain::AutomationWriteStyle::touch
+                       : style == "latch"     ? domain::AutomationWriteStyle::latch
+                       : style == "crossover" ? domain::AutomationWriteStyle::crossOver
+                                              : domain::AutomationWriteStyle::normal;
+    automation.volumeTrim = domain::clampTrim(finite(object, "volumeTrim", 1.0));
+    if (auto* trims = object["sendTrims"].getArray())
+        for (const auto& trim : *trims)
+        {
+            const int slot = static_cast<int>(trim.getProperty("slot", -1));
+            if (slot >= 0 && slot < domain::automationSendCount)
+                automation.sendTrims[(size_t) slot] = domain::clampTrim(finite(trim, "trim", 1.0));
+        }
     automation.volume = readPoints(object["volume"], AutomationParameter::volume);
     automation.pan = readPoints(object["pan"], AutomationParameter::pan);
     if (auto* sends = object["sends"].getArray())

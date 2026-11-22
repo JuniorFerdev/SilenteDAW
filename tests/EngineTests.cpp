@@ -1686,7 +1686,7 @@ int runEngineTests(const juce::File& outputDir)
             near(app::displayedValue(engine, *t, vol), 0.3, 1e-9, "Read shows the curve");
             app::setSuspendRead(engine, true); near(app::displayedValue(engine, *t, vol), 0.8, 1e-6, "Suspend read shows the static value");
             app::setSuspendRead(engine, false);
-            for (auto m : { AutomationMode::off, AutomationMode::read, AutomationMode::write, AutomationMode::touch, AutomationMode::latch })
+            for (auto m : { AutomationMode::off, AutomationMode::read, AutomationMode::write, AutomationMode::touch, AutomationMode::latch, AutomationMode::crossOver })
             { app::setMode(engine, *t, m); require(t->automation.mode() == m, "Mode round trip"); }
             app::setMode(engine, *t, AutomationMode::off); require(! t->automation.read && ! t->automation.write, "Off clears read and write");
             app::setReadMode(engine, *t, true); app::setWriteMode(engine, *t, true);
@@ -1721,6 +1721,181 @@ int runEngineTests(const juce::File& outputDir)
             require(! plain.loadFileAsString().contains("\"style\""), "Plain Write does not write a style (old format)");
             requireOk(restored.loadProject(plain));
             require(restored.tracks[0]->automation.mode() == AutomationMode::write, "Projects without style load as Write");
+        }
+    });
+
+    suite.run("automation phase 2: Cross-Over, Trim, Fill and persistence with exact values", [&]
+    {
+        using namespace domain;
+        const AutomationTarget vol { AutomationParameter::volume }, pan { AutomationParameter::pan }, send2 { AutomationParameter::send, 2 };
+        using Points = std::vector<AutomationPoint>;
+        // Trim arithmetic: volume × trim in gain, sends shifted by 20·log10(trim), pan untouched.
+        {
+            near(applyTrim(AutomationParameter::volume, 0.5, 2.0), 1.0, 0, "Volume 0.5 × trim 2 = 1");
+            near(applyTrim(AutomationParameter::volume, 3.0, 2.0), 4.0, 0, "Volume × trim clamps to 4");
+            near(applyTrim(AutomationParameter::send, -6.0, 0.5), -6.0 + 20.0 * std::log10(0.5), 1e-12, "Send -6 dB × trim 0.5 = -12.04 dB");
+            near(applyTrim(AutomationParameter::send, -60.0, 2.0), -60.0, 0, "A send at -60 dB (off) stays off");
+            near(applyTrim(AutomationParameter::send, 0.0, 0.0), -60.0, 0, "Trim 0 silences a send");
+            near(applyTrim(AutomationParameter::pan, 0.5, 2.0), 0.5, 0, "Pan has no trim");
+            near(removeTrim(AutomationParameter::volume, 1.0, 2.0), 0.5, 0, "removeTrim is the inverse (volume)");
+            near(removeTrim(AutomationParameter::send, -6.0 + 20.0 * std::log10(0.5), 0.5), -6.0, 1e-12, "removeTrim is the inverse (send)");
+            near(clampTrim(std::numeric_limits<double>::quiet_NaN()), 1.0, 0, "NaN trim → 1");
+            near(clampTrim(9.0), 4.0, 0, "Trim clamps to 4"); near(clampTrim(-1.0), 0.0, 0, "Trim clamps to 0");
+            TrackAutomation t; require(! t.setTrim(pan, 2.0) && t.trim(pan) == 1.0 && ! t.hasTrim() && t.empty(), "Pan refuses a trim; default trims are 1");
+            require(t.setTrim(send2, 0.25) && t.hasTrim() && ! t.empty() && t.sendTrims[2] == 0.25, "Send trim per slot");
+        }
+        // fillRange / fillGaps on the pure curve.
+        {
+            AutomationCurve c; c.points = { { 0.0, 0.0 }, { 2.0, 1.0 }, { 4.0, 0.0 } };
+            require(fillRange(c, AutomationParameter::volume, 1.0, 3.0, 0.8), "fillRange applies");
+            require(c.points == Points { { 0.0, 0.0 }, { 1.0, 0.5 }, { 1.0, 0.8 }, { 3.0, 0.8 }, { 3.0, 0.5 }, { 4.0, 0.0 } }, "fillRange: steps keep the curve outside the span");
+            near(evaluate(c, 0.5, -1), 0.25, 0, "Before the span: unchanged"); near(evaluate(c, 2.0, -1), 0.8, 0, "Inside: the fill value");
+            near(evaluate(c, 3.5, -1), 0.25, 0, "After the span: unchanged");
+            AutomationCurve e; e.points = { { 0.0, 0.0 }, { 4.0, 1.0 } };
+            require(fillRange(e, AutomationParameter::volume, 2.0, std::numeric_limits<double>::infinity(), 0.3), "fillRange to the end");
+            require(e.points == Points { { 0.0, 0.0 }, { 2.0, 0.5 }, { 2.0, 0.3 } }, "To the end: everything after the start is the value");
+            AutomationCurve none;
+            require(fillRange(none, AutomationParameter::volume, 0.0, 4.0, 0.7) && none.points == Points { { 0.0, 0.7 }, { 4.0, 0.7 } }, "Empty curve: no border steps");
+            const auto kept = e;
+            require(! fillRange(e, AutomationParameter::volume, 3.0, 3.0, 0.1) && ! fillRange(e, AutomationParameter::volume, std::numeric_limits<double>::quiet_NaN(), 4.0, 0.1) && e == kept, "Empty or invalid spans are refused");
+            AutomationCurve g; g.points = { { 2.0, 0.5 }, { 4.0, 1.0 } };
+            fillGaps(g, AutomationParameter::volume, 0.7);
+            require(g.points == Points { { 0.0, 0.7 }, { 2.0, 0.7 }, { 2.0, 0.5 }, { 4.0, 1.0 }, { 4.0, 0.7 } }, "fillGaps: before the first and after the last point");
+            AutomationCurve g0; fillGaps(g0, AutomationParameter::volume, 0.6); require(g0.points == Points { { 0.0, 0.6 } }, "fillGaps on an empty curve");
+        }
+        const auto curveOf = [](AudioEngine& e, AutomationTarget t = { AutomationParameter::volume }) { const juce::ScopedLock lock(e.modelLock); return e.tracks[0]->automation.curve(t); };
+        // Cross-Over: continues like Latch; after the second touch, crossing the old curve punches out.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0; // 2 beats per second
+            auto t = engine.addAudioTrack("Cross"); t->automation.volume.points = { { 0.0, 0.5 }, { 32.0, 0.5 } };
+            app::setMode(engine, *t, AutomationMode::crossOver);
+            require(t->automation.mode() == AutomationMode::crossOver && t->automation.read && t->automation.write, "Cross-Over stores read+write+style");
+            engine.playing = true; engine.positionSeconds = 1.0;                        // beat 2
+            app::beginGesture(engine, *t, vol); app::writeAtCursor(engine, *t, vol, 0.9);
+            engine.positionSeconds = 1.25; app::writeAtCursor(engine, *t, vol, 0.3);   // beat 2.5: crossing on the first touch does not punch out
+            engine.positionSeconds = 1.5; app::writeAtCursor(engine, *t, vol, 0.9);    // beat 3
+            app::endGesture(engine, *t, vol);
+            require(engine.automationGestures.size() == 1 && engine.automationGestures[0].latched, "Cross-Over: first touch never punches out and stays latched");
+            engine.positionSeconds = 2.0; app::tickAutomation(engine);                  // beat 4: keeps the value
+            engine.positionSeconds = 3.0; app::beginGesture(engine, *t, vol);           // second touch
+            require(app::writeAtCursor(engine, *t, vol, 0.7) && engine.automationGestures.size() == 1, "Cross-Over: second touch above the old curve keeps writing"); // beat 6
+            engine.positionSeconds = 3.5;
+            require(app::writeAtCursor(engine, *t, vol, 0.4), "Cross-Over: the crossing write is accepted");           // beat 7
+            require(engine.automationGestures.empty(), "Cross-Over: crossing the old curve punches out");
+            const auto c = curveOf(engine);
+            require(c.points == Points { { 0.0, 0.5 }, { 2.0, 0.5 }, { 2.0, 0.9 }, { 2.5, 0.3 }, { 3.0, 0.9 }, { 4.0, 0.9 }, { 6.0, 0.7 }, { 7.0, 0.5 }, { 32.0, 0.5 } },
+                    "Cross-Over: punch-in step, the pass, and the crossing point on the old curve");
+            near(evaluate(c, 20.0, -1), 0.5, 0, "Cross-Over: after the crossing the old curve continues");
+            require(! app::writeAtCursor(engine, *t, vol, 0.2) && curveOf(engine) == c, "Cross-Over: nothing is written after the punch out");
+            const auto& pass = engine.automationLastPass;
+            require(pass.valid() && pass.trackId == t->id.toStdString() && pass.target == vol && pass.fromBeat == 2.0 && pass.toBeat == 7.0 && pass.value == 0.5, "The finished pass is remembered");
+            // Without a second touch the pass ends at stop, like Latch.
+            app::beginGesture(engine, *t, vol); engine.positionSeconds = 5.0; app::writeAtCursor(engine, *t, vol, 0.8); app::endGesture(engine, *t, vol);
+            engine.playing = false; app::tickAutomation(engine);
+            require(engine.automationGestures.empty(), "Cross-Over: stopping the transport ends the pass");
+        }
+        // Trim in the engine: the curve is scaled, not rewritten; writing stores value / trim.
+        {
+            const auto build = [&](AudioEngine& engine, bool trimmed)
+            {
+                setup(engine); auto a = engine.addAudioTrack("A");
+                AudioClip clip; clip.name = "DC"; clip.sourceRate = rate; clip.durationSeconds = 2.0; clip.fadeIn = clip.fadeOut = 0.0;
+                clip.audio = std::make_shared<juce::AudioBuffer<float>>(2, (int) std::llround(2.0 * rate));
+                for (int c = 0; c < 2; ++c) juce::FloatVectorOperations::fill(clip.audio->getWritePointer(c), 0.3f, clip.audio->getNumSamples());
+                a->clips.push_back(clip);
+                if (trimmed) { a->automation.volume.points = { { 0.0, 0.5 } }; a->automation.read = true; app::setTrim(engine, *a, vol, 2.0); }
+                else a->gain = 1.0f;
+                engine.play(); return render(engine, (int) (rate * 1.0));
+            };
+            AudioEngine e0, e1; const auto plain = build(e0, false), trimmed = build(e1, true);
+            bool same = true;
+            for (int c = 0; c < 2; ++c) for (int i = 0; i < plain.getNumSamples(); ++i) same = same && plain.getSample(c, i) == trimmed.getSample(c, i);
+            require(same && peak(plain) > 0.05, "Curve 0.5 × trim 2 renders bit-identical to a fader at 1.0");
+            require(e1.tracks[0]->automation.volume.points == Points { { 0.0, 0.5 } }, "Trim does not rewrite the curve");
+
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Trim"); t->sends[2].levelDb = -20.0f;
+            t->automation.volume.points = { { 0.0, 0.5 }, { 8.0, 1.0 } }; t->automation.sends[2].points = { { 0.0, -6.0 } }; t->automation.read = true;
+            require(app::setTrim(engine, *t, vol, 1.5) && ! app::setTrim(engine, *t, vol, 1.5) && ! app::setTrim(engine, *t, pan, 2.0), "setTrim: changes once, refuses pan");
+            engine.positionSeconds = 2.0; // beat 4: curve 0.75
+            near(app::displayedValue(engine, *t, vol), 0.75 * 1.5, 1e-12, "The fader shows curve × trim");
+            near(app::controlValue(engine, *t, vol), 0.75, 1e-12, "controlValue removes the trim");
+            app::setTrim(engine, *t, send2, 0.5);
+            near(app::displayedValue(engine, *t, send2), -6.0 + 20.0 * std::log10(0.5), 1e-9, "Send curve × trim");
+            app::setMode(engine, *t, AutomationMode::write); engine.positionSeconds = 5.0; // beat 10
+            require(app::writeAtCursor(engine, *t, vol, 1.2), "Write under a trim");
+            near(curveOf(engine).points.back().value, 0.8, 1e-12, "The curve stores value / trim");
+            near(app::displayedValue(engine, *t, vol), 1.2, 1e-12, "and the control shows the value written");
+        }
+        // Fill actions through the commands: value of the control, spans and refusals.
+        {
+            AudioEngine engine; setup(engine); engine.tempo = 120.0;
+            auto t = engine.addAudioTrack("Fill"); t->gain = 0.8f;
+            engine.positionSeconds = 2.0; // beat 4
+            require(app::canFill(engine, *t, vol, AutomationFill::toStart) && app::fill(engine, *t, vol, AutomationFill::toStart), "To start");
+            require(curveOf(engine).points == Points { { 0.0, 0.8f }, { 4.0, 0.8f } }, "To start: project start … cursor with the static value");
+            require(! app::canFill(engine, *t, vol, AutomationFill::toStart) && ! app::fill(engine, *t, vol, AutomationFill::toStart), "A fill that changes nothing is refused (no undo step)");
+
+            t->automation.volume.points = { { 0.0, 0.2 }, { 16.0, 1.0 } }; t->automation.read = true;
+            engine.positionSeconds = 0.0; engine.loopStart = 1.0; engine.loopEnd = 3.0; // beats 2 … 6, value 0.2 at the cursor
+            require(app::fill(engine, *t, vol, AutomationFill::loop), "Loop");
+            auto c = curveOf(engine);
+            require(c.points.size() == 6 && c.points[1].beat == 2.0 && c.points[2] == AutomationPoint { 2.0, 0.2 } && c.points[3] == AutomationPoint { 6.0, 0.2 } && c.points[4].beat == 6.0,
+                    "Loop: left … right locator with border steps");
+            near(c.points[1].value, 0.3, 1e-12, "Loop: old value at the left locator"); near(c.points[4].value, 0.5, 1e-12, "Loop: old value at the right locator");
+            near(evaluate(c, 1.0, -1), 0.25, 1e-12, "Loop: before unchanged"); near(evaluate(c, 4.0, -1), 0.2, 0, "Loop: inside filled"); near(evaluate(c, 8.0, -1), 0.6, 1e-12, "Loop: after unchanged");
+            engine.loopEnd = 0.5; require(! app::canFill(engine, *t, vol, AutomationFill::loop), "Loop: an empty locator range is refused");
+
+            t->automation.volume.points = { { 0.0, 0.2 }, { 16.0, 1.0 } };
+            engine.positionSeconds = 2.0; // beat 4, curve 0.4
+            require(app::fill(engine, *t, vol, AutomationFill::toEnd), "To end");
+            c = curveOf(engine);
+            require(c.points.size() == 2 && c.points[0] == AutomationPoint { 0.0, 0.2 } && c.points[1].beat == 4.0, "To end: cursor … end");
+            near(c.points[1].value, 0.4, 1e-12, "To end: the value at the cursor"); near(evaluate(c, 100.0, -1), 0.4, 1e-12, "To end: holds to the end");
+
+            t->automation.volume.points = { { 2.0, 0.5 }, { 4.0, 1.0 } };
+            engine.positionSeconds = 1.5; // beat 3, curve 0.75
+            require(app::fill(engine, *t, vol, AutomationFill::gaps), "Gaps");
+            require(curveOf(engine).points == Points { { 0.0, 0.75 }, { 2.0, 0.75 }, { 2.0, 0.5 }, { 4.0, 1.0 }, { 4.0, 0.75 } }, "Gaps: before the first and after the last point");
+            require(! app::canFill(engine, *t, pan, AutomationFill::toPunch) && ! app::canFill(engine, *t, vol, AutomationFill::toPunch), "To punch needs a finished pass of this parameter");
+
+            // To punch: after a Touch pass, the span of the pass gets the value found.
+            t->automation.volume.points = { { 0.0, 0.5 }, { 32.0, 0.5 } };
+            app::setMode(engine, *t, AutomationMode::touch);
+            engine.playing = true; engine.positionSeconds = 1.0;
+            app::beginGesture(engine, *t, vol); app::writeAtCursor(engine, *t, vol, 0.9);
+            engine.positionSeconds = 2.0; app::writeAtCursor(engine, *t, vol, 0.6); app::endGesture(engine, *t, vol);
+            engine.playing = false; engine.positionSeconds = 6.0;
+            require(app::canFill(engine, *t, vol, AutomationFill::toPunch) && app::fill(engine, *t, vol, AutomationFill::toPunch), "To punch");
+            require(curveOf(engine).points == Points { { 0.0, 0.5 }, { 2.0, 0.5 }, { 2.0, 0.6 }, { 4.0, 0.6 }, { 32.0, 0.5 } }, "To punch: punch in … punch out with the value found");
+            // Undo is a snapshot of TrackAutomation: restoring it gives back the curve exactly.
+            const auto snapshot = t->automation;
+            app::fill(engine, *t, vol, AutomationFill::toEnd); require(! (t->automation == snapshot), "Fill changed the curve");
+            t->automation = snapshot; require(curveOf(engine) == snapshot.volume, "Restoring the snapshot undoes the fill");
+        }
+        // Persistence: Cross-Over and trims round-trip; defaults write nothing new; old files load.
+        {
+            AudioEngine source; setup(source);
+            auto a = source.addAudioTrack("A"); app::setMode(source, *a, AutomationMode::crossOver);
+            app::setTrim(source, *a, vol, 0.5); app::setTrim(source, *a, send2, 1.25);
+            auto b = source.addAudioTrack("B"); app::setTrim(source, *b, vol, 2.0); // trim alone is saved
+            source.addAudioTrack("C");
+            const auto file = dir.getChildFile("automation-phase2.silente"); requireOk(source.saveProject(file));
+            AudioEngine restored; setup(restored); requireOk(restored.loadProject(file));
+            require(restored.tracks[0]->automation == a->automation && restored.tracks[0]->automation.mode() == AutomationMode::crossOver, "Cross-Over and trims survive save/load");
+            require(restored.tracks[1]->automation.volumeTrim == 2.0 && restored.tracks[2]->automation.empty(), "A trim alone is saved; untouched tracks stay empty");
+            app::setMode(source, *a, AutomationMode::write); app::setTrim(source, *a, vol, 1.0); app::setTrim(source, *a, send2, 1.0);
+            app::setTrim(source, *b, vol, 1.0);
+            const auto plain = dir.getChildFile("automation-phase2-plain.silente"); requireOk(source.saveProject(plain));
+            const auto text = plain.loadFileAsString();
+            require(! text.contains("Trim") && ! text.contains("crossover"), "Default trims and styles write nothing");
+            requireOk(restored.loadProject(plain));
+            require(restored.tracks[0]->automation.volumeTrim == 1.0 && restored.tracks[0]->automation.sendTrims == unitTrims() && restored.tracks[1]->automation.empty(), "Older-format projects load with trim 1");
+            auto json = juce::JSON::parse(file.loadFileAsString());
+            json["tracks"][0]["automation"].getDynamicObject()->setProperty("volumeTrim", 99.0);
+            const auto bad = dir.getChildFile("automation-phase2-bad.silente"); require(bad.replaceWithText(juce::JSON::toString(json)), "Cannot write project");
+            requireOk(restored.loadProject(bad));
+            require(restored.tracks[0]->automation.volumeTrim == maximumTrim, "An out-of-range trim is clamped on load");
         }
     });
 

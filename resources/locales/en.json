@@ -1106,5 +1106,20 @@
   "Pegar notas": "Glue notes",
   "Enmudecer notas": "Mute notes",
   "Desenmudecer notas": "Unmute notes",
-  "Cuantizar": "Quantize"
+  "Cuantizar": "Quantize",
+  "Hasta punch": "To Punch",
+  "Hasta inicio": "To Start",
+  "Hasta final": "To End",
+  "Bucle": "Loop",
+  "Huecos": "Gaps",
+  "Rellenar": "Fill",
+  "Rellenar el tramo del último pase de escritura con el valor encontrado": "Fill the span of the last writing pass with the value found",
+  "Rellenar desde el inicio del proyecto hasta el cursor con el valor actual del control": "Fill from the project start to the cursor with the control's current value",
+  "Rellenar desde el cursor hasta el final del proyecto con el valor actual del control": "Fill from the cursor to the end of the project with the control's current value",
+  "Rellenar entre los localizadores izquierdo y derecho con el valor actual del control": "Fill between the left and right locators with the control's current value",
+  "Rellenar antes del primer punto y después del último con el valor actual del control": "Fill before the first point and after the last one with the control's current value",
+  "Seleccionar la pista para Rellenar": "Select the track for Fill",
+  "Trim de ": "Trim of ",
+  ": escala la curva leída sin reescribirla": ": scales the curve being read without rewriting it",
+  "El panorama no tiene Trim": "Pan has no Trim"
 }

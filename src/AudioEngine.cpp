@@ -225,6 +225,7 @@ void AudioEngine::clear()
     stop();
     const juce::ScopedLock lock(modelLock);
     tracks.clear();
+    automationGestures.clear(); automationLastPass = {};
     activeMarkerTrack.clear();
     projectName = i18n::tr("Sin título");
     projectFile = juce::File();
@@ -750,9 +751,9 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
         const auto& automation = track->automation;
         const bool suspendRead = automationSuspendRead.load();
         using domain::AutomationParameter;
-        const auto volumeRamp = audio::automationRamp(rt.lastGain, automation.volume, (! suspendRead && automation.reads({ AutomationParameter::volume })),
+        const auto volumeRamp = audio::automationRamp(rt.lastGain, automation, { AutomationParameter::volume }, (! suspendRead && automation.reads({ AutomationParameter::volume })),
                                                       automationFrom, automationTo, juce::jlimit(0.0f, 4.0f, finiteGain(track->gain.load())));
-        const auto panRamp = audio::automationRamp(rt.lastPan, automation.pan, (! suspendRead && automation.reads({ AutomationParameter::pan })),
+        const auto panRamp = audio::automationRamp(rt.lastPan, automation, { AutomationParameter::pan }, (! suspendRead && automation.reads({ AutomationParameter::pan })),
                                                    automationFrom, automationTo, juce::jlimit(-1.0f, 1.0f, finiteGain(track->pan.load())));
         // Equal-power pan, -3 dB at centre. Stereo channels are balanced, not summed.
         const auto channelGains = [](float g, float p, float* out)
@@ -788,7 +789,7 @@ void AudioEngine::renderSegment(int offset, int samples, double start, bool tran
             const auto& send = track->sends[static_cast<size_t>(k)];
             sendPre[k] = send.preFader.load();
             const float level = juce::jlimit(-60.0f, 6.0f, finiteGain(send.levelDb.load()));
-            const auto ramp = audio::automationRamp(rt.lastSendDb[static_cast<size_t>(k)], automation.sends[static_cast<size_t>(k)],
+            const auto ramp = audio::automationRamp(rt.lastSendDb[static_cast<size_t>(k)], automation, { AutomationParameter::send, k },
                                                     (! suspendRead && automation.reads({ AutomationParameter::send, k })), automationFrom, automationTo, level);
             const auto toGain = [&](float db) { return rt.sendIndex[static_cast<size_t>(k)] < 0 || db <= -60.0f ? 0.0f : juce::Decibels::decibelsToGain(db) * (sendPre[k] && ! audible ? 0.0f : 1.0f); };
             sendGain[k] = toGain(ramp.to);

@@ -123,6 +123,7 @@ public:
     // for live writing (touch/latch; message thread only). See app/AutomationCommands.
     std::atomic<bool> automationSuspendRead { false }, automationSuspendWrite { false };
     std::vector<domain::AutomationGesture> automationGestures;
+    domain::AutomationPass automationLastPass; // last finished live pass (Fill «Hasta punch»)
     std::atomic<bool> playing { false }, recording { false }, metronome { false }, looping { false };
     std::atomic<double> positionSeconds { 0.0 }, tempo { 120.0 }, loopStart { 0.0 }, loopEnd { 8.0 };
     // Tempo and signature changes after the start; `tempo` stays the tempo at beat 0. Edited on the

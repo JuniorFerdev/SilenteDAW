@@ -1106,5 +1106,20 @@
   "Pegar notas": "Pegar notas",
   "Enmudecer notas": "Enmudecer notas",
   "Desenmudecer notas": "Desenmudecer notas",
-  "Cuantizar": "Cuantizar"
+  "Cuantizar": "Cuantizar",
+  "Hasta punch": "Hasta punch",
+  "Hasta inicio": "Hasta inicio",
+  "Hasta final": "Hasta final",
+  "Bucle": "Bucle",
+  "Huecos": "Huecos",
+  "Rellenar": "Rellenar",
+  "Rellenar el tramo del último pase de escritura con el valor encontrado": "Rellenar el tramo del último pase de escritura con el valor encontrado",
+  "Rellenar desde el inicio del proyecto hasta el cursor con el valor actual del control": "Rellenar desde el inicio del proyecto hasta el cursor con el valor actual del control",
+  "Rellenar desde el cursor hasta el final del proyecto con el valor actual del control": "Rellenar desde el cursor hasta el final del proyecto con el valor actual del control",
+  "Rellenar entre los localizadores izquierdo y derecho con el valor actual del control": "Rellenar entre los localizadores izquierdo y derecho con el valor actual del control",
+  "Rellenar antes del primer punto y después del último con el valor actual del control": "Rellenar antes del primer punto y después del último con el valor actual del control",
+  "Seleccionar la pista para Rellenar": "Seleccionar la pista para Rellenar",
+  "Trim de ": "Trim de ",
+  ": escala la curva leída sin reescribirla": ": escala la curva leída sin reescribirla",
+  "El panorama no tiene Trim": "El panorama no tiene Trim"
 }

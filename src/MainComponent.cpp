@@ -2548,10 +2548,10 @@ struct MainComponent::Impl : private juce::ScrollBar::Listener, private juce::Ch
         if(!automationWindow)
         {
             auto* panel=new ui::AutomationPanel(engine);
-            panel->beforeEdit=[this]{pushUndo(i18n::tr("Modo de automatización"));};
-            panel->changed=[this]{markDirty();refresh();};
+            panel->beforeEdit=[this]{pushUndo(i18n::tr("Editar automatización"));};
+            panel->changed=[this]{markDirty();refresh();automationLane.repaint();};
             panel->onShow=[this](int track,domain::AutomationTarget target){select(track);setAutomation();automationLane.setTarget(target);};
-            automationWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Automatización"),panel,560,320);automationWindow->setLookAndFeel(&look);
+            automationWindow=std::make_unique<UtilityWindow>(i18n::tr("Silente · Automatización"),panel,700,360);automationWindow->setLookAndFeel(&look);
         }
         if(auto* panel=dynamic_cast<ui::AutomationPanel*>(automationWindow->getContentComponent()))panel->refresh();
         automationWindow->setVisible(true);automationWindow->toFront(true);
